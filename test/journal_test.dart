@@ -29,8 +29,18 @@ void main() {
 
       expect(block.rotation, 0);
       expect(block.fontSize, 21);
+      expect(block.fontFamily, isNull);
       expect(block.bold, isFalse);
       expect(block.italic, isFalse);
+    });
+
+    test('defaults missing title font family for older entries', () {
+      final entry = Entry.fromJson({
+        'id': 'legacy-entry',
+        'createdAt': '2025-08-22T12:30:00.000Z',
+      });
+
+      expect(entry.titleFontFamily, isNull);
     });
 
     test('round-trips all fields', () {
@@ -49,6 +59,7 @@ void main() {
             h: 10,
             rotation: 0.35,
             fontSize: 26,
+            fontFamily: JournalFonts.lora,
             bold: true,
             italic: true,
           ),
@@ -56,6 +67,7 @@ void main() {
         music: 'asset1',
         view: ViewState(zoom: 1.5, panX: 2, panY: -3),
         titleFontSize: 34,
+        titleFontFamily: JournalFonts.caveat,
         titleBold: false,
         titleItalic: true,
       );
@@ -68,6 +80,7 @@ void main() {
       expect(decoded.view?.zoom, 1.5);
       expect(decoded.view?.panY, -3);
       expect(decoded.titleFontSize, 34);
+      expect(decoded.titleFontFamily, JournalFonts.caveat);
       expect(decoded.titleBold, isFalse);
       expect(decoded.titleItalic, isTrue);
       final block = decoded.blocks.single;
@@ -77,6 +90,7 @@ void main() {
       expect(block.w, 30);
       expect(block.rotation, closeTo(0.35, 0.0001));
       expect(block.fontSize, 26);
+      expect(block.fontFamily, JournalFonts.lora);
       expect(block.bold, isTrue);
       expect(block.italic, isTrue);
     });

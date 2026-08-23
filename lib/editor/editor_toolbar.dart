@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../models/entry.dart';
+
 class EditorToolbar extends StatelessWidget {
   const EditorToolbar({
     super.key,
@@ -14,6 +16,8 @@ class EditorToolbar extends StatelessWidget {
     required this.onEditText,
     required this.onDecreaseFontSize,
     required this.onIncreaseFontSize,
+    required this.fontFamily,
+    required this.onFontFamilyChanged,
     required this.onToggleBold,
     required this.onToggleItalic,
     required this.bold,
@@ -33,6 +37,8 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback onEditText;
   final VoidCallback? onDecreaseFontSize;
   final VoidCallback? onIncreaseFontSize;
+  final String? fontFamily;
+  final ValueChanged<String?> onFontFamilyChanged;
   final VoidCallback onToggleBold;
   final VoidCallback onToggleItalic;
   final bool bold;
@@ -86,6 +92,11 @@ class EditorToolbar extends StatelessWidget {
                   icon: Icons.emoji_emotions_outlined,
                   label: compact ? null : 'Sticker',
                   onPressed: onAddSticker,
+                ),
+                _FontPicker(
+                  compact: compact,
+                  fontFamily: fontFamily,
+                  onChanged: onFontFamilyChanged,
                 ),
                 _Action(
                   tooltip: 'Decrease font size',
@@ -154,6 +165,76 @@ class EditorToolbar extends StatelessWidget {
     margin: const EdgeInsets.symmetric(horizontal: 4),
     color: Colors.black.withValues(alpha: 0.14),
   );
+}
+
+class _FontPicker extends StatelessWidget {
+  const _FontPicker({
+    required this.compact,
+    required this.fontFamily,
+    required this.onChanged,
+  });
+
+  static const _defaultKey = '__default__';
+
+  final bool compact;
+  final String? fontFamily;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: 'Choose font',
+    child: PopupMenuButton<String>(
+      onSelected: (value) => onChanged(value == _defaultKey ? null : value),
+      itemBuilder: (context) => [
+        _item(context, _defaultKey, 'Default', null),
+        _item(
+          context,
+          JournalFonts.caveat,
+          JournalFonts.caveat,
+          JournalFonts.caveat,
+        ),
+        _item(context, JournalFonts.lora, JournalFonts.lora, JournalFonts.lora),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.font_download_outlined, size: 20),
+            Text(
+              compact ? '' : 'Font',
+              style: const TextStyle(
+                fontFamily: 'Lora',
+                fontSize: 9,
+                color: Color(0xFF3B3226),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  PopupMenuItem<String> _item(
+    BuildContext context,
+    String value,
+    String label,
+    String? family,
+  ) {
+    final selected = family == fontFamily;
+    return PopupMenuItem<String>(
+      value: value,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 24,
+            child: selected ? const Icon(Icons.check, size: 18) : null,
+          ),
+          Text(label, style: TextStyle(fontFamily: family)),
+        ],
+      ),
+    );
+  }
 }
 
 class _Shell extends StatelessWidget {

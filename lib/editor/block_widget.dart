@@ -275,6 +275,7 @@ class _BlockWidgetState extends State<BlockWidget> {
   TextStyle _textStyle(BuildContext context) =>
       (Theme.of(context).textTheme.bodyLarge ?? const TextStyle()).copyWith(
         fontSize: widget.block.fontSize,
+        fontFamily: widget.block.fontFamily,
         fontWeight: widget.block.bold ? FontWeight.bold : FontWeight.normal,
         fontStyle: widget.block.italic ? FontStyle.italic : FontStyle.normal,
       );

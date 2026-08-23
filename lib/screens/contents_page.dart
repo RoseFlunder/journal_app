@@ -61,13 +61,6 @@ class ContentsPage extends StatelessWidget {
           'Cozy Bloom Journal',
           style: Theme.of(context).textTheme.headlineSmall,
         ),
-        actions: [
-          IconButton(
-            onPressed: onNewPage,
-            tooltip: 'New page',
-            icon: const Icon(Icons.add_circle_outline),
-          ),
-        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: PaperPage.sage,

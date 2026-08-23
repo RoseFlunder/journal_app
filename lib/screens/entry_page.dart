@@ -23,6 +23,7 @@ class EntryPage extends StatefulWidget {
     required this.onBlocksChanged,
     required this.onTitleChanged,
     required this.onTitleStyleChanged,
+    required this.onTitleFontFamilyChanged,
     required this.onEditingChanged,
     this.imageSource,
     this.imageProcessor = const ImageProcessor(),
@@ -35,6 +36,7 @@ class EntryPage extends StatefulWidget {
   final ValueChanged<String> onTitleChanged;
   final void Function(double fontSize, bool bold, bool italic)
   onTitleStyleChanged;
+  final ValueChanged<String?> onTitleFontFamilyChanged;
   final ValueChanged<bool> onEditingChanged;
 
   final ImageSourceService? imageSource;
@@ -54,6 +56,7 @@ class _EntryPageState extends State<EntryPage> {
   static const _minFontSize = 12.0;
   static const _maxFontSize = 48.0;
   bool _editing = false;
+  bool _titleFocused = false;
   String? _selectedId;
   String? _textEditingId;
   late final TextEditingController _titleController = TextEditingController(
@@ -82,6 +85,34 @@ class _EntryPageState extends State<EntryPage> {
       if (block.id == id && block.type == BlockType.text) return block;
     }
     return null;
+  }
+
+  ContentBlock? get _activeTextBlock {
+    if (_titleFocused) return null;
+    final editing = _editingTextBlock;
+    if (editing != null) return editing;
+    final selectedId = _selectedId;
+    if (selectedId == null) return null;
+    for (final block in widget.entry.blocks) {
+      if (block.id == selectedId && block.type == BlockType.text) return block;
+    }
+    return null;
+  }
+
+  String? get _activeFontFamily {
+    final block = _activeTextBlock;
+    return block == null ? widget.entry.titleFontFamily : block.fontFamily;
+  }
+
+  void _changeFontFamily(String? fontFamily) {
+    final block = _activeTextBlock;
+    if (block != null) {
+      block.fontFamily = fontFamily;
+      _changeBlock(block);
+    } else {
+      widget.onTitleFontFamilyChanged(fontFamily);
+    }
+    setState(() {});
   }
 
   double get _activeFontSize =>
@@ -143,6 +174,7 @@ class _EntryPageState extends State<EntryPage> {
   TextStyle _titleStyle(BuildContext context) =>
       (Theme.of(context).textTheme.headlineSmall ?? const TextStyle()).copyWith(
         fontSize: widget.entry.titleFontSize,
+        fontFamily: widget.entry.titleFontFamily,
         fontWeight: widget.entry.titleBold
             ? FontWeight.bold
             : FontWeight.normal,
@@ -162,7 +194,10 @@ class _EntryPageState extends State<EntryPage> {
       h: 22,
     );
     widget.onBlocksChanged([...widget.entry.blocks, block]);
-    setState(() => _selectedId = block.id);
+    setState(() {
+      _titleFocused = false;
+      _selectedId = block.id;
+    });
   }
 
   Future<void> _addImage() async {
@@ -206,52 +241,57 @@ class _EntryPageState extends State<EntryPage> {
       backgroundColor: PaperPage.paper,
       showDragHandle: true,
       builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Sticker pack',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 14),
-              GridView.builder(
-                shrinkWrap: true,
-                itemCount: StickerCatalog.definitions.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.25,
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * 0.76,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Sticker pack',
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
-                itemBuilder: (context, index) {
-                  final definition = StickerCatalog.definitions[index];
-                  return Semantics(
-                    button: true,
-                    label: 'Add ${definition.label} sticker',
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () => Navigator.pop(context, definition),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF7EFE6),
+                const SizedBox(height: 14),
+                Expanded(
+                  child: GridView.builder(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    itemCount: StickerCatalog.definitions.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 150,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 1.1,
+                        ),
+                    itemBuilder: (context, index) {
+                      final definition = StickerCatalog.definitions[index];
+                      return Semantics(
+                        button: true,
+                        label: 'Add ${definition.label} sticker',
+                        child: InkWell(
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: PaperPage.ink.withValues(alpha: 0.12),
+                          onTap: () => Navigator.pop(context, definition),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF7EFE6),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: PaperPage.ink.withValues(alpha: 0.12),
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: Image.asset(definition.assetPath),
+                            ),
                           ),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(10),
-                          child: Image.asset(definition.assetPath),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -403,15 +443,20 @@ class _EntryPageState extends State<EntryPage> {
                       onSelect: (id) {
                         if (id == null) {
                           FocusScope.of(context).unfocus();
-                          setState(() => _textEditingId = null);
+                          setState(() {
+                            _titleFocused = false;
+                            _textEditingId = null;
+                          });
                           return;
                         }
                         setState(() {
+                          _titleFocused = false;
                           _selectedId = id;
                           _textEditingId = null;
                         });
                       },
                       onEditText: (id) => setState(() {
+                        _titleFocused = false;
                         _selectedId = id;
                         _textEditingId = id;
                       }),
@@ -439,9 +484,10 @@ class _EntryPageState extends State<EntryPage> {
                                   controller: _titleController,
                                   maxLines: 1,
                                   onTap: () {
-                                    if (_textEditingId != null) {
-                                      setState(() => _textEditingId = null);
-                                    }
+                                    setState(() {
+                                      _titleFocused = true;
+                                      _textEditingId = null;
+                                    });
                                   },
                                   onChanged: widget.onTitleChanged,
                                   style: _titleStyle(context),
@@ -463,10 +509,6 @@ class _EntryPageState extends State<EntryPage> {
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: Colors.black54),
                           ),
-                          Divider(
-                            height: 24,
-                            color: PaperPage.ink.withValues(alpha: 0.2),
-                          ),
                         ],
                       ),
                     ),
@@ -484,6 +526,7 @@ class _EntryPageState extends State<EntryPage> {
                   textEditing: false,
                   onToggleEditing: () => setState(() {
                     _editing = true;
+                    _titleFocused = false;
                     widget.onEditingChanged(true);
                   }),
                   onAddText: _addText,
@@ -498,6 +541,8 @@ class _EntryPageState extends State<EntryPage> {
                   onIncreaseFontSize: _activeFontSize < _maxFontSize
                       ? () => _changeFontSize(_fontSizeStep)
                       : null,
+                  fontFamily: _activeFontFamily,
+                  onFontFamilyChanged: _changeFontFamily,
                   onToggleBold: _toggleBold,
                   onToggleItalic: _toggleItalic,
                   bold: _activeBold,
@@ -518,6 +563,7 @@ class _EntryPageState extends State<EntryPage> {
                     textEditing: _textEditingId != null,
                     onToggleEditing: () => setState(() {
                       _editing = false;
+                      _titleFocused = false;
                       widget.onEditingChanged(false);
                       _selectedId = null;
                       _textEditingId = null;
@@ -549,6 +595,8 @@ class _EntryPageState extends State<EntryPage> {
                     onIncreaseFontSize: _activeFontSize < _maxFontSize
                         ? () => _changeFontSize(_fontSizeStep)
                         : null,
+                    fontFamily: _activeFontFamily,
+                    onFontFamilyChanged: _changeFontFamily,
                     onToggleBold: _toggleBold,
                     onToggleItalic: _toggleItalic,
                     bold: _activeBold,

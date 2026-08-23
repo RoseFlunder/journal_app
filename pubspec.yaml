@@ -70,6 +70,7 @@ flutter:
     - assets/branding/cozy_bloom_icon.png
     - assets/stickers/daisy.png
     - assets/stickers/butterfly.png
+    - assets/stickers/extracted/
 
   fonts:
     - family: Caveat

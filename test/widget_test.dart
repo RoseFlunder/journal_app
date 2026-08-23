@@ -51,6 +51,7 @@ void main() {
       // Starts on the (empty) table of contents.
       expect(find.text('Cozy Bloom Journal'), findsNWidgets(2));
       expect(find.text('This journal is empty.'), findsOneWidget);
+      expect(find.byTooltip('New page'), findsNothing);
       expect(find.byTooltip('Home'), findsNothing);
       expect(
         tester
@@ -84,6 +85,10 @@ void main() {
       expect(find.text('Untitled page'), findsOneWidget);
       expect(find.byTooltip('Edit title'), findsNothing);
       expect(find.byTooltip('Home'), findsOneWidget);
+      final home = find.byTooltip('Home');
+      final topInset = MediaQuery.paddingOf(tester.element(home)).top;
+      expect(tester.getTopLeft(home).dy, greaterThanOrEqualTo(topInset + 12));
+      expect(find.byType(Divider), findsNothing);
       expect(
         tester
             .widget<IconButton>(
@@ -344,6 +349,23 @@ void main() {
     );
     await tester.pump();
     expect(store.entries.single.blocks.single.text, 'A first note');
+    await tester.tap(find.byTooltip('Choose font'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lora'));
+    await tester.pump();
+    expect(store.entries.single.blocks.single.fontFamily, JournalFonts.lora);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(ValueKey('block-text-$blockId')))
+          .style
+          ?.fontFamily,
+      JournalFonts.lora,
+    );
+    await tester.tap(find.byTooltip('Choose font'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Default'));
+    await tester.pump();
+    expect(store.entries.single.blocks.single.fontFamily, isNull);
     await tester.tap(find.byTooltip('Toggle bold'));
     await tester.pump();
     await tester.tap(find.byTooltip('Toggle italic'));
@@ -353,6 +375,26 @@ void main() {
     expect(store.entries.single.blocks.single.bold, isTrue);
     expect(store.entries.single.blocks.single.italic, isTrue);
     expect(store.entries.single.blocks.single.fontSize, 23);
+
+    await tester.tap(find.byKey(const ValueKey('entry-title')));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Choose font'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Caveat'));
+    await tester.pump();
+    expect(store.entries.single.titleFontFamily, JournalFonts.caveat);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('entry-title')))
+          .style
+          ?.fontFamily,
+      JournalFonts.caveat,
+    );
+    await tester.tap(find.byTooltip('Choose font'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Default'));
+    await tester.pump();
+    expect(store.entries.single.titleFontFamily, isNull);
 
     await tester.tapAt(tester.getCenter(find.byType(EntryCanvas)));
     await tester.pump();

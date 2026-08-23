@@ -1,5 +1,21 @@
 import 'package:uuid/uuid.dart';
 
+/// Font families that can be selected in the editor.
+///
+/// A null value intentionally means the current theme default. This keeps
+/// older entries compatible and lets titles and body text retain their
+/// different defaults.
+abstract final class JournalFonts {
+  static const caveat = 'Caveat';
+  static const lora = 'Lora';
+
+  static String? normalize(String? value) => switch (value) {
+    caveat => caveat,
+    lora => lora,
+    _ => null,
+  };
+}
+
 /// The kinds of content that can be freely placed on a journal page.
 enum BlockType { text, image, sticker }
 
@@ -21,6 +37,7 @@ class ContentBlock {
     this.h = 0,
     this.rotation = 0,
     this.fontSize = 21,
+    this.fontFamily,
     this.bold = false,
     this.italic = false,
   });
@@ -46,6 +63,7 @@ class ContentBlock {
 
   /// Text styling. These fields are ignored for image and sticker blocks.
   double fontSize;
+  String? fontFamily;
   bool bold;
   bool italic;
 
@@ -61,6 +79,7 @@ class ContentBlock {
     'h': h,
     'rotation': rotation,
     'fontSize': fontSize,
+    'fontFamily': fontFamily,
     'bold': bold,
     'italic': italic,
   };
@@ -77,6 +96,7 @@ class ContentBlock {
     h: (json['h'] as num?)?.toDouble() ?? 0,
     rotation: (json['rotation'] as num?)?.toDouble() ?? 0,
     fontSize: (json['fontSize'] as num?)?.toDouble() ?? 21,
+    fontFamily: JournalFonts.normalize(json['fontFamily'] as String?),
     bold: json['bold'] as bool? ?? false,
     italic: json['italic'] as bool? ?? false,
   );
@@ -111,6 +131,7 @@ class Entry {
     this.music,
     this.view,
     this.titleFontSize = 28,
+    this.titleFontFamily,
     this.titleBold = true,
     this.titleItalic = false,
   }) : title = title ?? '',
@@ -138,6 +159,7 @@ class Entry {
 
   /// Formatting for the page title. Older entries use the defaults here.
   double titleFontSize;
+  String? titleFontFamily;
   bool titleBold;
   bool titleItalic;
 
@@ -150,6 +172,7 @@ class Entry {
     'music': music,
     'view': view?.toJson(),
     'titleFontSize': titleFontSize,
+    'titleFontFamily': titleFontFamily,
     'titleBold': titleBold,
     'titleItalic': titleItalic,
   };
@@ -171,6 +194,9 @@ class Entry {
           ? ViewState.fromJson(_stringMap(json['view']))
           : null,
       titleFontSize: (json['titleFontSize'] as num?)?.toDouble() ?? 28,
+      titleFontFamily: JournalFonts.normalize(
+        json['titleFontFamily'] as String?,
+      ),
       titleBold: json['titleBold'] as bool? ?? true,
       titleItalic: json['titleItalic'] as bool? ?? false,
     );

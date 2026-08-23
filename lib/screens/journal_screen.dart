@@ -80,6 +80,10 @@ class _JournalScreenState extends State<JournalScreen> {
             entry.titleBold = bold;
             entry.titleItalic = italic;
           }),
+      onTitleFontFamilyChanged: (fontFamily) => widget.store.updateEntry(
+        entry.id,
+        (entry) => entry.titleFontFamily = fontFamily,
+      ),
       onEditingChanged: (_) {},
     );
   }
@@ -132,7 +136,7 @@ class _JournalScreenState extends State<JournalScreen> {
                   if (_currentPage > 0)
                     Positioned(
                       left: 12,
-                      top: 12,
+                      top: MediaQuery.paddingOf(context).top + 12,
                       child: _NavigationButton(
                         tooltip: 'Home',
                         icon: Icons.home_outlined,
