@@ -170,10 +170,10 @@ void main() {
     expect(
       tester
           .widget<IconButton>(
-              find.ancestor(
-                of: find.byIcon(Icons.chevron_left),
-                matching: find.byType(IconButton),
-              ),
+            find.ancestor(
+              of: find.byIcon(Icons.chevron_left),
+              matching: find.byType(IconButton),
+            ),
           )
           .onPressed,
       isNull,
@@ -181,10 +181,10 @@ void main() {
     expect(
       tester
           .widget<IconButton>(
-              find.ancestor(
-                of: find.byIcon(Icons.chevron_right),
-                matching: find.byType(IconButton),
-              ),
+            find.ancestor(
+              of: find.byIcon(Icons.chevron_right),
+              matching: find.byType(IconButton),
+            ),
           )
           .onPressed,
       isNotNull,
@@ -195,10 +195,10 @@ void main() {
     expect(
       tester
           .widget<IconButton>(
-              find.ancestor(
-                of: find.byIcon(Icons.chevron_left),
-                matching: find.byType(IconButton),
-              ),
+            find.ancestor(
+              of: find.byIcon(Icons.chevron_left),
+              matching: find.byType(IconButton),
+            ),
           )
           .onPressed,
       isNotNull,
@@ -206,10 +206,10 @@ void main() {
     expect(
       tester
           .widget<IconButton>(
-              find.ancestor(
-                of: find.byIcon(Icons.chevron_right),
-                matching: find.byType(IconButton),
-              ),
+            find.ancestor(
+              of: find.byIcon(Icons.chevron_right),
+              matching: find.byType(IconButton),
+            ),
           )
           .onPressed,
       isNotNull,
@@ -222,10 +222,10 @@ void main() {
     expect(
       tester
           .widget<IconButton>(
-              find.ancestor(
-                of: find.byIcon(Icons.chevron_left),
-                matching: find.byType(IconButton),
-              ),
+            find.ancestor(
+              of: find.byIcon(Icons.chevron_left),
+              matching: find.byType(IconButton),
+            ),
           )
           .onPressed,
       isNotNull,
@@ -233,10 +233,10 @@ void main() {
     expect(
       tester
           .widget<IconButton>(
-              find.ancestor(
-                of: find.byIcon(Icons.chevron_right),
-                matching: find.byType(IconButton),
-              ),
+            find.ancestor(
+              of: find.byIcon(Icons.chevron_right),
+              matching: find.byType(IconButton),
+            ),
           )
           .onPressed,
       isNull,
@@ -259,6 +259,18 @@ void main() {
       ),
       findsOneWidget,
     );
+    final contentsPainter =
+        tester
+                .widget<CustomPaint>(
+                  find.byWidgetPredicate(
+                    (widget) =>
+                        widget is CustomPaint &&
+                        widget.painter is PaperLinesPainter,
+                  ),
+                )
+                .painter!
+            as PaperLinesPainter;
+    expect(contentsPainter.showRules, isFalse);
     final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
     expect(app.theme!.colorScheme.primary, PaperPage.ink);
     expect(
@@ -284,6 +296,19 @@ void main() {
       ),
       findsOneWidget,
     );
+    final entryPainter =
+        tester
+                .widget<CustomPaint>(
+                  find.byWidgetPredicate(
+                    (widget) =>
+                        widget is CustomPaint &&
+                        widget.painter is PaperLinesPainter,
+                  ),
+                )
+                .painter!
+            as PaperLinesPainter;
+    expect(entryPainter.showRules, isTrue);
+
     expect(
       tester.widget<Text>(find.text('Untitled page')).style?.fontFamily,
       'Lora',
@@ -462,8 +487,8 @@ void main() {
               imageBytes: bytes,
               onTap: () {},
               onEditText: () {},
-              onMove: (_) {},
-              onResize: (_) {},
+              onMove: (_, _) {},
+              onResize: (_, _) {},
               onRotate: (delta) => rotation += delta,
               onTextChanged: (_) {},
             ),
@@ -506,8 +531,8 @@ void main() {
                   imageProvider: provider,
                   onTap: () {},
                   onEditText: () {},
-                  onMove: (_) {},
-                  onResize: (_) {},
+                  onMove: (_, _) {},
+                  onResize: (_, _) {},
                   onRotate: (_) {},
                   onTextChanged: (_) {},
                 ),
@@ -556,8 +581,8 @@ void main() {
               imageProvider: AssetImage(definition.assetPath),
               onTap: () {},
               onEditText: () {},
-              onMove: (_) {},
-              onResize: (_) {},
+              onMove: (_, _) {},
+              onResize: (_, _) {},
               onRotate: (_) {},
               onTextChanged: (_) {},
             ),
@@ -657,5 +682,99 @@ void main() {
     expect(find.byType(PageViewport), findsOneWidget);
     expect(store.entries.single.view?.zoom, 2);
     expect(store.entries.single.id, entry.id);
+  });
+  testWidgets('read-mode entry controls fade but editing keeps them visible', (
+    tester,
+  ) async {
+    store = JournalStore();
+    await store.init();
+    for (final existing in store.entries.toList()) {
+      await store.deleteEntry(existing.id);
+    }
+    await store.addEntry();
+    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Untitled page'));
+    await tester.pumpAndSettle();
+
+    double homeOpacity() {
+      final chrome = find.ancestor(
+        of: find.byTooltip('Home'),
+        matching: find.byType(AnimatedOpacity),
+      );
+      return tester.widget<AnimatedOpacity>(chrome.first).opacity;
+    }
+
+    expect(homeOpacity(), 1);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(homeOpacity(), 0);
+
+    await tester.tapAt(const Offset(500, 300));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(homeOpacity(), 1);
+
+    await tester.tap(find.byTooltip('Edit page'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 4));
+    expect(homeOpacity(), 1);
+    expect(find.byTooltip('Finish editing'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Finish editing'));
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(homeOpacity(), 0);
+  });
+
+  testWidgets('block drag follows the finger through a scaled canvas', (
+    tester,
+  ) async {
+    final block = ContentBlock(
+      id: 'scaled-drag',
+      type: BlockType.text,
+      text: 'Drag me',
+      x: 4,
+      y: 4,
+      w: 30,
+      h: 20,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 400,
+          height: 300,
+          child: Transform.scale(
+            alignment: Alignment.topLeft,
+            scale: 0.5,
+            child: StatefulBuilder(
+              builder: (context, setState) => EntryCanvas(
+                workspaceSize: const Size(200, 100),
+                blocks: [block],
+                editing: true,
+                selectedId: block.id,
+                textEditingId: null,
+                onSelect: (_) {},
+                onEditText: (_) {},
+                onChanged: (_) => setState(() {}),
+                imageBytes: (_) => null,
+                onOpenImage: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final blockFinder = find.byType(BlockWidget);
+    final beforeCenter = tester.getCenter(blockFinder);
+    final beforeX = block.x;
+    await tester.drag(blockFinder, const Offset(40, 0));
+    await tester.pump();
+
+    expect(tester.getCenter(blockFinder).dx - beforeCenter.dx, closeTo(40, 1));
+    expect(block.x - beforeX, closeTo(8, 0.2));
   });
 }

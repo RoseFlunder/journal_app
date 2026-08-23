@@ -1,8 +1,12 @@
+import 'dart:async';
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/entry.dart';
 import '../services/journal_store.dart';
+import '../widgets/entry_chrome.dart';
 import 'contents_page.dart';
 import 'entry_page.dart';
 
@@ -21,9 +25,15 @@ class _JournalScreenState extends State<JournalScreen> {
   final PageController _pageController = PageController();
   bool _animating = false;
   int _currentPageIndex = 0;
+  static const _chromeIdleDuration = Duration(seconds: 3);
+  final Set<String> _editingEntryIds = <String>{};
+  final Set<int> _activePointers = <int>{};
+  Timer? _chromeTimer;
+  bool _chromeVisible = true;
 
   @override
   void dispose() {
+    _chromeTimer?.cancel();
     _pageController.dispose();
     super.dispose();
   }
@@ -48,6 +58,74 @@ class _JournalScreenState extends State<JournalScreen> {
         .whenComplete(() => _animating = false);
   }
 
+  String? get _activeEntryId {
+    final page = _currentPage;
+    if (page == 0 || page > widget.store.entries.length) return null;
+    return widget.store.entries[page - 1].id;
+  }
+
+  bool get _activeEntryIsEditing {
+    final id = _activeEntryId;
+    return id != null && _editingEntryIds.contains(id);
+  }
+
+  bool get _entryChromeVisible =>
+      _currentPage > 0 && (_chromeVisible || _activeEntryIsEditing);
+
+  void _scheduleChromeHide() {
+    _chromeTimer?.cancel();
+    if (_currentPage == 0 || _activeEntryIsEditing) return;
+    _chromeTimer = Timer(_chromeIdleDuration, () {
+      if (!mounted || _currentPage == 0 || _activeEntryIsEditing) return;
+      setState(() => _chromeVisible = false);
+    });
+  }
+
+  void _showChrome({bool schedule = true}) {
+    if (_currentPage == 0) return;
+    _chromeTimer?.cancel();
+    if (!_chromeVisible) setState(() => _chromeVisible = true);
+    if (schedule) _scheduleChromeHide();
+  }
+
+  void _handlePointerDown(PointerDownEvent event) {
+    if (_currentPage == 0) return;
+    _activePointers.add(event.pointer);
+    _showChrome(schedule: false);
+  }
+
+  void _handlePointerUp(PointerEvent event) {
+    if (_currentPage == 0) return;
+    _activePointers.remove(event.pointer);
+    if (_activePointers.isEmpty) _scheduleChromeHide();
+  }
+
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (_currentPage > 0) _showChrome();
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent && _currentPage > 0) _showChrome();
+    return KeyEventResult.ignored;
+  }
+
+  void _handleEditingChanged(String entryId, bool editing) {
+    setState(() {
+      if (editing) {
+        _editingEntryIds.add(entryId);
+      } else {
+        _editingEntryIds.remove(entryId);
+      }
+    });
+    if (entryId != _activeEntryId) return;
+    if (editing) {
+      _chromeTimer?.cancel();
+      if (!_chromeVisible) setState(() => _chromeVisible = true);
+    } else {
+      _showChrome();
+    }
+  }
+
   /// Jumps to the page of [entryIndex] (index into [JournalStore.entries]).
   /// The TOC occupies page 0 of the [PageView], so the page index is +1.
   void goToEntry(int entryIndex) => goToPageIndex(entryIndex + 1);
@@ -68,6 +146,7 @@ class _JournalScreenState extends State<JournalScreen> {
     return EntryPage(
       entry: entry,
       store: widget.store,
+      controlsVisible: _entryChromeVisible,
       onViewChanged: (view) =>
           widget.store.updateEntry(entry.id, (entry) => entry.view = view),
       onBlocksChanged: (blocks) =>
@@ -84,7 +163,7 @@ class _JournalScreenState extends State<JournalScreen> {
         entry.id,
         (entry) => entry.titleFontFamily = fontFamily,
       ),
-      onEditingChanged: (_) {},
+      onEditingChanged: (editing) => _handleEditingChanged(entry.id, editing),
     );
   }
 
@@ -113,63 +192,88 @@ class _JournalScreenState extends State<JournalScreen> {
                 SingleActivator(LogicalKeyboardKey.arrowRight): _goNext,
                 SingleActivator(LogicalKeyboardKey.arrowLeft): _goPrev,
               },
-              child: Stack(
-                children: [
-                  PageView(
-                    controller: _pageController,
-                    physics: const NeverScrollableScrollPhysics(),
-                    onPageChanged: (page) {
-                      if (page != _currentPageIndex) {
-                        setState(() => _currentPageIndex = page);
-                      }
-                    },
+              child: Focus(
+                autofocus: true,
+                onKeyEvent: _handleKeyEvent,
+                child: Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerDown: _handlePointerDown,
+                  onPointerUp: _handlePointerUp,
+                  onPointerCancel: _handlePointerUp,
+                  onPointerSignal: _handlePointerSignal,
+                  child: Stack(
                     children: [
-                      ContentsPage(
-                        store: widget.store,
-                        onOpenPage: goToEntry,
-                        onNewPage: _createPage,
+                      PageView(
+                        controller: _pageController,
+                        physics: const NeverScrollableScrollPhysics(),
+                        onPageChanged: (page) {
+                          if (page != _currentPageIndex) {
+                            setState(() => _currentPageIndex = page);
+                            _chromeTimer?.cancel();
+                            _chromeVisible = true;
+                            if (page > 0) {
+                              _scheduleChromeHide();
+                            }
+                          }
+                        },
+                        children: [
+                          ContentsPage(
+                            store: widget.store,
+                            onOpenPage: goToEntry,
+                            onNewPage: _createPage,
+                          ),
+                          for (var i = 0; i < widget.store.entries.length; i++)
+                            _buildEntryPage(widget.store.entries[i]),
+                        ],
                       ),
-                      for (var i = 0; i < widget.store.entries.length; i++)
-                        _buildEntryPage(widget.store.entries[i]),
+                      if (_currentPage > 0)
+                        Positioned(
+                          left: 12,
+                          top: MediaQuery.paddingOf(context).top + 12,
+                          child: EntryChrome(
+                            visible: _entryChromeVisible,
+                            child: _NavigationButton(
+                              tooltip: 'Home',
+                              icon: Icons.home_outlined,
+                              onPressed: _goToToc,
+                            ),
+                          ),
+                        ),
+                      Positioned(
+                        left: 8,
+                        top: 0,
+                        bottom: 0,
+                        child: EntryChrome(
+                          visible: _currentPage == 0 || _entryChromeVisible,
+                          child: Center(
+                            child: _NavigationButton(
+                              tooltip: 'Previous page',
+                              icon: Icons.chevron_left,
+                              onPressed: _currentPage > 0 ? _goPrev : null,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 8,
+                        top: 0,
+                        bottom: 0,
+                        child: EntryChrome(
+                          visible: _currentPage == 0 || _entryChromeVisible,
+                          child: Center(
+                            child: _NavigationButton(
+                              tooltip: 'Next page',
+                              icon: Icons.chevron_right,
+                              onPressed: _currentPage < _pageCount - 1
+                                  ? _goNext
+                                  : null,
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                  if (_currentPage > 0)
-                    Positioned(
-                      left: 12,
-                      top: MediaQuery.paddingOf(context).top + 12,
-                      child: _NavigationButton(
-                        tooltip: 'Home',
-                        icon: Icons.home_outlined,
-                        onPressed: _goToToc,
-                      ),
-                    ),
-                  Positioned(
-                    left: 8,
-                    top: 0,
-                    bottom: 0,
-                    child: Center(
-                      child: _NavigationButton(
-                        tooltip: 'Previous page',
-                        icon: Icons.chevron_left,
-                        onPressed: _currentPage > 0 ? _goPrev : null,
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: 8,
-                    top: 0,
-                    bottom: 0,
-                    child: Center(
-                      child: _NavigationButton(
-                        tooltip: 'Next page',
-                        icon: Icons.chevron_right,
-                        onPressed: _currentPage < _pageCount - 1
-                            ? _goNext
-                            : null,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/entry.dart';
+import 'entry_chrome.dart';
 
 class PageViewport extends StatefulWidget {
   const PageViewport({
@@ -13,6 +14,7 @@ class PageViewport extends StatefulWidget {
     this.initialView,
     this.onViewChanged,
     this.interactive = true,
+    this.controlsVisible = true,
     this.minZoom = 0.5,
     this.maxZoom = 3.0,
     this.canvasSize = pageSize,
@@ -37,6 +39,7 @@ class PageViewport extends StatefulWidget {
   final ViewState? initialView;
   final ValueChanged<ViewState>? onViewChanged;
   final bool interactive;
+  final bool controlsVisible;
   final double minZoom;
   final double maxZoom;
   final Size canvasSize;
@@ -264,45 +267,51 @@ class _PageViewportState extends State<PageViewport> {
                 Positioned(
                   left: 12,
                   bottom: 12,
-                  child: IconButton(
-                    tooltip: 'Reset view',
-                    color: Colors.white,
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.black.withValues(alpha: 0.55),
+                  child: EntryChrome(
+                    visible: widget.controlsVisible,
+                    child: IconButton(
+                      tooltip: 'Reset view',
+                      color: Colors.white,
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black.withValues(alpha: 0.55),
+                      ),
+                      onPressed: _resetView,
+                      icon: const Icon(Icons.center_focus_strong),
                     ),
-                    onPressed: _resetView,
-                    icon: const Icon(Icons.center_focus_strong),
                   ),
                 ),
               if (widget.interactive && _zoom > 1.001)
                 Positioned(
                   right: 16,
                   bottom: 16,
-                  child: Material(
-                    color: Colors.black.withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          tooltip: 'Zoom out',
-                          color: Colors.white,
-                          onPressed: () => _setZoom(_zoom / 1.2),
-                          icon: const Icon(Icons.remove),
-                        ),
-                        IconButton(
-                          tooltip: 'Fit page',
-                          color: Colors.white,
-                          onPressed: _fit,
-                          icon: const Icon(Icons.fit_screen_outlined),
-                        ),
-                        IconButton(
-                          tooltip: 'Zoom in',
-                          color: Colors.white,
-                          onPressed: () => _setZoom(_zoom * 1.2),
-                          icon: const Icon(Icons.add),
-                        ),
-                      ],
+                  child: EntryChrome(
+                    visible: widget.controlsVisible,
+                    child: Material(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'Zoom out',
+                            color: Colors.white,
+                            onPressed: () => _setZoom(_zoom / 1.2),
+                            icon: const Icon(Icons.remove),
+                          ),
+                          IconButton(
+                            tooltip: 'Fit page',
+                            color: Colors.white,
+                            onPressed: _fit,
+                            icon: const Icon(Icons.fit_screen_outlined),
+                          ),
+                          IconButton(
+                            tooltip: 'Zoom in',
+                            color: Colors.white,
+                            onPressed: () => _setZoom(_zoom * 1.2),
+                            icon: const Icon(Icons.add),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

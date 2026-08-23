@@ -80,13 +80,38 @@ class EntryCanvas extends StatelessWidget {
                               textEditing: textEditingId == block.id,
                               onTap: () => onSelect(block.id),
                               onEditText: () => onEditText(block.id),
-                              onMove: (delta) => onChanged(
-                                block
-                                  ..x = block.x + delta.dx / scale
-                                  ..y = block.y + delta.dy / scale,
-                              ),
-                              onResize: (delta) =>
-                                  onChanged(_resizedBlock(block, delta, scale)),
+                              onMove: (globalPosition, globalDelta) =>
+                                  onChanged(
+                                    block
+                                      ..x =
+                                          block.x +
+                                          _canvasDelta(
+                                                context,
+                                                globalPosition,
+                                                globalDelta,
+                                              ).dx /
+                                              scale
+                                      ..y =
+                                          block.y +
+                                          _canvasDelta(
+                                                context,
+                                                globalPosition,
+                                                globalDelta,
+                                              ).dy /
+                                              scale,
+                                  ),
+                              onResize: (globalPosition, globalDelta) =>
+                                  onChanged(
+                                    _resizedBlock(
+                                      block,
+                                      _canvasDelta(
+                                        context,
+                                        globalPosition,
+                                        globalDelta,
+                                      ),
+                                      scale,
+                                    ),
+                                  ),
                               onRotate: (delta) =>
                                   onChanged(block..rotation += delta),
                               imageBytes:
@@ -130,6 +155,18 @@ class EntryCanvas extends StatelessWidget {
     return block
       ..w = width
       ..h = math.max(minHeight, width * aspectRatio);
+  }
+
+  Offset _canvasDelta(
+    BuildContext context,
+    Offset globalPosition,
+    Offset globalDelta,
+  ) {
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox) return globalDelta;
+    final previousPosition = globalPosition - globalDelta;
+    return renderObject.globalToLocal(globalPosition) -
+        renderObject.globalToLocal(previousPosition);
   }
 
   bool _containsBlock(Offset point, ContentBlock block, double scale) {

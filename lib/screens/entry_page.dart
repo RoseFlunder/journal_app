@@ -8,6 +8,7 @@ import '../models/entry.dart';
 import '../models/sticker.dart';
 import '../services/image_source.dart';
 import '../services/journal_store.dart';
+import '../widgets/entry_chrome.dart';
 import '../widgets/page_viewport.dart';
 import '../widgets/paper_page.dart';
 
@@ -25,6 +26,7 @@ class EntryPage extends StatefulWidget {
     required this.onTitleStyleChanged,
     required this.onTitleFontFamilyChanged,
     required this.onEditingChanged,
+    this.controlsVisible = true,
     this.imageSource,
     this.imageProcessor = const ImageProcessor(),
   });
@@ -38,6 +40,7 @@ class EntryPage extends StatefulWidget {
   onTitleStyleChanged;
   final ValueChanged<String?> onTitleFontFamilyChanged;
   final ValueChanged<bool> onEditingChanged;
+  final bool controlsVisible;
 
   final ImageSourceService? imageSource;
   final ImageProcessor imageProcessor;
@@ -415,6 +418,7 @@ class _EntryPageState extends State<EntryPage> {
             PageViewport(
               canvasSize: _workspaceSize,
               fitSize: PageViewport.pageSize,
+              controlsVisible: widget.controlsVisible,
               initialFocus: _headerPosition,
               fitFocus: Offset(
                 _pageFramePosition.dx + PageViewport.pageSize.width / 2,
@@ -520,35 +524,38 @@ class _EntryPageState extends State<EntryPage> {
               Positioned(
                 right: 12,
                 top: 12,
-                child: EditorToolbar(
-                  editing: false,
-                  hasSelection: false,
-                  textEditing: false,
-                  onToggleEditing: () => setState(() {
-                    _editing = true;
-                    _titleFocused = false;
-                    widget.onEditingChanged(true);
-                  }),
-                  onAddText: _addText,
-                  onAddImage: _addImage,
-                  onAddSticker: _addSticker,
-                  onMore: _showMoreTools,
-                  onEditText: () =>
-                      setState(() => _textEditingId = _selectedId),
-                  onDecreaseFontSize: _activeFontSize > _minFontSize
-                      ? () => _changeFontSize(-_fontSizeStep)
-                      : null,
-                  onIncreaseFontSize: _activeFontSize < _maxFontSize
-                      ? () => _changeFontSize(_fontSizeStep)
-                      : null,
-                  fontFamily: _activeFontFamily,
-                  onFontFamilyChanged: _changeFontFamily,
-                  onToggleBold: _toggleBold,
-                  onToggleItalic: _toggleItalic,
-                  bold: _activeBold,
-                  italic: _activeItalic,
-                  onDelete: _deleteSelected,
-                  onBringToFront: _bringToFront,
+                child: EntryChrome(
+                  visible: widget.controlsVisible,
+                  child: EditorToolbar(
+                    editing: false,
+                    hasSelection: false,
+                    textEditing: false,
+                    onToggleEditing: () => setState(() {
+                      _editing = true;
+                      _titleFocused = false;
+                      widget.onEditingChanged(true);
+                    }),
+                    onAddText: _addText,
+                    onAddImage: _addImage,
+                    onAddSticker: _addSticker,
+                    onMore: _showMoreTools,
+                    onEditText: () =>
+                        setState(() => _textEditingId = _selectedId),
+                    onDecreaseFontSize: _activeFontSize > _minFontSize
+                        ? () => _changeFontSize(-_fontSizeStep)
+                        : null,
+                    onIncreaseFontSize: _activeFontSize < _maxFontSize
+                        ? () => _changeFontSize(_fontSizeStep)
+                        : null,
+                    fontFamily: _activeFontFamily,
+                    onFontFamilyChanged: _changeFontFamily,
+                    onToggleBold: _toggleBold,
+                    onToggleItalic: _toggleItalic,
+                    bold: _activeBold,
+                    italic: _activeItalic,
+                    onDelete: _deleteSelected,
+                    onBringToFront: _bringToFront,
+                  ),
                 ),
               ),
             if (_editing)

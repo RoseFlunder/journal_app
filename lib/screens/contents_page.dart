@@ -70,6 +70,7 @@ class ContentsPage extends StatelessWidget {
         label: const Text('New page'),
       ),
       body: PaperPage(
+        showRules: false,
         showMargin: false,
         child: LayoutBuilder(
           builder: (context, constraints) {

@@ -5,6 +5,11 @@ import 'package:flutter/material.dart';
 
 import '../models/entry.dart';
 
+typedef BlockDragUpdate = void Function(
+  Offset globalPosition,
+  Offset globalDelta,
+);
+
 class BlockWidget extends StatefulWidget {
   const BlockWidget({
     super.key,
@@ -30,8 +35,8 @@ class BlockWidget extends StatefulWidget {
   final bool textEditing;
   final VoidCallback onTap;
   final VoidCallback onEditText;
-  final ValueChanged<Offset> onMove;
-  final ValueChanged<Offset> onResize;
+  final BlockDragUpdate onMove;
+  final BlockDragUpdate onResize;
   final ValueChanged<double> onRotate;
   final ValueChanged<String> onTextChanged;
   final bool preserveAspectRatio;
@@ -143,9 +148,9 @@ class _BlockWidgetState extends State<BlockWidget> {
             ? (details) {
                 if (_rotating) return;
                 if (_resizing) {
-                  widget.onResize(details.delta);
+                  widget.onResize(details.globalPosition, details.delta);
                 } else if (!_movingEdge) {
-                  widget.onMove(details.delta);
+                  widget.onMove(details.globalPosition, details.delta);
                 }
               }
             : null,
@@ -214,7 +219,8 @@ class _BlockWidgetState extends State<BlockWidget> {
                   bottom: -12,
                   child: Listener(
                     behavior: HitTestBehavior.opaque,
-                    onPointerMove: (event) => widget.onResize(event.delta),
+                    onPointerMove: (event) =>
+                        widget.onResize(event.position, event.delta),
                     child: Container(
                       key: ValueKey('resize-${widget.block.id}'),
                       width: 48,
@@ -326,7 +332,7 @@ class _BlockWidgetState extends State<BlockWidget> {
       key: key,
       behavior: HitTestBehavior.opaque,
       onPointerDown: (_) => widget.onTap(),
-      onPointerMove: (event) => widget.onMove(event.delta),
+      onPointerMove: (event) => widget.onMove(event.position, event.delta),
     );
   }
 
