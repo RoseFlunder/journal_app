@@ -64,6 +64,16 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  fonts:
+    - family: Caveat
+      fonts:
+        - asset: assets/fonts/Caveat-Regular.ttf
+    - family: Lora
+      fonts:
+        - asset: assets/fonts/Lora-Regular.ttf
+        - asset: assets/fonts/Lora-Bold.ttf
+          weight: 700
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

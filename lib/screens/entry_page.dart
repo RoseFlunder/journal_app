@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/entry.dart';
+import '../widgets/paper_page.dart';
 
 /// Shows one [Entry] as a journal page.
 ///
@@ -31,57 +32,66 @@ class EntryPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasContent = entry.blocks.isNotEmpty;
     return Scaffold(
+      backgroundColor: const Color(0xFFE4D7BF),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Navigation row (desktop/web affordance).
-              Row(
+          padding: const EdgeInsets.all(18),
+          child: PaperPage(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(48, 18, 28, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextButton.icon(
-                    onPressed: onContents,
-                    icon: const Icon(Icons.menu_book_outlined),
-                    label: const Text('Contents'),
+                  // Navigation row (desktop/web affordance).
+                  Row(
+                    children: [
+                      TextButton.icon(
+                        onPressed: onContents,
+                        icon: const Icon(Icons.menu_book_outlined),
+                        label: const Text('Contents'),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: 'Previous page (PageUp / \u2190)',
+                        onPressed: onPrev,
+                        icon: const Icon(Icons.chevron_left),
+                      ),
+                      IconButton(
+                        tooltip: 'Next page (PageDown / \u2192)',
+                        onPressed: index + 1 < total ? onNext : null,
+                        icon: const Icon(Icons.chevron_right),
+                      ),
+                    ],
                   ),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: 'Previous page (PageUp / \u2190)',
-                    onPressed: onPrev,
-                    icon: const Icon(Icons.chevron_left),
+                  Text(
+                    entry.title.isEmpty ? 'Untitled page' : entry.title,
+                    style: Theme.of(context).textTheme.headlineSmall,
                   ),
-                  IconButton(
-                    tooltip: 'Next page (PageDown / \u2192)',
-                    onPressed: index + 1 < total ? onNext : null,
-                    icon: const Icon(Icons.chevron_right),
+                  const SizedBox(height: 4),
+                  Text(
+                    DateFormat.yMMMMd().format(entry.createdAt),
+                    style: Theme.of(context).textTheme.bodySmall
+                        ?.copyWith(color: Colors.black54),
+                  ),
+                  Divider(
+                    height: 24,
+                    color: PaperPage.ink.withValues(alpha: 0.2),
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        hasContent
+                            ? '${entry.blocks.length} content block(s) — rendering arrives in a later milestone.'
+                            : 'This page is empty.\nText boxes, pictures and music arrive in later milestones.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium
+                            ?.copyWith(color: Colors.black38),
+                      ),
+                    ),
                   ),
                 ],
               ),
-              Text(
-                entry.title.isEmpty ? 'Untitled page' : entry.title,
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                DateFormat.yMMMMd().format(entry.createdAt),
-                style: Theme.of(context).textTheme.bodySmall
-                    ?.copyWith(color: Colors.black54),
-              ),
-              const Divider(height: 24),
-              Expanded(
-                child: Center(
-                  child: Text(
-                    hasContent
-                        ? '${entry.blocks.length} content block(s) — rendering arrives in a later milestone.'
-                        : 'This page is empty.\nText boxes, pictures and music arrive in later milestones.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium
-                        ?.copyWith(color: Colors.black38),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
