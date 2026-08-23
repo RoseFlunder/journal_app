@@ -63,6 +63,7 @@ class JournalStore extends ChangeNotifier {
 
   List<Entry> _entries = [];
   bool _loaded = false;
+  Future<void> _writeQueue = Future<void>.value();
 
   /// The entries in page order. Index 0 of this list is page 1 (after TOC).
   List<Entry> get entries => List.unmodifiable(_entries);
@@ -78,64 +79,109 @@ class JournalStore extends ChangeNotifier {
   }
 
   void _load() {
-    final order =
-        (_metaBox.get(_kOrderKey) as List<dynamic>? ?? const <dynamic>[])
-            .map((e) => e as String)
-            .toList();
+    final rawOrder = _metaBox.get(_kOrderKey);
+    final order = rawOrder is List
+        ? rawOrder.whereType<String>().toList()
+        : <String>[];
     _entries = <Entry>[];
+    final loadedIds = <String>{};
     for (final id in order) {
-      final raw = _entriesBox.get(id);
-      if (raw is Map) {
-        try {
-          _entries.add(Entry.fromJson(Map<String, dynamic>.from(raw)));
-        } catch (e) {
-          // Skip a corrupt entry instead of killing the app.
-          debugPrint('Skipping corrupt entry $id: $e');
-        }
-      } else {
-        debugPrint('Dropping dangling entry id $id (missing data)');
+      final entry = _readEntry(id);
+      if (entry != null) {
+        _entries.add(entry);
+        loadedIds.add(id);
       }
+    }
+
+    // Recover entries that survived while the order metadata did not.
+    final unorderedIds = _entriesBox.keys
+        .whereType<String>()
+        .where((id) => !loadedIds.contains(id))
+        .toList()
+      ..sort();
+    for (final id in unorderedIds) {
+      final entry = _readEntry(id);
+      if (entry != null) _entries.add(entry);
     }
     _loaded = true;
     notifyListeners();
+  }
+
+  Entry? _readEntry(String id) {
+    final raw = _entriesBox.get(id);
+    if (raw is! Map) {
+      debugPrint('Dropping dangling entry id $id (missing data)');
+      return null;
+    }
+    try {
+      return Entry.fromJson(Map<String, dynamic>.from(raw));
+    } catch (error) {
+      debugPrint('Skipping corrupt entry $id: $error');
+      return null;
+    }
   }
 
   int indexOfEntry(String id) =>
       _entries.indexWhere((e) => e.id == id);
 
   /// Creates a new (empty) page at the end and returns it.
-  Entry addEntry() {
+  Future<Entry> addEntry() {
     final entry = Entry.newPage();
-    _entriesBox.put(entry.id, entry.toJson());
     _entries.add(entry);
-    _persistOrder();
-    notifyListeners();
-    return entry;
+    final order = _entries.map((entry) => entry.id).toList();
+    final write = _enqueue(() async {
+      await _entriesBox.put(entry.id, entry.toJson());
+      await _metaBox.put(_kOrderKey, order);
+      notifyListeners();
+    });
+    return write.then((_) => entry);
   }
 
   /// Applies [mutate] to the entry and persists the result.
-  void updateEntry(String id, void Function(Entry e) mutate) {
+  Future<void> updateEntry(String id, void Function(Entry e) mutate) {
     final i = indexOfEntry(id);
-    if (i < 0) return;
+    if (i < 0) return Future<void>.value();
     mutate(_entries[i]);
     _entries[i].modifiedAt = DateTime.now();
-    _entriesBox.put(id, _entries[i].toJson());
-    notifyListeners();
+    final json = _entries[i].toJson();
+    return _enqueue(() async {
+      await _entriesBox.put(id, json);
+      notifyListeners();
+    });
   }
 
   /// Deletes an entry and all of its assets.
-  void deleteEntry(String id) {
+  Future<void> deleteEntry(String id) {
     final i = indexOfEntry(id);
-    if (i < 0) return;
+    if (i < 0) return Future<void>.value();
     _entries.removeAt(i);
-    _entriesBox.delete(id);
-    _removeAssetsForEntry(id);
-    _persistOrder();
-    notifyListeners();
+    final assetIds = _assetIdsForEntry(id);
+    final order = _entries.map((entry) => entry.id).toList();
+    return _enqueue(() async {
+      await _entriesBox.delete(id);
+      for (final assetId in assetIds) {
+        await _assetsBox.delete(assetId);
+      }
+      await _metaBox.put(_kOrderKey, order);
+      notifyListeners();
+    });
   }
 
-  void _persistOrder() {
-    _metaBox.put(_kOrderKey, _entries.map((e) => e.id).toList());
+  Future<void> _enqueue(Future<void> Function() operation) {
+    final result = _writeQueue.then((_) => operation());
+    _writeQueue = result.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {},
+    );
+    return result;
+  }
+
+  /// Waits for all queued writes and Hive's pending disk operations.
+  Future<void> flush() async {
+    await _writeQueue;
+    await _entriesBox.flush();
+    await _assetsBox.flush();
+    await _metaBox.flush();
   }
 
   /// Stores [data] as an asset belonging to [entryId] and returns the new
@@ -191,8 +237,8 @@ class JournalStore extends ChangeNotifier {
     if (!stillReferenced) removeAsset(assetId);
   }
 
-  void _removeAssetsForEntry(String entryId) {
-    final ids = _assetsBox.keys
+  List<dynamic> _assetIdsForEntry(String entryId) {
+    return _assetsBox.keys
         .where((k) {
           final raw = _assetsBox.get(k);
           return raw is Map &&
@@ -201,8 +247,5 @@ class JournalStore extends ChangeNotifier {
                   entryId;
         })
         .toList();
-    for (final id in ids) {
-      _assetsBox.delete(id);
-    }
   }
 }

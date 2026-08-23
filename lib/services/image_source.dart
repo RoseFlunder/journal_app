@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -123,4 +125,15 @@ class ImageProcessor {
       height: resized.height,
     );
   }
+}
+
+Size imageBlockSize(
+  int width,
+  int height, {
+  double maxWidth = 64,
+  double maxHeight = 48,
+}) {
+  if (width <= 0 || height <= 0) return Size(maxWidth, maxHeight);
+  final scale = math.min(maxWidth / width, maxHeight / height);
+  return Size(width * scale, height * scale);
 }

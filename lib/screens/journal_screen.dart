@@ -72,8 +72,8 @@ class _JournalScreenState extends State<JournalScreen> {
     _goToToc();
   }
 
-  void _createPage() {
-    final entry = widget.store.addEntry();
+  Future<void> _createPage() async {
+    final entry = await widget.store.addEntry();
     // Wait for the PageView to pick up the new child, then animate to it.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       goToEntry(widget.store.entries.indexWhere((e) => e.id == entry.id));

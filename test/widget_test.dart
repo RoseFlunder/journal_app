@@ -149,7 +149,7 @@ void main() {
     store = JournalStore();
     await store.init();
     for (final existing in store.entries.toList()) {
-      store.deleteEntry(existing.id);
+      await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(JournalApp(store: store));
     await tester.pumpAndSettle();
@@ -249,13 +249,65 @@ void main() {
     expect(rotation, 0);
   });
 
+  testWidgets('image provider remains stable across rebuilds', (tester) async {
+    final bytes = Uint8List.fromList(
+      img.encodePng(img.Image(width: 2, height: 1)),
+    );
+    final provider = MemoryImage(bytes);
+    var rebuild = 0;
+
+    await tester.pumpWidget(
+      StatefulBuilder(
+        builder: (context, setState) => MaterialApp(
+          home: Column(
+            children: [
+              Text('$rebuild'),
+              SizedBox(
+                width: 120,
+                height: 80,
+                child: BlockWidget(
+                  block: ContentBlock(
+                    id: 'stable-image',
+                    type: BlockType.image,
+                    w: 120,
+                    h: 80,
+                  ),
+                  selected: false,
+                  editing: false,
+                  textEditing: false,
+                  imageProvider: provider,
+                  onTap: () {},
+                  onEditText: () {},
+                  onMove: (_) {},
+                  onResize: (_) {},
+                  onRotate: (_) {},
+                  onTextChanged: (_) {},
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => setState(() => rebuild++),
+                child: const Text('rebuild'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    final before = tester.widget<Image>(find.byType(Image)).image;
+    await tester.tap(find.text('rebuild'));
+    await tester.pump();
+    final after = tester.widget<Image>(find.byType(Image)).image;
+
+    expect(identical(before, after), isTrue);
+  });
+
   testWidgets('entry title is editable and loads near the top left', (
     tester,
   ) async {
     store = JournalStore();
     await store.init();
     for (final existing in store.entries.toList()) {
-      store.deleteEntry(existing.id);
+      await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(JournalApp(store: store));
     await tester.pumpAndSettle();
@@ -286,7 +338,7 @@ void main() {
     store = JournalStore();
     await store.init();
     for (final existing in store.entries.toList()) {
-      store.deleteEntry(existing.id);
+      await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(JournalApp(store: store));
     await tester.pumpAndSettle();
@@ -294,7 +346,7 @@ void main() {
     await tester.pumpAndSettle();
     final entry = store.entries.single;
 
-    store.updateEntry(entry.id, (entry) {
+    await store.updateEntry(entry.id, (entry) {
       entry.view = ViewState(zoom: 2, panX: 12, panY: 18);
     });
     await tester.pump(const Duration(milliseconds: 350));

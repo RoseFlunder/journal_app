@@ -132,12 +132,15 @@ class Entry {
           ? DateTime.parse(json['modifiedAt'] as String)
           : createdAt,
       blocks: (json['blocks'] as List<dynamic>? ?? const [])
-          .map((b) => ContentBlock.fromJson(b as Map<String, dynamic>))
+          .map((b) => ContentBlock.fromJson(_stringMap(b)))
           .toList(),
       music: json['music'] as String?,
       view: json['view'] != null
-          ? ViewState.fromJson(json['view'] as Map<String, dynamic>)
+          ? ViewState.fromJson(_stringMap(json['view']))
           : null,
     );
   }
+
+      static Map<String, dynamic> _stringMap(Object value) =>
+        Map<String, dynamic>.from(value as Map);
 }

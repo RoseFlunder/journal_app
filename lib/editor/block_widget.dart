@@ -20,6 +20,7 @@ class BlockWidget extends StatefulWidget {
     required this.onTextChanged,
     this.preserveAspectRatio = false,
     this.imageBytes,
+    this.imageProvider,
     this.onOpenImage,
   });
 
@@ -35,6 +36,7 @@ class BlockWidget extends StatefulWidget {
   final ValueChanged<String> onTextChanged;
   final bool preserveAspectRatio;
   final Uint8List? imageBytes;
+  final ImageProvider<Object>? imageProvider;
   final VoidCallback? onOpenImage;
 
   @override
@@ -76,9 +78,16 @@ class _BlockWidgetState extends State<BlockWidget> {
   @override
   Widget build(BuildContext context) {
     final content = widget.block.type == BlockType.image
-      ? (widget.imageBytes == null
+        ? (widget.imageProvider == null && widget.imageBytes == null
           ? const Center(child: Icon(Icons.broken_image_outlined))
-          : Image.memory(widget.imageBytes!, fit: BoxFit.contain))
+          : Image(
+              image: widget.imageProvider ?? MemoryImage(widget.imageBytes!),
+              fit: BoxFit.contain,
+              gaplessPlayback: true,
+              errorBuilder: (context, error, stackTrace) => const Center(
+                child: Icon(Icons.broken_image_outlined),
+              ),
+            ))
       : widget.editing && widget.selected && widget.textEditing
         ? TextField(
             controller: _controller,

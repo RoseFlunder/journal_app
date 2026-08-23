@@ -69,6 +69,7 @@ class _EntryPageState extends State<EntryPage> {
   late final ImageSourceService _imageSource =
       widget.imageSource ?? PlatformImageSource();
   bool _pickingImage = false;
+  final Map<String, ImageProvider<Object>> _imageProviders = {};
 
   @override
   void dispose() {
@@ -108,16 +109,15 @@ class _EntryPageState extends State<EntryPage> {
         image.bytes,
       );
       if (!mounted) return;
-      final width = 80.0;
-      final height = width * image.height / image.width;
+      final size = imageBlockSize(image.width, image.height);
       final block = ContentBlock(
         id: _uuid.v4(),
         type: BlockType.image,
         assetId: assetId,
         x: -20,
         y: 12 + (widget.entry.blocks.length * 8) % 80,
-        w: width,
-        h: height,
+        w: size.width,
+        h: size.height,
       );
       widget.onBlocksChanged([...widget.entry.blocks, block]);
       setState(() => _selectedId = block.id);
@@ -128,6 +128,12 @@ class _EntryPageState extends State<EntryPage> {
     } finally {
       if (mounted) setState(() => _pickingImage = false);
     }
+  }
+
+  ImageProvider<Object>? _imageProvider(String assetId) {
+    final bytes = widget.store.getAsset(assetId);
+    if (bytes == null) return null;
+    return _imageProviders.putIfAbsent(assetId, () => MemoryImage(bytes));
   }
 
   void _showImageError(String message) {
@@ -221,6 +227,7 @@ class _EntryPageState extends State<EntryPage> {
                         }),
                         onChanged: _changeBlock,
                         imageBytes: widget.store.getAsset,
+                        imageProvider: _imageProvider,
                         onOpenImage: _openImage,
                       ),
                     ),

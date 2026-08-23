@@ -10,6 +10,19 @@ import 'package:journal_app/services/journal_store.dart';
 
 void main() {
   group('Entry JSON', () {
+    test('bounds initial image size while preserving aspect ratio', () {
+      final portrait = imageBlockSize(800, 2400);
+      final landscape = imageBlockSize(2400, 800);
+      final square = imageBlockSize(1000, 1000);
+
+      expect(portrait.width, closeTo(16, 0.001));
+      expect(portrait.height, closeTo(48, 0.001));
+      expect(landscape.width, closeTo(64, 0.001));
+      expect(landscape.height, closeTo(21.3333, 0.001));
+      expect(square.width, closeTo(48, 0.001));
+      expect(square.height, closeTo(48, 0.001));
+    });
+
     test('defaults rotation for older saved blocks', () {
       final block = ContentBlock.fromJson({'id': 'legacy', 'type': 'text'});
 
@@ -137,12 +150,12 @@ void main() {
     test('add, update, delete and persistence', () async {
       var store = await freshStore();
 
-      final a = store.addEntry();
-      final b = store.addEntry();
+      final a = await store.addEntry();
+      final b = await store.addEntry();
       expect(store.entries.map((e) => e.id).toList(), [a.id, b.id]);
       expect(store.entries[0].title, '');
 
-      store.updateEntry(b.id, (e) => e.title = 'Second');
+      await store.updateEntry(b.id, (e) => e.title = 'Second');
       expect(store.entries[1].title, 'Second');
 
       final assetId = await store.addAsset(
@@ -155,7 +168,7 @@ void main() {
       expect(store.getAssetMime(assetId), 'image/jpeg');
 
       // Deleting b also removes its assets.
-      store.deleteEntry(b.id);
+      await store.deleteEntry(b.id);
       expect(store.entries.map((e) => e.id).toList(), [a.id]);
       expect(store.getAsset(assetId), isNull);
 
@@ -168,6 +181,70 @@ void main() {
 
       expect(store.entries.map((e) => e.id).toList(), [a.id]);
       expect(store.entries.first.id, a.id);
+    });
+
+    test('persists a mutation across an immediate reopen', () async {
+      var store = await freshStore();
+      final entry = await store.addEntry();
+      await store.updateEntry(entry.id, (entry) => entry.title = 'Persisted');
+
+      await Hive.box('entries').close();
+      await Hive.box('assets').close();
+      await Hive.box('meta').close();
+
+      store = JournalStore();
+      await store.init();
+
+      expect(store.entries.map((entry) => entry.id), [entry.id]);
+      expect(store.entries.single.title, 'Persisted');
+    });
+
+    test('loads entries when order metadata is missing', () async {
+      await freshStore();
+      final entry = Entry(
+        id: 'recovered-entry',
+        createdAt: DateTime.utc(2025),
+        title: 'Recovered',
+      );
+      await Hive.box('entries').put(entry.id, entry.toJson());
+
+      final store = JournalStore();
+      await store.init();
+
+      expect(store.entries.map((entry) => entry.id), [entry.id]);
+      expect(store.entries.single.title, 'Recovered');
+    });
+
+    test('loads nested Hive maps with dynamic keys', () async {
+      final store = await freshStore();
+      final entry = Entry(
+        id: 'dynamic-map-entry',
+        createdAt: DateTime.utc(2025),
+        blocks: [
+          ContentBlock(
+            id: 'block',
+            type: BlockType.text,
+            text: 'Loaded',
+          ),
+        ],
+        view: ViewState(zoom: 2, panX: 4, panY: 5),
+      );
+      await Hive.box('entries').put(entry.id, <String, dynamic>{
+        ...entry.toJson(),
+        'blocks': [<dynamic, dynamic>{...entry.blocks.single.toJson()}],
+        'view': <dynamic, dynamic>{...entry.view!.toJson()},
+      });
+      await Hive.box('meta').put('entryOrder', [entry.id]);
+      await Hive.box('entries').flush();
+      await Hive.box('meta').flush();
+
+      final reloaded = JournalStore();
+      await reloaded.init();
+
+      expect(reloaded.entries.single.blocks.single.text, 'Loaded');
+      expect(reloaded.entries.single.view?.panY, 5);
+      // Keep the local store alive until its boxes have been read.
+      expect(store.isLoaded, isTrue);
     });
   });
 }

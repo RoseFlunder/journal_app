@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -10,7 +12,51 @@ Future<void> main() async {
   await Hive.initFlutter();
   final store = JournalStore();
   await store.init();
-  runApp(JournalApp(store: store));
+  runApp(_JournalLifecycle(store: store));
+}
+
+class _JournalLifecycle extends StatefulWidget {
+  const _JournalLifecycle({required this.store});
+
+  final JournalStore store;
+
+  @override
+  State<_JournalLifecycle> createState() => _JournalLifecycleState();
+}
+
+class _JournalLifecycleState extends State<_JournalLifecycle>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_flushStore());
+    }
+  }
+
+  Future<void> _flushStore() async {
+    try {
+      await widget.store.flush();
+    } catch (error) {
+      debugPrint('Could not flush journal storage: $error');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => JournalApp(store: widget.store);
 }
 
 class JournalApp extends StatelessWidget {

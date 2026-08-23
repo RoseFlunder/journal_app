@@ -18,6 +18,7 @@ class EntryCanvas extends StatelessWidget {
     required this.onEditText,
     required this.onChanged,
     required this.imageBytes,
+    this.imageProvider,
     required this.onOpenImage,
     this.workspaceSize = PageViewport.pageSize,
     this.worldOrigin = Offset.zero,
@@ -31,6 +32,7 @@ class EntryCanvas extends StatelessWidget {
   final ValueChanged<String> onEditText;
   final ValueChanged<ContentBlock> onChanged;
   final Uint8List? Function(String assetId) imageBytes;
+  final ImageProvider<Object>? Function(String assetId)? imageProvider;
   final ValueChanged<ContentBlock> onOpenImage;
   final Size workspaceSize;
   final Offset worldOrigin;
@@ -88,9 +90,13 @@ class EntryCanvas extends StatelessWidget {
                               ),
                               onRotate: (delta) =>
                                   onChanged(block..rotation += delta),
-                                imageBytes: block.assetId == null
+                                imageBytes: block.assetId == null ||
+                                        imageProvider != null
+                                    ? null
+                                    : imageBytes(block.assetId!),
+                                imageProvider: block.assetId == null
                                   ? null
-                                  : imageBytes(block.assetId!),
+                                  : imageProvider?.call(block.assetId!),
                                 onOpenImage: block.type == BlockType.image
                                   ? () => onOpenImage(block)
                                   : null,

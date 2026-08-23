@@ -41,7 +41,7 @@ class ContentsPage extends StatelessWidget {
       ),
     );
     if (confirmed == true && context.mounted) {
-      store.deleteEntry(entry.id);
+      await store.deleteEntry(entry.id);
     }
   }
 
