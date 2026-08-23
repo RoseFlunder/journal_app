@@ -1,30 +1,76 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:hive/hive.dart';
 import 'package:journal_app/main.dart';
+import 'package:journal_app/services/journal_store.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  // This test exercises real file I/O (Hive) by design. The default
+  // (automated) binding runs the test body in a FakeAsync zone, which
+  // strands real-IO continuations and makes Hive hang. The live binding
+  // runs everything on the real event loop, so plain awaits just work.
+  // Cost: animations take real wall-clock time (test is a bit slower).
+  LiveTestWidgetsFlutterBinding.ensureInitialized();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  late Directory temp;
+  late JournalStore store;
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  setUpAll(() async {
+    temp = Directory.systemTemp.createTempSync('journal_widget_test');
+    Hive.init(temp.path);
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  tearDownAll(() async {
+    await Hive.close();
+    temp.deleteSync(recursive: true);
+  });
+
+  testWidgets(
+      'create a page, jump to it, swipe back, find it in TOC, delete it',
+      (tester) async {
+    store = JournalStore();
+    await store.init();
+    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpAndSettle();
+
+    // Starts on the (empty) table of contents.
+    expect(find.text('Journal'), findsOneWidget);
+    expect(find.text('This journal is empty.'), findsOneWidget);
+
+    // Create the first page from the FAB.
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    // Animated to the new entry page (no AppBar, placeholder title).
+    expect(find.byType(AppBar), findsNothing);
+    expect(find.text('Untitled page'), findsOneWidget);
+
+    // Swipe right (previous page) back to the table of contents.
+    await tester.drag(find.byType(PageView), const Offset(800, 0));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.text('This journal is empty.'), findsNothing);
+    // The entry now appears as a TOC row.
+    expect(find.text('Untitled page'), findsOneWidget);
+
+    // Tap the row to jump to the page.
+    await tester.tap(find.text('Untitled page'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppBar), findsNothing);
+    expect(find.text('Untitled page'), findsOneWidget);
+
+    // Swipe back to the TOC and delete the page.
+    await tester.drag(find.byType(PageView), const Offset(800, 0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Delete page'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+
+    // Back to the empty state.
+    expect(find.text('This journal is empty.'), findsOneWidget);
+    expect(store.entries, isEmpty);
   });
 }
