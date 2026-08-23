@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
@@ -25,6 +27,7 @@ class EntryPage extends StatefulWidget {
     required this.onTitleChanged,
     required this.onTitleStyleChanged,
     required this.onTitleFontFamilyChanged,
+    required this.onTitleTextColorChanged,
     required this.onEditingChanged,
     this.controlsVisible = true,
     this.imageSource,
@@ -39,6 +42,7 @@ class EntryPage extends StatefulWidget {
   final void Function(double fontSize, bool bold, bool italic)
   onTitleStyleChanged;
   final ValueChanged<String?> onTitleFontFamilyChanged;
+  final ValueChanged<int?> onTitleTextColorChanged;
   final ValueChanged<bool> onEditingChanged;
   final bool controlsVisible;
 
@@ -66,6 +70,8 @@ class _EntryPageState extends State<EntryPage> {
   late final TextEditingController _titleController = TextEditingController(
     text: widget.entry.title,
   );
+  late final FocusNode _titleFocusNode = FocusNode()
+    ..addListener(_handleTitleFocusChanged);
   late final ImageSourceService _imageSource =
       widget.imageSource ?? PlatformImageSource();
   bool _pickingImage = false;
@@ -75,7 +81,18 @@ class _EntryPageState extends State<EntryPage> {
   @override
   void dispose() {
     _titleController.dispose();
+    _titleFocusNode
+      ..removeListener(_handleTitleFocusChanged)
+      ..dispose();
     super.dispose();
+  }
+
+  void _handleTitleFocusChanged() {
+    if (!mounted || !_titleFocusNode.hasFocus || _titleFocused) return;
+    setState(() {
+      _titleFocused = true;
+      _textEditingId = null;
+    });
   }
 
   void _changeBlock(ContentBlock block) {
@@ -121,7 +138,17 @@ class _EntryPageState extends State<EntryPage> {
 
   String? get _activeFontFamily {
     final block = _activeTextBlock;
-    return block == null ? widget.entry.titleFontFamily : block.fontFamily;
+    return block?.fontFamily ??
+        (_titleFocused ? widget.entry.titleFontFamily : null);
+  }
+
+  bool get _textFormattingAvailable =>
+      _titleFocused || _activeTextBlock != null;
+
+  int? get _activeTextColor {
+    final block = _activeTextBlock;
+    return block?.textColorValue ??
+        (_titleFocused ? widget.entry.titleTextColorValue : null);
   }
 
   void _changeFontFamily(String? fontFamily) {
@@ -129,22 +156,23 @@ class _EntryPageState extends State<EntryPage> {
     if (block != null) {
       block.fontFamily = fontFamily;
       _changeBlock(block);
-    } else {
+    } else if (_titleFocused) {
       widget.onTitleFontFamilyChanged(fontFamily);
     }
     setState(() {});
   }
 
   double get _activeFontSize =>
-      _editingTextBlock?.fontSize ?? widget.entry.titleFontSize;
+      _activeTextBlock?.fontSize ?? widget.entry.titleFontSize;
 
-  bool get _activeBold => _editingTextBlock?.bold ?? widget.entry.titleBold;
+  bool get _activeBold => _activeTextBlock?.bold ?? widget.entry.titleBold;
 
   bool get _activeItalic =>
-      _editingTextBlock?.italic ?? widget.entry.titleItalic;
+      _activeTextBlock?.italic ?? widget.entry.titleItalic;
 
   void _changeFontSize(double delta) {
-    final block = _editingTextBlock;
+    final block = _activeTextBlock;
+    if (block == null && !_titleFocused) return;
     final size = (_activeFontSize + delta)
         .clamp(_minFontSize, _maxFontSize)
         .toDouble();
@@ -162,7 +190,8 @@ class _EntryPageState extends State<EntryPage> {
   }
 
   void _toggleBold() {
-    final block = _editingTextBlock;
+    final block = _activeTextBlock;
+    if (block == null && !_titleFocused) return;
     if (block != null) {
       block.bold = !block.bold;
       _changeBlock(block);
@@ -177,7 +206,8 @@ class _EntryPageState extends State<EntryPage> {
   }
 
   void _toggleItalic() {
-    final block = _editingTextBlock;
+    final block = _activeTextBlock;
+    if (block == null && !_titleFocused) return;
     if (block != null) {
       block.italic = !block.italic;
       _changeBlock(block);
@@ -191,10 +221,24 @@ class _EntryPageState extends State<EntryPage> {
     setState(() {});
   }
 
+  void _changeTextColor(int? value) {
+    final block = _activeTextBlock;
+    if (block != null) {
+      block.textColorValue = value;
+      _changeBlock(block);
+    } else if (_titleFocused) {
+      widget.onTitleTextColorChanged(value);
+    }
+    setState(() {});
+  }
+
   TextStyle _titleStyle(BuildContext context) =>
       (Theme.of(context).textTheme.headlineSmall ?? const TextStyle()).copyWith(
         fontSize: widget.entry.titleFontSize,
         fontFamily: widget.entry.titleFontFamily,
+        color: widget.entry.titleTextColorValue == null
+            ? PaperPage.ink
+            : Color(widget.entry.titleTextColorValue!),
         fontWeight: widget.entry.titleBold
             ? FontWeight.bold
             : FontWeight.normal,
@@ -427,6 +471,36 @@ class _EntryPageState extends State<EntryPage> {
     widget.onBlocksChanged(blocks);
   }
 
+  Rect _contentBounds() {
+    // This is the actual visible header column: the title field and date are
+    // inset from the page frame by the same padding used below.
+    var bounds = Rect.fromLTWH(
+      _headerPosition.dx + 220,
+      _headerPosition.dy + 18,
+      752,
+      92,
+    );
+    for (final block in widget.entry.blocks) {
+      final width = math.max(EntryCanvas.minWidth, block.w) *
+          PageViewport.modelToRenderScale;
+      final height = math.max(EntryCanvas.minHeight, block.h) *
+          PageViewport.modelToRenderScale;
+      final center = Offset(
+        (block.x + _worldOrigin.dx) * PageViewport.modelToRenderScale +
+            width / 2,
+        (block.y + _worldOrigin.dy) * PageViewport.modelToRenderScale +
+            height / 2,
+      );
+      bounds = bounds.expandToInclude(
+        ViewportMath.rotatedRectBounds(
+          Rect.fromCenter(center: center, width: width, height: height),
+          block.rotation,
+        ),
+      );
+    }
+    return bounds;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -436,14 +510,16 @@ class _EntryPageState extends State<EntryPage> {
           children: [
             PageViewport(
               canvasSize: _workspaceSize,
-              fitSize: PageViewport.pageSize,
+              pageRect: Rect.fromLTWH(
+                _pageFramePosition.dx,
+                _pageFramePosition.dy,
+                PageViewport.pageSize.width,
+                PageViewport.pageSize.height,
+              ),
+              contentRect: _contentBounds(),
+              controlsBottomInset: _editing ? 88 : 12,
               controlsVisible: widget.controlsVisible,
               gesturesEnabled: !_resizeActive,
-              initialFocus: _headerPosition,
-              fitFocus: Offset(
-                _pageFramePosition.dx + PageViewport.pageSize.width / 2,
-                _pageFramePosition.dy + PageViewport.pageSize.height / 2,
-              ),
               initialView: widget.entry.view,
               onViewChanged: widget.onViewChanged,
               child: Stack(
@@ -506,6 +582,7 @@ class _EntryPageState extends State<EntryPage> {
                               ? TextField(
                                   key: const ValueKey('entry-title'),
                                   controller: _titleController,
+                                  focusNode: _titleFocusNode,
                                   maxLines: 1,
                                   onTap: () {
                                     setState(() {
@@ -550,6 +627,8 @@ class _EntryPageState extends State<EntryPage> {
                     editing: false,
                     hasSelection: false,
                     textEditing: false,
+                    textFormattingAvailable: false,
+                    textSelection: false,
                     onToggleEditing: () => setState(() {
                       _editing = true;
                       _titleFocused = false;
@@ -569,6 +648,8 @@ class _EntryPageState extends State<EntryPage> {
                         : null,
                     fontFamily: _activeFontFamily,
                     onFontFamilyChanged: _changeFontFamily,
+                    textColorValue: _activeTextColor,
+                    onTextColorChanged: _changeTextColor,
                     onToggleBold: _toggleBold,
                     onToggleItalic: _toggleItalic,
                     bold: _activeBold,
@@ -588,6 +669,8 @@ class _EntryPageState extends State<EntryPage> {
                     editing: true,
                     hasSelection: _selectedId != null,
                     textEditing: _textEditingId != null,
+                    textFormattingAvailable: _textFormattingAvailable,
+                    textSelection: _activeTextBlock != null,
                     onToggleEditing: () {
                       FocusScope.of(context).unfocus();
                       setState(() {
@@ -628,6 +711,8 @@ class _EntryPageState extends State<EntryPage> {
                         : null,
                     fontFamily: _activeFontFamily,
                     onFontFamilyChanged: _changeFontFamily,
+                    textColorValue: _activeTextColor,
+                    onTextColorChanged: _changeTextColor,
                     onToggleBold: _toggleBold,
                     onToggleItalic: _toggleItalic,
                     bold: _activeBold,

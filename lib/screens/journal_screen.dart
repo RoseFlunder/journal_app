@@ -163,6 +163,10 @@ class _JournalScreenState extends State<JournalScreen> {
         entry.id,
         (entry) => entry.titleFontFamily = fontFamily,
       ),
+      onTitleTextColorChanged: (colorValue) => widget.store.updateEntry(
+        entry.id,
+        (entry) => entry.titleTextColorValue = colorValue,
+      ),
       onEditingChanged: (editing) => _handleEditingChanged(entry.id, editing),
     );
   }

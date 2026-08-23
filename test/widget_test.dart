@@ -402,7 +402,7 @@ void main() {
     expect(find.byType(BlockWidget), findsOneWidget);
 
     await tester.tap(find.text('A first note'));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.byKey(ValueKey('block-text-$blockId')), findsOneWidget);
     expect(tester.testTextInput.isVisible, isTrue);
 
@@ -415,8 +415,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(store.entries.single.view?.panX, isNot(0));
 
-    expect(find.byTooltip('Reset view'), findsOneWidget);
-    await tester.tap(find.byTooltip('Reset view'));
+    expect(find.byTooltip('Fit content'), findsOneWidget);
+    await tester.tap(find.byTooltip('Fit content'));
     await tester.pump(const Duration(milliseconds: 300));
 
     final beforeX = store.entries.single.blocks.single.x;
@@ -484,6 +484,61 @@ void main() {
     expect(find.byType(Image), findsOneWidget);
     expect(find.byKey(const ValueKey('rotate-image-widget')), findsOneWidget);
     expect(rotation, 0);
+  });
+
+  testWidgets('text color picker applies preset, custom, and default colors', (
+    tester,
+  ) async {
+    store = JournalStore();
+    await store.init();
+    for (final existing in store.entries.toList()) {
+      await store.deleteEntry(existing.id);
+    }
+    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Edit page'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Add text'));
+    await tester.pumpAndSettle();
+
+    final blockId = store.entries.single.blocks.single.id;
+    await tester.enterText(
+      find.byKey(ValueKey('block-text-$blockId')),
+      'Colorful note',
+    );
+    await tester.tap(find.byTooltip('Text color'));
+    await tester.pumpAndSettle();
+    expect(find.text('Text color'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('Berry'));
+    await tester.tap(find.text('Apply'));
+    await tester.pumpAndSettle();
+    expect(store.entries.single.blocks.single.textColorValue, 0xFF873F4D);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(ValueKey('block-text-$blockId')))
+          .style
+          ?.color
+          ?.toARGB32(),
+      0xFF873F4D,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('entry-title')));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Text color'));
+    await tester.pumpAndSettle();
+    final dialogFields = find.byType(TextField);
+    await tester.enterText(dialogFields.last, '123456');
+    await tester.tap(find.text('Apply'));
+    await tester.pumpAndSettle();
+    expect(store.entries.single.titleTextColorValue, 0xFF123456);
+
+    await tester.tap(find.byTooltip('Text color'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Default ink'));
+    await tester.pumpAndSettle();
+    expect(store.entries.single.titleTextColorValue, isNull);
   });
 
   testWidgets('image provider remains stable across rebuilds', (tester) async {
@@ -605,6 +660,10 @@ void main() {
       find.byKey(const ValueKey('entry-title')),
       'A new title',
     );
+    await tester.pump();
+
+    // Formatting is contextual: focus the title before changing its style.
+    await tester.tap(find.byKey(const ValueKey('entry-title')));
     await tester.pump();
 
     expect(store.entries.single.title, 'A new title');

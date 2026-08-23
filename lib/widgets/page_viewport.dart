@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +21,12 @@ class PageViewport extends StatefulWidget {
     this.maxZoom = 3.0,
     this.canvasSize = pageSize,
     this.fitSize = pageSize,
+    this.pageRect,
+    this.contentRect,
+    this.openingMaxZoom = 2.0,
+    this.controlsBottomInset = 12,
+    // Kept for source compatibility with callers that used the old focused
+    // page API. New callers should provide pageRect/contentRect instead.
     this.initialFocus,
     this.fitFocus,
   });
@@ -46,12 +53,27 @@ class PageViewport extends StatefulWidget {
   final double maxZoom;
   final Size canvasSize;
 
-  /// The content region that should be fully visible at fit/reset scale.
+  /// Legacy page rectangle shorthand. It is used when [pageRect] is omitted.
   final Size fitSize;
+
+  /// The paper rectangle in canvas coordinates.
+  final Rect? pageRect;
+
+  /// The visible content rectangle in canvas coordinates. A null value means
+  /// the paper itself is the opening fit region.
+  final Rect? contentRect;
+
+  /// Maximum page-relative zoom used by the automatic content fit.
+  final double openingMaxZoom;
+
+  /// Extra space reserved below camera controls, for example for the editor
+  /// toolbar.
+  final double controlsBottomInset;
+
+  @Deprecated('Use pageRect/contentRect')
   final Offset? initialFocus;
 
-  /// Optional focus used by Fit/reset controls. This lets an entry open near
-  /// its header while Fit centers the complete framed page.
+  @Deprecated('Use pageRect/contentRect')
   final Offset? fitFocus;
 
   @override
@@ -75,6 +97,44 @@ class ViewportMath {
       panY: panY.isFinite ? panY.clamp(-10000, 10000).toDouble() : 0,
     );
   }
+
+  static double contentFitZoom({
+    required Size viewport,
+    required Rect pageRect,
+    required Rect contentRect,
+    required double minZoom,
+    required double maxZoom,
+    double padding = 24,
+  }) {
+    final pageScale = _fitScale(viewport, pageRect.size);
+    final available = Size(
+      (viewport.width - padding * 2).clamp(1, double.infinity),
+      (viewport.height - padding * 2).clamp(1, double.infinity),
+    );
+    final contentScale = _fitScale(available, contentRect.size);
+    final zoom = contentScale / pageScale;
+    return zoom.clamp(minZoom, maxZoom).toDouble();
+  }
+
+  static Rect rotatedRectBounds(Rect rect, double rotation) {
+    final sine = math.sin(rotation).abs();
+    final cosine = math.cos(rotation).abs();
+    final size = Size(
+      rect.width * cosine + rect.height * sine,
+      rect.width * sine + rect.height * cosine,
+    );
+    return Rect.fromCenter(
+      center: rect.center,
+      width: size.width,
+      height: size.height,
+    );
+  }
+
+  static double _fitScale(Size viewport, Size content) {
+    final widthScale = viewport.width / content.width;
+    final heightScale = viewport.height / content.height;
+    return widthScale < heightScale ? widthScale : heightScale;
+  }
 }
 
 class _PageViewportState extends State<PageViewport> {
@@ -82,8 +142,14 @@ class _PageViewportState extends State<PageViewport> {
   Timer? _persistTimer;
   Size _viewportSize = Size.zero;
   double _fitScale = 1;
+  double _openingZoom = 1;
   bool _ready = false;
   double _zoom = 1;
+
+  Rect get _pageRect => widget.pageRect ??
+      Rect.fromLTWH(0, 0, widget.fitSize.width, widget.fitSize.height);
+
+  Rect get _contentRect => widget.contentRect ?? _pageRect;
 
   @override
   void initState() {
@@ -105,7 +171,7 @@ class _PageViewportState extends State<PageViewport> {
     final scale = _controller.value.getMaxScaleOnAxis();
     if (_fitScale == 0) return;
     final nextZoom = (scale / _fitScale).clamp(widget.minZoom, widget.maxZoom);
-    if ((nextZoom - _zoom).abs() > 0.001) {
+    if ((nextZoom - _zoom).abs() > 0.001 && mounted) {
       setState(() => _zoom = nextZoom.toDouble());
     }
     _persistTimer?.cancel();
@@ -113,12 +179,12 @@ class _PageViewportState extends State<PageViewport> {
   }
 
   void _persistView() {
-    if (!mounted || widget.onViewChanged == null) return;
+    if (!mounted || widget.onViewChanged == null || _fitScale == 0) return;
     final scale = _controller.value.getMaxScaleOnAxis();
     final translation = _controller.value.getTranslation();
     final zoom = (scale / _fitScale).clamp(widget.minZoom, widget.maxZoom);
-    final baseTransform = _fitTransform(zoom.toDouble(), 0, 0);
-    final baseTranslation = baseTransform.getTranslation();
+    final baseTranslation = _fitTransform(zoom.toDouble(), 0, 0)
+        .getTranslation();
     widget.onViewChanged!(
       ViewState(
         zoom: zoom.toDouble(),
@@ -130,12 +196,17 @@ class _PageViewportState extends State<PageViewport> {
 
   void _setInitialTransform(Size size) {
     _viewportSize = size;
-    final widthScale = size.width / widget.fitSize.width;
-    final heightScale = size.height / widget.fitSize.height;
-    _fitScale = widthScale < heightScale ? widthScale : heightScale;
+    _fitScale = _fitScaleFor(size, _pageRect.size);
+    _openingZoom = ViewportMath.contentFitZoom(
+      viewport: size,
+      pageRect: _pageRect,
+      contentRect: _contentRect,
+      minZoom: widget.minZoom,
+      maxZoom: widget.openingMaxZoom,
+    );
     if (!widget.interactive) {
       _zoom = 1;
-      _controller.value = _resetTransform();
+      _controller.value = _fitTransform(1, 0, 0);
       _ready = true;
       return;
     }
@@ -144,58 +215,67 @@ class _PageViewportState extends State<PageViewport> {
       minZoom: widget.minZoom,
       maxZoom: widget.maxZoom,
     );
-    _zoom = view.zoom;
+    _zoom = widget.initialView == null ? _openingZoom : view.zoom;
     _controller.value = widget.initialView == null
-        ? _resetTransform(zoom: view.zoom, focus: widget.initialFocus)
+        ? _contentTransform(_openingZoom)
         : _fitTransform(view.zoom, view.panX, view.panY);
     _ready = true;
+    if (mounted) setState(() {});
   }
 
-  Matrix4 _resetTransform({double zoom = 1, Offset? focus}) {
+  double _fitScaleFor(Size viewport, Size content) {
+    final widthScale = viewport.width / content.width;
+    final heightScale = viewport.height / content.height;
+    return widthScale < heightScale ? widthScale : heightScale;
+  }
+
+  Matrix4 _contentTransform(double zoom) => _centeredTransform(_contentRect, zoom);
+
+  Matrix4 _centeredTransform(Rect rect, double zoom) {
     final scale = _fitScale * zoom;
-    final target = focus ?? widget.initialFocus;
-    if (target == null) return _fitTransform(zoom, 0, 0);
-    if (focus == widget.fitFocus && widget.fitFocus != null) {
-      return Matrix4.identity()
-        ..translateByDouble(
-          _viewportSize.width / 2 - target.dx * scale,
-          _viewportSize.height / 2 - target.dy * scale,
-          0,
-          1,
-        )
-        ..scaleByDouble(scale, scale, scale, 1);
-    }
     return Matrix4.identity()
-      ..translateByDouble(-target.dx * scale, 16 - target.dy * scale, 0, 1)
+      ..translateByDouble(
+        _viewportSize.width / 2 - rect.center.dx * scale,
+        _viewportSize.height / 2 - rect.center.dy * scale,
+        0,
+        1,
+      )
       ..scaleByDouble(scale, scale, scale, 1);
   }
 
   Matrix4 _fitTransform(double zoom, double panX, double panY) {
     final scale = _fitScale * zoom;
     final focus = widget.fitFocus ?? widget.initialFocus;
-    final double baseX;
-    final double baseY;
-    if (focus == null) {
-      baseX = (_viewportSize.width - widget.canvasSize.width * scale) / 2;
-      baseY = (_viewportSize.height - widget.canvasSize.height * scale) / 2;
-    } else if (widget.fitFocus == null) {
-      baseX = -focus.dx * scale;
-      baseY = 16 - focus.dy * scale;
-    } else {
-      baseX = _viewportSize.width / 2 - focus.dx * scale;
-      baseY = _viewportSize.height / 2 - focus.dy * scale;
+    if (widget.pageRect == null && focus != null) {
+      final baseX = widget.fitFocus == null
+          ? -focus.dx * scale
+          : _viewportSize.width / 2 - focus.dx * scale;
+      final baseY = widget.fitFocus == null
+          ? 16 - focus.dy * scale
+          : _viewportSize.height / 2 - focus.dy * scale;
+      return Matrix4.identity()
+        ..translateByDouble(baseX + panX * scale, baseY + panY * scale, 0, 1)
+        ..scaleByDouble(scale, scale, scale, 1);
     }
+    final page = _pageRect;
     return Matrix4.identity()
-      ..translateByDouble(baseX + panX * scale, baseY + panY * scale, 0, 1)
+      ..translateByDouble(
+        _viewportSize.width / 2 - page.center.dx * scale + panX * scale,
+        _viewportSize.height / 2 - page.center.dy * scale + panY * scale,
+        0,
+        1,
+      )
       ..scaleByDouble(scale, scale, scale, 1);
   }
 
   void _setZoom(double zoom, {Offset? focalPoint}) {
+    if (_fitScale == 0) return;
     final nextZoom = zoom.clamp(widget.minZoom, widget.maxZoom).toDouble();
     final currentScale = _controller.value.getMaxScaleOnAxis();
+    if (currentScale == 0) return;
     final nextScale = _fitScale * nextZoom;
-    final focal =
-        focalPoint ?? Offset(_viewportSize.width / 2, _viewportSize.height / 2);
+    final focal = focalPoint ??
+        Offset(_viewportSize.width / 2, _viewportSize.height / 2);
     final matrix = _controller.value.clone();
     final before = matrix.clone()..invert();
     final contentPoint = MatrixUtils.transformPoint(before, focal);
@@ -208,14 +288,22 @@ class _PageViewportState extends State<PageViewport> {
         focal.dy - contentPoint.dy * nextScale,
         0,
       );
-    if (currentScale == 0) return;
     _controller.value = matrix;
   }
 
-  void _fit() => _controller.value = _resetTransform(focus: widget.fitFocus);
+  void _fitContent() {
+    if (_viewportSize.width <= 0 || _viewportSize.height <= 0) return;
+    _openingZoom = ViewportMath.contentFitZoom(
+      viewport: _viewportSize,
+      pageRect: _pageRect,
+      contentRect: _contentRect,
+      minZoom: widget.minZoom,
+      maxZoom: widget.openingMaxZoom,
+    );
+    _controller.value = _contentTransform(_openingZoom);
+  }
 
-  void _resetView() =>
-      _controller.value = _resetTransform(focus: widget.fitFocus);
+  void _fitPage() => _controller.value = _fitTransform(1, 0, 0);
 
   void _handlePointerSignal(PointerSignalEvent event) {
     if (!widget.interactive ||
@@ -227,8 +315,10 @@ class _PageViewportState extends State<PageViewport> {
       LogicalKeyboardKey.control,
     );
     if (isZoom) {
+      final box = context.findRenderObject() as RenderBox?;
+      final focal = box?.globalToLocal(event.position);
       final factor = event.scrollDelta.dy < 0 ? 1.12 : 0.89;
-      _setZoom(_zoom * factor, focalPoint: event.position);
+      _setZoom(_zoom * factor, focalPoint: focal);
       return;
     }
     final matrix = _controller.value.clone();
@@ -247,6 +337,8 @@ class _PageViewportState extends State<PageViewport> {
             if (mounted) _setInitialTransform(size);
           });
         }
+        final minScale = _fitScale * widget.minZoom;
+        final maxScale = _fitScale * widget.maxZoom;
         return Listener(
           onPointerSignal: _handlePointerSignal,
           child: Stack(
@@ -254,12 +346,12 @@ class _PageViewportState extends State<PageViewport> {
             children: [
               GestureDetector(
                 onDoubleTap: widget.interactive && widget.gesturesEnabled
-                    ? _resetView
+                    ? _fitContent
                     : null,
                 child: InteractiveViewer(
                   transformationController: _controller,
-                  minScale: widget.minZoom,
-                  maxScale: widget.maxZoom * 2,
+                  minScale: minScale > 0 ? minScale : widget.minZoom,
+                  maxScale: maxScale > 0 ? maxScale : widget.maxZoom,
                   constrained: false,
                   panEnabled: widget.interactive && widget.gesturesEnabled,
                   scaleEnabled: widget.interactive && widget.gesturesEnabled,
@@ -273,49 +365,52 @@ class _PageViewportState extends State<PageViewport> {
               ),
               if (widget.interactive)
                 Positioned(
-                  left: 12,
-                  bottom: 12,
-                  child: EntryChrome(
-                    visible: widget.controlsVisible,
-                    child: IconButton(
-                      tooltip: 'Reset view',
-                      color: Colors.white,
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.black.withValues(alpha: 0.55),
-                      ),
-                      onPressed: _resetView,
-                      icon: const Icon(Icons.center_focus_strong),
-                    ),
-                  ),
-                ),
-              if (widget.interactive && _zoom > 1.001)
-                Positioned(
                   right: 16,
-                  bottom: 16,
+                  bottom: widget.controlsBottomInset,
                   child: EntryChrome(
                     visible: widget.controlsVisible,
                     child: Material(
                       color: Colors.black.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(8),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
                             tooltip: 'Zoom out',
                             color: Colors.white,
-                            onPressed: () => _setZoom(_zoom / 1.2),
+                            onPressed: _zoom <= widget.minZoom + 0.001
+                                ? null
+                                : () => _setZoom(_zoom / 1.2),
                             icon: const Icon(Icons.remove),
+                          ),
+                          Semantics(
+                            label: 'Zoom ${(_zoom * 100).round()} percent',
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              child: Text(
+                                '${(_zoom * 100).round()}%',
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Fit content',
+                            color: Colors.white,
+                            onPressed: _fitContent,
+                            icon: const Icon(Icons.center_focus_strong),
                           ),
                           IconButton(
                             tooltip: 'Fit page',
                             color: Colors.white,
-                            onPressed: _fit,
+                            onPressed: _fitPage,
                             icon: const Icon(Icons.fit_screen_outlined),
                           ),
                           IconButton(
                             tooltip: 'Zoom in',
                             color: Colors.white,
-                            onPressed: () => _setZoom(_zoom * 1.2),
+                            onPressed: _zoom >= widget.maxZoom - 0.001
+                                ? null
+                                : () => _setZoom(_zoom * 1.2),
                             icon: const Icon(Icons.add),
                           ),
                         ],

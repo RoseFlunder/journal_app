@@ -30,6 +30,7 @@ void main() {
       expect(block.rotation, 0);
       expect(block.fontSize, 21);
       expect(block.fontFamily, isNull);
+      expect(block.textColorValue, isNull);
       expect(block.bold, isFalse);
       expect(block.italic, isFalse);
     });
@@ -41,6 +42,7 @@ void main() {
       });
 
       expect(entry.titleFontFamily, isNull);
+      expect(entry.titleTextColorValue, isNull);
     });
 
     test('round-trips all fields', () {
@@ -60,6 +62,7 @@ void main() {
             rotation: 0.35,
             fontSize: 26,
             fontFamily: JournalFonts.lora,
+            textColorValue: 0xFF873F4D,
             bold: true,
             italic: true,
           ),
@@ -68,6 +71,7 @@ void main() {
         view: ViewState(zoom: 1.5, panX: 2, panY: -3),
         titleFontSize: 34,
         titleFontFamily: JournalFonts.caveat,
+        titleTextColorValue: 0xFF3E5E86,
         titleBold: false,
         titleItalic: true,
       );
@@ -81,6 +85,7 @@ void main() {
       expect(decoded.view?.panY, -3);
       expect(decoded.titleFontSize, 34);
       expect(decoded.titleFontFamily, JournalFonts.caveat);
+      expect(decoded.titleTextColorValue, 0xFF3E5E86);
       expect(decoded.titleBold, isFalse);
       expect(decoded.titleItalic, isTrue);
       final block = decoded.blocks.single;
@@ -91,6 +96,7 @@ void main() {
       expect(block.rotation, closeTo(0.35, 0.0001));
       expect(block.fontSize, 26);
       expect(block.fontFamily, JournalFonts.lora);
+      expect(block.textColorValue, 0xFF873F4D);
       expect(block.bold, isTrue);
       expect(block.italic, isTrue);
     });

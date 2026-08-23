@@ -38,6 +38,7 @@ class ContentBlock {
     this.rotation = 0,
     this.fontSize = 21,
     this.fontFamily,
+    this.textColorValue,
     this.bold = false,
     this.italic = false,
   });
@@ -64,6 +65,7 @@ class ContentBlock {
   /// Text styling. These fields are ignored for image and sticker blocks.
   double fontSize;
   String? fontFamily;
+  int? textColorValue;
   bool bold;
   bool italic;
 
@@ -80,6 +82,7 @@ class ContentBlock {
     'rotation': rotation,
     'fontSize': fontSize,
     'fontFamily': fontFamily,
+    'textColorValue': textColorValue,
     'bold': bold,
     'italic': italic,
   };
@@ -97,6 +100,7 @@ class ContentBlock {
     rotation: (json['rotation'] as num?)?.toDouble() ?? 0,
     fontSize: (json['fontSize'] as num?)?.toDouble() ?? 21,
     fontFamily: JournalFonts.normalize(json['fontFamily'] as String?),
+    textColorValue: (json['textColorValue'] as num?)?.toInt(),
     bold: json['bold'] as bool? ?? false,
     italic: json['italic'] as bool? ?? false,
   );
@@ -132,6 +136,7 @@ class Entry {
     this.view,
     this.titleFontSize = 28,
     this.titleFontFamily,
+    this.titleTextColorValue,
     this.titleBold = true,
     this.titleItalic = false,
   }) : title = title ?? '',
@@ -160,6 +165,7 @@ class Entry {
   /// Formatting for the page title. Older entries use the defaults here.
   double titleFontSize;
   String? titleFontFamily;
+  int? titleTextColorValue;
   bool titleBold;
   bool titleItalic;
 
@@ -173,6 +179,7 @@ class Entry {
     'view': view?.toJson(),
     'titleFontSize': titleFontSize,
     'titleFontFamily': titleFontFamily,
+    'titleTextColorValue': titleTextColorValue,
     'titleBold': titleBold,
     'titleItalic': titleItalic,
   };
@@ -197,6 +204,7 @@ class Entry {
       titleFontFamily: JournalFonts.normalize(
         json['titleFontFamily'] as String?,
       ),
+      titleTextColorValue: (json['titleTextColorValue'] as num?)?.toInt(),
       titleBold: json['titleBold'] as bool? ?? true,
       titleItalic: json['titleItalic'] as bool? ?? false,
     );

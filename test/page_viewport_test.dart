@@ -4,6 +4,29 @@ import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/widgets/page_viewport.dart';
 
 void main() {
+  test('content fit zoom respects padding and opening cap', () {
+    final zoom = ViewportMath.contentFitZoom(
+      viewport: const Size(800, 600),
+      pageRect: const Rect.fromLTWH(4000, 4500, 1000, 1414),
+      contentRect: const Rect.fromLTWH(4220, 4518, 752, 92),
+      minZoom: 0.5,
+      maxZoom: 2,
+    );
+
+    expect(zoom, 2);
+  });
+
+  test('rotated content bounds include the full axis-aligned footprint', () {
+    final bounds = ViewportMath.rotatedRectBounds(
+      const Rect.fromLTWH(10, 20, 30, 40),
+      1.5707963267948966,
+    );
+
+    expect(bounds.width, closeTo(40, 0.001));
+    expect(bounds.height, closeTo(30, 0.001));
+    expect(bounds.center, const Offset(25, 40));
+  });
+
   test('viewport state normalizes invalid and out-of-range values', () {
     final normalized = ViewportMath.normalize(
       ViewState(zoom: double.nan, panX: double.infinity, panY: -500),
@@ -15,7 +38,7 @@ void main() {
   });
 
   testWidgets(
-    'reset view is available and double tap returns to the initial view',
+    'fit content is available and double tap returns to the content fit',
     (tester) async {
       ViewState? savedView;
       await tester.pumpWidget(
@@ -31,23 +54,23 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.byTooltip('Reset view'), findsOneWidget);
+      expect(find.byTooltip('Fit content'), findsOneWidget);
       await tester.tapAt(const Offset(200, 300));
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.byTooltip('Reset view'), findsOneWidget);
+      expect(find.byTooltip('Fit content'), findsOneWidget);
 
-      await tester.tap(find.byTooltip('Reset view'));
+      await tester.tap(find.byTooltip('Fit content'));
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.byTooltip('Reset view'), findsOneWidget);
-      expect(savedView?.zoom, 1);
-      expect(savedView?.panX, 0);
-      expect(savedView?.panY, 0);
+      expect(find.byTooltip('Fit page'), findsOneWidget);
+      expect(savedView?.zoom, closeTo(0.92, 0.02));
+      expect(savedView?.panX, closeTo(0, 0.01));
+      expect(savedView?.panY, closeTo(0, 0.01));
 
       await tester.tapAt(const Offset(200, 300));
       await tester.pump(const Duration(milliseconds: 50));
       await tester.tapAt(const Offset(200, 300));
       await tester.pump(const Duration(milliseconds: 300));
-      expect(savedView?.zoom, 1);
+      expect(savedView?.zoom, closeTo(0.92, 0.02));
     },
   );
 
@@ -70,5 +93,27 @@ void main() {
     expect(find.byTooltip('Zoom in'), findsNothing);
     expect(find.byTooltip('Zoom out'), findsNothing);
     expect(find.byTooltip('Fit page'), findsNothing);
+  });
+
+  testWidgets('interactive limits scale with the page fit scale', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 400,
+          height: 600,
+          child: PageViewport(
+            child: ColoredBox(color: Colors.amber),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final viewer = tester.widget<InteractiveViewer>(
+      find.byType(InteractiveViewer),
+    );
+    expect(viewer.minScale, closeTo(0.5 * (600 / 1414), 0.001));
+    expect(viewer.maxScale, closeTo(3 * (600 / 1414), 0.001));
   });
 }
