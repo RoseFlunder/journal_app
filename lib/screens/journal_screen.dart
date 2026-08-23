@@ -239,38 +239,40 @@ class _JournalScreenState extends State<JournalScreen> {
                             ),
                           ),
                         ),
-                      Positioned(
-                        left: 8,
-                        top: 0,
-                        bottom: 0,
-                        child: EntryChrome(
-                          visible: _currentPage == 0 || _entryChromeVisible,
-                          child: Center(
-                            child: _NavigationButton(
-                              tooltip: 'Previous page',
-                              icon: Icons.chevron_left,
-                              onPressed: _currentPage > 0 ? _goPrev : null,
+                      if (_currentPage > 0)
+                        Positioned(
+                          left: 8,
+                          top: 0,
+                          bottom: 0,
+                          child: EntryChrome(
+                            visible: _entryChromeVisible,
+                            child: Center(
+                              child: _NavigationButton(
+                                tooltip: 'Previous page',
+                                icon: Icons.chevron_left,
+                                onPressed: _goPrev,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      Positioned(
-                        right: 8,
-                        top: 0,
-                        bottom: 0,
-                        child: EntryChrome(
-                          visible: _currentPage == 0 || _entryChromeVisible,
-                          child: Center(
-                            child: _NavigationButton(
-                              tooltip: 'Next page',
-                              icon: Icons.chevron_right,
-                              onPressed: _currentPage < _pageCount - 1
-                                  ? _goNext
-                                  : null,
+                      if (_currentPage > 0)
+                        Positioned(
+                          right: 8,
+                          top: 0,
+                          bottom: 0,
+                          child: EntryChrome(
+                            visible: _entryChromeVisible,
+                            child: Center(
+                              child: _NavigationButton(
+                                tooltip: 'Next page',
+                                icon: Icons.chevron_right,
+                                onPressed: _currentPage < _pageCount - 1
+                                    ? _goNext
+                                    : null,
+                              ),
                             ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),

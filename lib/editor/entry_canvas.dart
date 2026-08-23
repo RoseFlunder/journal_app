@@ -7,7 +7,7 @@ import '../models/entry.dart';
 import '../widgets/page_viewport.dart';
 import 'block_widget.dart';
 
-class EntryCanvas extends StatelessWidget {
+class EntryCanvas extends StatefulWidget {
   const EntryCanvas({
     super.key,
     required this.blocks,
@@ -41,67 +41,72 @@ class EntryCanvas extends StatelessWidget {
   static const minHeight = 10.0;
 
   @override
+  State<EntryCanvas> createState() => _EntryCanvasState();
+}
+
+class _EntryCanvasState extends State<EntryCanvas> {
+  _BlockMoveSession? _moveSession;
+
+  @override
+  void didUpdateWidget(covariant EntryCanvas oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final activeBlockId = _moveSession?.blockId;
+    if (!widget.editing ||
+        (activeBlockId != null &&
+            !widget.blocks.any((block) => block.id == activeBlockId))) {
+      _moveSession = null;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final scale = PageViewport.modelToRenderScale;
 
         return SizedBox(
-          width: workspaceSize.width,
-          height: workspaceSize.height,
+          width: widget.workspaceSize.width,
+          height: widget.workspaceSize.height,
           child: Stack(
             children: [
               Positioned.fill(
                 child: Listener(
                   behavior: HitTestBehavior.translucent,
-                  onPointerDown: editing
+                  onPointerDown: widget.editing
                       ? (event) {
                           final point = event.localPosition;
-                          final hitsBlock = blocks.any(
+                          final hitsBlock = widget.blocks.any(
                             (block) => _containsBlock(point, block, scale),
                           );
-                          if (!hitsBlock) onSelect(null);
+                          if (!hitsBlock) widget.onSelect(null);
                         }
                       : null,
                   child: Stack(
                     children: [
-                      for (final block in blocks)
+                      for (final block in widget.blocks)
                         Positioned(
-                          left: (block.x + worldOrigin.dx) * scale,
-                          top: (block.y + worldOrigin.dy) * scale,
-                          width: math.max(minWidth, block.w) * scale,
-                          height: math.max(minHeight, block.h) * scale,
+                          left: (block.x + widget.worldOrigin.dx) * scale,
+                          top: (block.y + widget.worldOrigin.dy) * scale,
+                          width:
+                              math.max(EntryCanvas.minWidth, block.w) * scale,
+                          height:
+                              math.max(EntryCanvas.minHeight, block.h) * scale,
                           child: Transform.rotate(
                             angle: block.rotation,
                             child: BlockWidget(
                               block: block,
-                              selected: selectedId == block.id,
-                              editing: editing,
-                              textEditing: textEditingId == block.id,
-                              onTap: () => onSelect(block.id),
-                              onEditText: () => onEditText(block.id),
-                              onMove: (globalPosition, globalDelta) =>
-                                  onChanged(
-                                    block
-                                      ..x =
-                                          block.x +
-                                          _canvasDelta(
-                                                context,
-                                                globalPosition,
-                                                globalDelta,
-                                              ).dx /
-                                              scale
-                                      ..y =
-                                          block.y +
-                                          _canvasDelta(
-                                                context,
-                                                globalPosition,
-                                                globalDelta,
-                                              ).dy /
-                                              scale,
-                                  ),
+                              selected: widget.selectedId == block.id,
+                              editing: widget.editing,
+                              textEditing: widget.textEditingId == block.id,
+                              onTap: () => widget.onSelect(block.id),
+                              onEditText: () => widget.onEditText(block.id),
+                              onMoveStart: (globalPosition) =>
+                                  _startMove(context, block, globalPosition),
+                              onMoveUpdate: (globalPosition) =>
+                                  _updateMove(context, block, globalPosition),
+                              onMoveEnd: _endMove,
                               onResize: (globalPosition, globalDelta) =>
-                                  onChanged(
+                                  widget.onChanged(
                                     _resizedBlock(
                                       block,
                                       _canvasDelta(
@@ -113,20 +118,22 @@ class EntryCanvas extends StatelessWidget {
                                     ),
                                   ),
                               onRotate: (delta) =>
-                                  onChanged(block..rotation += delta),
+                                  widget.onChanged(block..rotation += delta),
                               imageBytes:
                                   _visualId(block) == null ||
-                                      imageProvider != null
+                                      widget.imageProvider != null
                                   ? null
-                                  : imageBytes(_visualId(block)!),
+                                  : widget.imageBytes(_visualId(block)!),
                               imageProvider: _visualId(block) == null
                                   ? null
-                                  : imageProvider?.call(_visualId(block)!),
+                                  : widget.imageProvider?.call(
+                                      _visualId(block)!,
+                                    ),
                               onOpenImage: block.type == BlockType.image
-                                  ? () => onOpenImage(block)
+                                  ? () => widget.onOpenImage(block)
                                   : null,
                               onTextChanged: (text) =>
-                                  onChanged(block..text = text),
+                                  widget.onChanged(block..text = text),
                               preserveAspectRatio:
                                   block.type == BlockType.image ||
                                   block.type == BlockType.sticker,
@@ -145,16 +152,56 @@ class EntryCanvas extends StatelessWidget {
   }
 
   ContentBlock _resizedBlock(ContentBlock block, Offset delta, double scale) {
-    final width = math.max(minWidth, block.w + delta.dx / scale);
+    final width = math.max(EntryCanvas.minWidth, block.w + delta.dx / scale);
     if (block.type != BlockType.image && block.type != BlockType.sticker) {
       return block
         ..w = width
-        ..h = math.max(minHeight, block.h + delta.dy / scale);
+        ..h = math.max(EntryCanvas.minHeight, block.h + delta.dy / scale);
     }
     final aspectRatio = block.w <= 0 ? 1.0 : block.h / block.w;
     return block
       ..w = width
-      ..h = math.max(minHeight, width * aspectRatio);
+      ..h = math.max(EntryCanvas.minHeight, width * aspectRatio);
+  }
+
+  void _startMove(
+    BuildContext canvasContext,
+    ContentBlock block,
+    Offset globalPosition,
+  ) {
+    final pointer = _globalToModel(canvasContext, globalPosition);
+    if (pointer == null) return;
+    _moveSession = _BlockMoveSession(
+      blockId: block.id,
+      grabOffset: pointer - Offset(block.x, block.y),
+    );
+  }
+
+  void _updateMove(
+    BuildContext canvasContext,
+    ContentBlock block,
+    Offset globalPosition,
+  ) {
+    final session = _moveSession;
+    if (session == null || session.blockId != block.id) return;
+    final pointer = _globalToModel(canvasContext, globalPosition);
+    if (pointer == null) return;
+    final position = pointer - session.grabOffset;
+    widget.onChanged(
+      block
+        ..x = position.dx
+        ..y = position.dy,
+    );
+  }
+
+  void _endMove() => _moveSession = null;
+
+  Offset? _globalToModel(BuildContext context, Offset globalPosition) {
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox) return null;
+    return renderObject.globalToLocal(globalPosition) /
+            PageViewport.modelToRenderScale -
+        widget.worldOrigin;
   }
 
   Offset _canvasDelta(
@@ -170,11 +217,11 @@ class EntryCanvas extends StatelessWidget {
   }
 
   bool _containsBlock(Offset point, ContentBlock block, double scale) {
-    final width = math.max(minWidth, block.w) * scale;
-    final height = math.max(minHeight, block.h) * scale;
+    final width = math.max(EntryCanvas.minWidth, block.w) * scale;
+    final height = math.max(EntryCanvas.minHeight, block.h) * scale;
     final center = Offset(
-      (block.x + worldOrigin.dx) * scale + width / 2,
-      (block.y + worldOrigin.dy) * scale + height / 2,
+      (block.x + widget.worldOrigin.dx) * scale + width / 2,
+      (block.y + widget.worldOrigin.dy) * scale + height / 2,
     );
     final offset = point - center;
     final cosine = math.cos(-block.rotation);
@@ -188,4 +235,11 @@ class EntryCanvas extends StatelessWidget {
 
   String? _visualId(ContentBlock block) =>
       block.type == BlockType.sticker ? block.stickerId : block.assetId;
+}
+
+class _BlockMoveSession {
+  const _BlockMoveSession({required this.blockId, required this.grabOffset});
+
+  final String blockId;
+  final Offset grabOffset;
 }

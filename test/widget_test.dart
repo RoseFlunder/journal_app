@@ -53,28 +53,8 @@ void main() {
       expect(find.text('This journal is empty.'), findsOneWidget);
       expect(find.byTooltip('New page'), findsNothing);
       expect(find.byTooltip('Home'), findsNothing);
-      expect(
-        tester
-            .widget<IconButton>(
-              find.ancestor(
-                of: find.byIcon(Icons.chevron_left),
-                matching: find.byType(IconButton),
-              ),
-            )
-            .onPressed,
-        isNull,
-      );
-      expect(
-        tester
-            .widget<IconButton>(
-              find.ancestor(
-                of: find.byIcon(Icons.chevron_right),
-                matching: find.byType(IconButton),
-              ),
-            )
-            .onPressed,
-        isNull,
-      );
+      expect(find.byTooltip('Previous page'), findsNothing);
+      expect(find.byTooltip('Next page'), findsNothing);
 
       // Create the first page from the FAB.
       await tester.tap(find.byType(FloatingActionButton));
@@ -167,30 +147,10 @@ void main() {
     await tester.pumpWidget(JournalApp(store: store));
     await tester.pumpAndSettle();
 
-    expect(
-      tester
-          .widget<IconButton>(
-            find.ancestor(
-              of: find.byIcon(Icons.chevron_left),
-              matching: find.byType(IconButton),
-            ),
-          )
-          .onPressed,
-      isNull,
-    );
-    expect(
-      tester
-          .widget<IconButton>(
-            find.ancestor(
-              of: find.byIcon(Icons.chevron_right),
-              matching: find.byType(IconButton),
-            ),
-          )
-          .onPressed,
-      isNotNull,
-    );
+    expect(find.byTooltip('Previous page'), findsNothing);
+    expect(find.byTooltip('Next page'), findsNothing);
 
-    await tester.tap(find.byTooltip('Next page'));
+    await tester.tap(find.text('Untitled page').first);
     await tester.pumpAndSettle();
     expect(
       tester
@@ -487,7 +447,9 @@ void main() {
               imageBytes: bytes,
               onTap: () {},
               onEditText: () {},
-              onMove: (_, _) {},
+              onMoveStart: (_) {},
+              onMoveUpdate: (_) {},
+              onMoveEnd: () {},
               onResize: (_, _) {},
               onRotate: (delta) => rotation += delta,
               onTextChanged: (_) {},
@@ -531,7 +493,9 @@ void main() {
                   imageProvider: provider,
                   onTap: () {},
                   onEditText: () {},
-                  onMove: (_, _) {},
+                  onMoveStart: (_) {},
+                  onMoveUpdate: (_) {},
+                  onMoveEnd: () {},
                   onResize: (_, _) {},
                   onRotate: (_) {},
                   onTextChanged: (_) {},
@@ -581,7 +545,9 @@ void main() {
               imageProvider: AssetImage(definition.assetPath),
               onTap: () {},
               onEditText: () {},
-              onMove: (_, _) {},
+              onMoveStart: (_) {},
+              onMoveUpdate: (_) {},
+              onMoveEnd: () {},
               onResize: (_, _) {},
               onRotate: (_) {},
               onTextChanged: (_) {},
@@ -727,13 +693,91 @@ void main() {
     expect(homeOpacity(), 0);
   });
 
-  testWidgets('block drag follows the finger through a scaled canvas', (
+  testWidgets('block drag tracks multi-event touch at every canvas scale', (
+    tester,
+  ) async {
+    Future<void> verifyAtScale(double transformScale) async {
+      final block = ContentBlock(
+        id: 'scaled-drag-$transformScale',
+        type: BlockType.text,
+        text: 'Drag me',
+        x: 4,
+        y: 4,
+        w: 30,
+        h: 20,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox(
+            width: 800,
+            height: 600,
+            child: Transform.scale(
+              alignment: Alignment.topLeft,
+              scale: transformScale,
+              child: StatefulBuilder(
+                builder: (context, setState) => EntryCanvas(
+                  key: ValueKey(transformScale),
+                  workspaceSize: const Size(400, 300),
+                  blocks: [block],
+                  editing: true,
+                  selectedId: block.id,
+                  textEditingId: null,
+                  onSelect: (_) {},
+                  onEditText: (_) {},
+                  onChanged: (_) => setState(() {}),
+                  imageBytes: (_) => null,
+                  onOpenImage: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final blockFinder = find.byType(BlockWidget);
+      final beforeCenter = tester.getCenter(blockFinder);
+      final beforePosition = Offset(block.x, block.y);
+      final gesture = await tester.startGesture(beforeCenter);
+
+      await gesture.moveBy(const Offset(18, 12));
+      await tester.pump();
+      expect(
+        tester.getCenter(blockFinder) - beforeCenter,
+        offsetMoreOrLessEquals(const Offset(18, 12), epsilon: 0.01),
+      );
+
+      await gesture.moveBy(const Offset(22, -4));
+      await tester.pump();
+      expect(
+        tester.getCenter(blockFinder) - beforeCenter,
+        offsetMoreOrLessEquals(const Offset(40, 8), epsilon: 0.01),
+      );
+      expect(
+        Offset(block.x, block.y) - beforePosition,
+        offsetMoreOrLessEquals(
+          Offset(
+            40 / (PageViewport.modelToRenderScale * transformScale),
+            8 / (PageViewport.modelToRenderScale * transformScale),
+          ),
+          epsilon: 0.01,
+        ),
+      );
+      await gesture.up();
+    }
+
+    await verifyAtScale(0.5);
+    await verifyAtScale(1.5);
+  });
+
+  testWidgets('selected block border uses the same anchored drag path', (
     tester,
   ) async {
     final block = ContentBlock(
-      id: 'scaled-drag',
+      id: 'border-drag',
       type: BlockType.text,
-      text: 'Drag me',
+      text: 'Drag my border',
       x: 4,
       y: 4,
       w: 30,
@@ -742,25 +786,21 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: SizedBox(
-          width: 400,
-          height: 300,
-          child: Transform.scale(
-            alignment: Alignment.topLeft,
-            scale: 0.5,
-            child: StatefulBuilder(
-              builder: (context, setState) => EntryCanvas(
-                workspaceSize: const Size(200, 100),
-                blocks: [block],
-                editing: true,
-                selectedId: block.id,
-                textEditingId: null,
-                onSelect: (_) {},
-                onEditText: (_) {},
-                onChanged: (_) => setState(() {}),
-                imageBytes: (_) => null,
-                onOpenImage: (_) {},
-              ),
+        home: Transform.scale(
+          alignment: Alignment.topLeft,
+          scale: 0.5,
+          child: StatefulBuilder(
+            builder: (context, setState) => EntryCanvas(
+              workspaceSize: const Size(400, 300),
+              blocks: [block],
+              editing: true,
+              selectedId: block.id,
+              textEditingId: null,
+              onSelect: (_) {},
+              onEditText: (_) {},
+              onChanged: (_) => setState(() {}),
+              imageBytes: (_) => null,
+              onOpenImage: (_) {},
             ),
           ),
         ),
@@ -770,12 +810,15 @@ void main() {
 
     final blockFinder = find.byType(BlockWidget);
     final beforeCenter = tester.getCenter(blockFinder);
-    final beforeX = block.x;
-    await tester.drag(blockFinder, const Offset(40, 0));
+    final moveEdge = find.byKey(const ValueKey('move-border-drag'));
+    final gesture = await tester.startGesture(tester.getCenter(moveEdge));
+    await gesture.moveBy(const Offset(24, 10));
     await tester.pump();
-
-    expect(tester.getCenter(blockFinder).dx - beforeCenter.dx, closeTo(40, 1));
-    expect(block.x - beforeX, closeTo(8, 0.2));
+    expect(
+      tester.getCenter(blockFinder) - beforeCenter,
+      offsetMoreOrLessEquals(const Offset(24, 10), epsilon: 0.01),
+    );
+    await gesture.up();
   });
   testWidgets('splash wordmark fades in and is capped at 600 pixels', (
     tester,
@@ -793,7 +836,7 @@ void main() {
     );
     expect(tester.widget<Opacity>(opacityFinder.first).opacity, lessThan(1));
 
-    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pump(const Duration(seconds: 2));
     expect(
       tester.widget<Opacity>(opacityFinder.first).opacity,
       closeTo(1, 0.01),

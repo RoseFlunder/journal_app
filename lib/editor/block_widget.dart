@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models/entry.dart';
 
-typedef BlockDragUpdate = void Function(
+typedef BlockResizeUpdate = void Function(
   Offset globalPosition,
   Offset globalDelta,
 );
@@ -19,7 +19,9 @@ class BlockWidget extends StatefulWidget {
     required this.textEditing,
     required this.onTap,
     required this.onEditText,
-    required this.onMove,
+    required this.onMoveStart,
+    required this.onMoveUpdate,
+    required this.onMoveEnd,
     required this.onResize,
     required this.onRotate,
     required this.onTextChanged,
@@ -35,8 +37,10 @@ class BlockWidget extends StatefulWidget {
   final bool textEditing;
   final VoidCallback onTap;
   final VoidCallback onEditText;
-  final BlockDragUpdate onMove;
-  final BlockDragUpdate onResize;
+  final ValueChanged<Offset> onMoveStart;
+  final ValueChanged<Offset> onMoveUpdate;
+  final VoidCallback onMoveEnd;
+  final BlockResizeUpdate onResize;
   final ValueChanged<double> onRotate;
   final ValueChanged<String> onTextChanged;
   final bool preserveAspectRatio;
@@ -52,7 +56,10 @@ class _BlockWidgetState extends State<BlockWidget> {
   late final TextEditingController _controller;
   bool _resizing = false;
   bool _movingEdge = false;
+  bool _movingBody = false;
   bool _rotating = false;
+  Offset? _panDownGlobalPosition;
+  int? _moveEdgePointer;
   final Map<int, Offset> _pointers = {};
   double? _lastPointerAngle;
 
@@ -128,6 +135,9 @@ class _BlockWidgetState extends State<BlockWidget> {
         behavior: HitTestBehavior.opaque,
         onTap: widget.editing ? widget.onTap : widget.onOpenImage,
         onDoubleTap: widget.editing ? widget.onEditText : null,
+        onPanDown: widget.editing
+            ? (details) => _panDownGlobalPosition = details.globalPosition
+            : null,
         onPanStart: widget.editing
             ? (details) {
                 final size = context.size ?? Size.zero;
@@ -142,6 +152,17 @@ class _BlockWidgetState extends State<BlockWidget> {
                         details.localPosition.dx >= size.width - 20 ||
                         details.localPosition.dy >= size.height - 20);
                 widget.onTap();
+                _movingBody =
+                    _moveEdgePointer == null &&
+                    !_resizing &&
+                    !_movingEdge &&
+                    !_rotating;
+                if (_movingBody) {
+                  widget.onMoveStart(
+                    _panDownGlobalPosition ?? details.globalPosition,
+                  );
+                  widget.onMoveUpdate(details.globalPosition);
+                }
               }
             : null,
         onPanUpdate: widget.editing
@@ -149,17 +170,13 @@ class _BlockWidgetState extends State<BlockWidget> {
                 if (_rotating) return;
                 if (_resizing) {
                   widget.onResize(details.globalPosition, details.delta);
-                } else if (!_movingEdge) {
-                  widget.onMove(details.globalPosition, details.delta);
+                } else if (_movingBody) {
+                  widget.onMoveUpdate(details.globalPosition);
                 }
               }
             : null,
-        onPanEnd: widget.editing
-            ? (_) {
-                _resizing = false;
-                _movingEdge = false;
-              }
-            : null,
+        onPanEnd: widget.editing ? (_) => _finishBodyGesture() : null,
+        onPanCancel: widget.editing ? _finishBodyGesture : null,
         child: DecoratedBox(
           decoration: BoxDecoration(
             border: widget.selected
@@ -291,10 +308,15 @@ class _BlockWidgetState extends State<BlockWidget> {
     if (_pointers.length == 2 &&
         widget.selected &&
         (widget.block.type == BlockType.text || _isVisualBlock)) {
+      if (_movingBody || _moveEdgePointer != null) {
+        widget.onMoveEnd();
+      }
       _rotating = true;
       _lastPointerAngle = _pointerAngle;
       _resizing = false;
       _movingEdge = false;
+      _movingBody = false;
+      _moveEdgePointer = null;
     }
   }
 
@@ -331,9 +353,34 @@ class _BlockWidgetState extends State<BlockWidget> {
     return Listener(
       key: key,
       behavior: HitTestBehavior.opaque,
-      onPointerDown: (_) => widget.onTap(),
-      onPointerMove: (event) => widget.onMove(event.position, event.delta),
+      onPointerDown: (event) {
+        if (_moveEdgePointer != null) return;
+        _moveEdgePointer = event.pointer;
+        widget.onTap();
+        widget.onMoveStart(event.position);
+      },
+      onPointerMove: (event) {
+        if (_moveEdgePointer == event.pointer && !_rotating) {
+          widget.onMoveUpdate(event.position);
+        }
+      },
+      onPointerUp: _finishEdgeGesture,
+      onPointerCancel: _finishEdgeGesture,
     );
+  }
+
+  void _finishBodyGesture() {
+    if (_movingBody) widget.onMoveEnd();
+    _resizing = false;
+    _movingEdge = false;
+    _movingBody = false;
+    _panDownGlobalPosition = null;
+  }
+
+  void _finishEdgeGesture(PointerEvent event) {
+    if (_moveEdgePointer != event.pointer) return;
+    _moveEdgePointer = null;
+    widget.onMoveEnd();
   }
 
   bool get _isVisualBlock =>

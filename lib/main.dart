@@ -44,7 +44,7 @@ class _CozyBloomBootstrapState extends State<CozyBloomBootstrap> {
       final store = JournalStore();
       await store.init();
       final elapsed = DateTime.now().difference(_startedAt!);
-      const minimum = Duration(seconds: 5);
+      const minimum = Duration(milliseconds: 3500);
       if (elapsed < minimum) await Future<void>.delayed(minimum - elapsed);
       if (!mounted) return;
       setState(() => _store = store);
@@ -98,7 +98,7 @@ class CozyBloomSplash extends StatelessWidget {
               children: [
                 TweenAnimationBuilder<double>(
                   tween: Tween<double>(begin: 0, end: 1),
-                  duration: const Duration(milliseconds: 800),
+                  duration: const Duration(seconds: 2),
                   curve: Curves.easeIn,
                   builder: (context, opacity, child) =>
                       Opacity(opacity: opacity, child: child),
