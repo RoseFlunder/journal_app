@@ -11,39 +11,49 @@ void main() {
 
     expect(normalized.zoom, 1);
     expect(normalized.panX, 0);
-    expect(normalized.panY, -141.4);
+    expect(normalized.panY, -500);
   });
 
-  testWidgets('toolbar appears after double tap and fit resets the viewport',
-      (tester) async {
-    ViewState? savedView;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SizedBox.expand(
-          child: PageViewport(
-            onViewChanged: (view) => savedView = view,
-            child: ColoredBox(color: Colors.amber),
+  testWidgets(
+    'reset view is available and double tap returns to the initial view',
+    (tester) async {
+      ViewState? savedView;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox.expand(
+            child: PageViewport(
+              initialView: ViewState(zoom: 2, panX: 30, panY: 40),
+              onViewChanged: (view) => savedView = view,
+              child: ColoredBox(color: Colors.amber),
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
 
-    expect(find.byTooltip('Fit page'), findsNothing);
-    await tester.tapAt(const Offset(200, 300));
-    await tester.pump(const Duration(milliseconds: 50));
-    await tester.tapAt(const Offset(200, 300));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byTooltip('Fit page'), findsOneWidget);
-    expect(savedView?.zoom, greaterThan(1));
+      expect(find.byTooltip('Reset view'), findsOneWidget);
+      await tester.tapAt(const Offset(200, 300));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byTooltip('Reset view'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Fit page'));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byTooltip('Fit page'), findsNothing);
-    expect(savedView?.zoom, 1);
-  });
+      await tester.tap(find.byTooltip('Reset view'));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byTooltip('Reset view'), findsOneWidget);
+      expect(savedView?.zoom, 1);
+      expect(savedView?.panX, 0);
+      expect(savedView?.panY, 0);
 
-  testWidgets('disabled viewport stays fixed and has no toolbar', (tester) async {
+      await tester.tapAt(const Offset(200, 300));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(const Offset(200, 300));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(savedView?.zoom, 1);
+    },
+  );
+
+  testWidgets('disabled viewport stays fixed and has no toolbar', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: SizedBox.expand(

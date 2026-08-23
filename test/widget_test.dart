@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:journal_app/main.dart';
+import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/services/journal_store.dart';
 import 'package:journal_app/editor/block_widget.dart';
 import 'package:journal_app/editor/entry_canvas.dart';
@@ -66,7 +67,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(Drawer), findsOneWidget);
       await tester.tap(
-        find.descendant(of: find.byType(Drawer), matching: find.text('Contents')),
+        find.descendant(
+          of: find.byType(Drawer),
+          matching: find.text('Contents'),
+        ),
       );
       await tester.pumpAndSettle();
       expect(find.byType(AppBar), findsOneWidget);
@@ -84,7 +88,10 @@ void main() {
       await tester.tap(find.byTooltip('Open page navigation'));
       await tester.pumpAndSettle();
       await tester.tap(
-        find.descendant(of: find.byType(Drawer), matching: find.text('Contents')),
+        find.descendant(
+          of: find.byType(Drawer),
+          matching: find.text('Contents'),
+        ),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Delete page'));
@@ -134,7 +141,9 @@ void main() {
     );
   });
 
-  testWidgets('M4 adds, edits, resizes and deletes text blocks', (tester) async {
+  testWidgets('M4 adds, edits, resizes and deletes text blocks', (
+    tester,
+  ) async {
     store = JournalStore();
     await store.init();
     for (final existing in store.entries.toList()) {
@@ -170,12 +179,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(store.entries.single.view?.panX, isNot(0));
 
-    await tester.tapAt(canvasCenter);
-    await tester.pump(const Duration(milliseconds: 50));
-    await tester.tapAt(canvasCenter);
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byTooltip('Fit page'), findsOneWidget);
-    await tester.tap(find.byTooltip('Fit page'));
+    expect(find.byTooltip('Reset view'), findsOneWidget);
+    await tester.tap(find.byTooltip('Reset view'));
     await tester.pump(const Duration(milliseconds: 300));
 
     final beforeX = store.entries.single.blocks.single.x;
@@ -199,8 +204,40 @@ void main() {
     expect(store.entries.single.blocks, isEmpty);
   });
 
-  testWidgets('entry viewport view state survives leaving and reopening',
-      (tester) async {
+  testWidgets('entry title is editable and loads near the top left', (
+    tester,
+  ) async {
+    store = JournalStore();
+    await store.init();
+    for (final existing in store.entries.toList()) {
+      store.deleteEntry(existing.id);
+    }
+    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    final title = find.text('Untitled page');
+    expect(tester.getTopLeft(title).dx, lessThan(400));
+    expect(tester.getTopLeft(title).dy, lessThan(300));
+
+    await tester.tap(find.byTooltip('Edit page'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Edit title'));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey('entry-title')),
+      'A new title',
+    );
+    await tester.pump();
+
+    expect(store.entries.single.title, 'A new title');
+    expect(find.byKey(const ValueKey('entry-title')), findsOneWidget);
+  });
+
+  testWidgets('entry viewport view state survives leaving and reopening', (
+    tester,
+  ) async {
     store = JournalStore();
     await store.init();
     for (final existing in store.entries.toList()) {
@@ -212,9 +249,9 @@ void main() {
     await tester.pumpAndSettle();
     final entry = store.entries.single;
 
-    await tester.tapAt(const Offset(200, 300));
-    await tester.pump(const Duration(milliseconds: 50));
-    await tester.tapAt(const Offset(200, 300));
+    store.updateEntry(entry.id, (entry) {
+      entry.view = ViewState(zoom: 2, panX: 12, panY: 18);
+    });
     await tester.pump(const Duration(milliseconds: 350));
     expect(store.entries.single.view?.zoom, 2);
 

@@ -16,23 +16,21 @@ class PageViewport extends StatefulWidget {
     this.interactive = true,
     this.minZoom = 0.5,
     this.maxZoom = 3.0,
+    this.canvasSize = pageSize,
+    this.initialFocus,
   });
 
   static const pageSize = Size(1000, 1414);
-    static const modelPageSize = Size(100, 141.4);
-    static const modelToRenderScale = 10.0;
+  static const modelPageSize = Size(100, 141.4);
+  static const modelToRenderScale = 10.0;
 
-    static Offset modelToRender(Offset point) =>
-      point * modelToRenderScale;
+  static Offset modelToRender(Offset point) => point * modelToRenderScale;
 
-    static Size modelSizeToRender(Size size) =>
-      size * modelToRenderScale;
+  static Size modelSizeToRender(Size size) => size * modelToRenderScale;
 
-    static Offset renderToModel(Offset point) =>
-      point / modelToRenderScale;
+  static Offset renderToModel(Offset point) => point / modelToRenderScale;
 
-    static Size renderSizeToModel(Size size) =>
-      size / modelToRenderScale;
+  static Size renderSizeToModel(Size size) => size / modelToRenderScale;
 
   final Widget child;
   final ViewState? initialView;
@@ -40,6 +38,8 @@ class PageViewport extends StatefulWidget {
   final bool interactive;
   final double minZoom;
   final double maxZoom;
+  final Size canvasSize;
+  final Offset? initialFocus;
 
   @override
   State<PageViewport> createState() => _PageViewportState();
@@ -58,8 +58,8 @@ class ViewportMath {
     final panY = value?.panY ?? 0;
     return ViewState(
       zoom: zoom.isFinite ? zoom.clamp(minZoom, maxZoom).toDouble() : 1,
-      panX: panX.isFinite ? panX.clamp(-100, 100).toDouble() : 0,
-      panY: panY.isFinite ? panY.clamp(-141.4, 141.4).toDouble() : 0,
+      panX: panX.isFinite ? panX.clamp(-10000, 10000).toDouble() : 0,
+      panY: panY.isFinite ? panY.clamp(-10000, 10000).toDouble() : 0,
     );
   }
 }
@@ -91,10 +91,7 @@ class _PageViewportState extends State<PageViewport> {
     if (!_ready || !widget.interactive) return;
     final scale = _controller.value.getMaxScaleOnAxis();
     if (_fitScale == 0) return;
-    final nextZoom = (scale / _fitScale).clamp(
-      widget.minZoom,
-      widget.maxZoom,
-    );
+    final nextZoom = (scale / _fitScale).clamp(widget.minZoom, widget.maxZoom);
     if ((nextZoom - _zoom).abs() > 0.001) {
       setState(() => _zoom = nextZoom.toDouble());
     }
@@ -107,24 +104,23 @@ class _PageViewportState extends State<PageViewport> {
     final scale = _controller.value.getMaxScaleOnAxis();
     final translation = _controller.value.getTranslation();
     final zoom = (scale / _fitScale).clamp(widget.minZoom, widget.maxZoom);
+    final baseTransform = _fitTransform(zoom.toDouble(), 0, 0);
+    final baseTranslation = baseTransform.getTranslation();
     widget.onViewChanged!(
       ViewState(
         zoom: zoom.toDouble(),
-        panX: translation.x / (_fitScale * zoom),
-        panY: translation.y / (_fitScale * zoom),
+        panX: (translation.x - baseTranslation.x) / (_fitScale * zoom),
+        panY: (translation.y - baseTranslation.y) / (_fitScale * zoom),
       ),
     );
   }
 
   void _setInitialTransform(Size size) {
     _viewportSize = size;
-    _fitScale = math.min(
-      size.width / PageViewport.pageSize.width,
-      size.height / PageViewport.pageSize.height,
-    );
+    _fitScale = size.width / PageViewport.pageSize.width;
     if (!widget.interactive) {
       _zoom = 1;
-      _controller.value = _fitTransform(1, 0, 0);
+      _controller.value = _resetTransform();
       _ready = true;
       return;
     }
@@ -134,16 +130,32 @@ class _PageViewportState extends State<PageViewport> {
       maxZoom: widget.maxZoom,
     );
     _zoom = view.zoom;
-    _controller.value = _fitTransform(view.zoom, view.panX, view.panY);
+    _controller.value = widget.initialView == null
+        ? _resetTransform(view.zoom)
+        : _fitTransform(view.zoom, view.panX, view.panY);
     _ready = true;
+  }
+
+  Matrix4 _resetTransform([double zoom = 1]) {
+    final scale = _fitScale * zoom;
+    final focus = widget.initialFocus;
+    if (focus == null) return _fitTransform(zoom, 0, 0);
+    return Matrix4.identity()
+      ..translateByDouble(-focus.dx * scale, 16 - focus.dy * scale, 0, 1)
+      ..scaleByDouble(scale, scale, scale, 1);
   }
 
   Matrix4 _fitTransform(double zoom, double panX, double panY) {
     final scale = _fitScale * zoom;
-    final centeredX = (_viewportSize.width - PageViewport.pageSize.width * scale) / 2;
-    final centeredY = (_viewportSize.height - PageViewport.pageSize.height * scale) / 2;
+    final focus = widget.initialFocus;
+    final baseX = focus == null
+        ? (_viewportSize.width - widget.canvasSize.width * scale) / 2
+        : -focus.dx * scale;
+    final baseY = focus == null
+        ? (_viewportSize.height - widget.canvasSize.height * scale) / 2
+        : 16 - focus.dy * scale;
     return Matrix4.identity()
-      ..translateByDouble(centeredX + panX * scale, centeredY + panY * scale, 0, 1)
+      ..translateByDouble(baseX + panX * scale, baseY + panY * scale, 0, 1)
       ..scaleByDouble(scale, scale, scale, 1);
   }
 
@@ -151,7 +163,8 @@ class _PageViewportState extends State<PageViewport> {
     final nextZoom = zoom.clamp(widget.minZoom, widget.maxZoom).toDouble();
     final currentScale = _controller.value.getMaxScaleOnAxis();
     final nextScale = _fitScale * nextZoom;
-    final focal = focalPoint ?? Offset(_viewportSize.width / 2, _viewportSize.height / 2);
+    final focal =
+        focalPoint ?? Offset(_viewportSize.width / 2, _viewportSize.height / 2);
     final matrix = _controller.value.clone();
     final before = matrix.clone()..invert();
     final contentPoint = MatrixUtils.transformPoint(before, focal);
@@ -168,9 +181,9 @@ class _PageViewportState extends State<PageViewport> {
     _controller.value = matrix;
   }
 
-  void _fit() => _controller.value = _fitTransform(1, 0, 0);
+  void _fit() => _controller.value = _resetTransform();
 
-  void _toggleDoubleTap() => _setZoom(_zoom == 1 ? 2 : 1);
+  void _resetView() => _controller.value = _resetTransform();
 
   void _handlePointerSignal(PointerSignalEvent event) {
     if (!widget.interactive || event is! PointerScrollEvent) return;
@@ -204,7 +217,7 @@ class _PageViewportState extends State<PageViewport> {
             fit: StackFit.expand,
             children: [
               GestureDetector(
-                onDoubleTap: widget.interactive ? _toggleDoubleTap : null,
+                onDoubleTap: widget.interactive ? _resetView : null,
                 child: InteractiveViewer(
                   transformationController: _controller,
                   minScale: widget.minZoom,
@@ -214,12 +227,26 @@ class _PageViewportState extends State<PageViewport> {
                   scaleEnabled: widget.interactive,
                   boundaryMargin: const EdgeInsets.all(double.infinity),
                   child: SizedBox(
-                    width: PageViewport.pageSize.width,
-                    height: PageViewport.pageSize.height,
+                    width: widget.canvasSize.width,
+                    height: widget.canvasSize.height,
                     child: widget.child,
                   ),
                 ),
               ),
+              if (widget.interactive)
+                Positioned(
+                  left: 12,
+                  bottom: 12,
+                  child: IconButton(
+                    tooltip: 'Reset view',
+                    color: Colors.white,
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black.withValues(alpha: 0.55),
+                    ),
+                    onPressed: _resetView,
+                    icon: const Icon(Icons.center_focus_strong),
+                  ),
+                ),
               if (widget.interactive && _zoom > 1.001)
                 Positioned(
                   right: 16,

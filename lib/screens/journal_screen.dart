@@ -93,6 +93,10 @@ class _JournalScreenState extends State<JournalScreen> {
         entry.id,
         (entry) => entry.blocks = blocks,
       ),
+      onTitleChanged: (title) => widget.store.updateEntry(
+        entry.id,
+        (entry) => entry.title = title,
+      ),
       onEditingChanged: (editing) => setState(() => _editingEntry = editing),
       onOpenNavigation: _openNavigation,
       onContents: _goToToc,

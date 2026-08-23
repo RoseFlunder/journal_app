@@ -5,8 +5,9 @@ enum BlockType { text, image }
 
 /// A piece of freely positioned content on a journal page.
 ///
-/// Position and size are stored in *page units* on a virtual page of
-/// aspect 100 x 141.4 (A4-ish), independent of screen size.
+/// Position and size are stored in logical workspace units, independent of
+/// screen size. Coordinates may be negative or extend beyond the initial
+/// workspace area.
 class ContentBlock {
   ContentBlock({
     required this.id,
@@ -17,6 +18,7 @@ class ContentBlock {
     this.y = 0,
     this.w = 0,
     this.h = 0,
+    this.rotation = 0,
   });
 
   final String id;
@@ -32,32 +34,35 @@ class ContentBlock {
   double y;
   double w;
   double h;
+  double rotation;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'type': type.name,
-        'text': text,
-        'assetId': assetId,
-        'x': x,
-        'y': y,
-        'w': w,
-        'h': h,
-      };
+    'id': id,
+    'type': type.name,
+    'text': text,
+    'assetId': assetId,
+    'x': x,
+    'y': y,
+    'w': w,
+    'h': h,
+    'rotation': rotation,
+  };
 
   factory ContentBlock.fromJson(Map<String, dynamic> json) => ContentBlock(
-        id: json['id'] as String,
-        type: BlockType.values.byName(json['type'] as String? ?? 'text'),
-        text: json['text'] as String? ?? '',
-        assetId: json['assetId'] as String?,
-        x: (json['x'] as num?)?.toDouble() ?? 0,
-        y: (json['y'] as num?)?.toDouble() ?? 0,
-        w: (json['w'] as num?)?.toDouble() ?? 0,
-        h: (json['h'] as num?)?.toDouble() ?? 0,
-      );
+    id: json['id'] as String,
+    type: BlockType.values.byName(json['type'] as String? ?? 'text'),
+    text: json['text'] as String? ?? '',
+    assetId: json['assetId'] as String?,
+    x: (json['x'] as num?)?.toDouble() ?? 0,
+    y: (json['y'] as num?)?.toDouble() ?? 0,
+    w: (json['w'] as num?)?.toDouble() ?? 0,
+    h: (json['h'] as num?)?.toDouble() ?? 0,
+    rotation: (json['rotation'] as num?)?.toDouble() ?? 0,
+  );
 }
 
-/// Per-page zoom & pan state. `zoom == 1` means fit-to-screen.
-/// Pan offsets are in page units.
+/// Per-page camera state. `zoom == 1` means the default readable scale.
+/// Pan offsets are world-space units and are intentionally not page-bounded.
 class ViewState {
   ViewState({this.zoom = 1, this.panX = 0, this.panY = 0});
 
@@ -65,14 +70,13 @@ class ViewState {
   double panX;
   double panY;
 
-  Map<String, dynamic> toJson() =>
-      {'zoom': zoom, 'panX': panX, 'panY': panY};
+  Map<String, dynamic> toJson() => {'zoom': zoom, 'panX': panX, 'panY': panY};
 
   factory ViewState.fromJson(Map<String, dynamic> json) => ViewState(
-        zoom: (json['zoom'] as num?)?.toDouble() ?? 1,
-        panX: (json['panX'] as num?)?.toDouble() ?? 0,
-        panY: (json['panY'] as num?)?.toDouble() ?? 0,
-      );
+    zoom: (json['zoom'] as num?)?.toDouble() ?? 1,
+    panX: (json['panX'] as num?)?.toDouble() ?? 0,
+    panY: (json['panY'] as num?)?.toDouble() ?? 0,
+  );
 }
 
 /// One journal page.
@@ -85,9 +89,9 @@ class Entry {
     List<ContentBlock>? blocks,
     this.music,
     this.view,
-  })  : title = title ?? '',
-        blocks = blocks ?? [],
-        modifiedAt = modifiedAt ?? createdAt;
+  }) : title = title ?? '',
+       blocks = blocks ?? [],
+       modifiedAt = modifiedAt ?? createdAt;
 
   static const _uuid = Uuid();
 
@@ -109,14 +113,14 @@ class Entry {
   ViewState? view;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'createdAt': createdAt.toIso8601String(),
-        'modifiedAt': modifiedAt.toIso8601String(),
-        'blocks': blocks.map((b) => b.toJson()).toList(),
-        'music': music,
-        'view': view?.toJson(),
-      };
+    'id': id,
+    'title': title,
+    'createdAt': createdAt.toIso8601String(),
+    'modifiedAt': modifiedAt.toIso8601String(),
+    'blocks': blocks.map((b) => b.toJson()).toList(),
+    'music': music,
+    'view': view?.toJson(),
+  };
 
   factory Entry.fromJson(Map<String, dynamic> json) {
     final createdAt = DateTime.parse(json['createdAt'] as String);

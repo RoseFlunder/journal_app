@@ -16,6 +16,8 @@ class EntryCanvas extends StatelessWidget {
     required this.onSelect,
     required this.onEditText,
     required this.onChanged,
+    this.workspaceSize = PageViewport.pageSize,
+    this.worldOrigin = Offset.zero,
   });
 
   final List<ContentBlock> blocks;
@@ -25,6 +27,8 @@ class EntryCanvas extends StatelessWidget {
   final ValueChanged<String?> onSelect;
   final ValueChanged<String> onEditText;
   final ValueChanged<ContentBlock> onChanged;
+  final Size workspaceSize;
+  final Offset worldOrigin;
 
   static const minWidth = 16.0;
   static const minHeight = 10.0;
@@ -33,74 +37,76 @@ class EntryCanvas extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final scale = math.min(
-          constraints.maxWidth / PageViewport.modelPageSize.width,
-          constraints.maxHeight / PageViewport.modelPageSize.height,
-        );
-        final pageSize = PageViewport.modelPageSize * scale;
-        final left = (constraints.maxWidth - pageSize.width) / 2;
-        final top = (constraints.maxHeight - pageSize.height) / 2;
+        final scale = PageViewport.modelToRenderScale;
 
-        return Stack(
-          children: [
-            Positioned(
-              left: left,
-              top: top,
-              width: pageSize.width,
-              height: pageSize.height,
-              child: Listener(
-                behavior: HitTestBehavior.translucent,
-                onPointerDown: editing
-                    ? (event) {
-                        final point = event.localPosition;
-                        final hitsBlock = blocks.any(
-                          (block) => Rect.fromLTWH(
-                            block.x * scale,
-                            block.y * scale,
-                            math.max(minWidth, block.w) * scale,
-                            math.max(minHeight, block.h) * scale,
-                          ).contains(point),
-                        );
-                        if (!hitsBlock) onSelect(null);
-                      }
-                    : null,
-                child: Stack(
-                  children: [
-                  for (final block in blocks)
-                    Positioned(
-                      left: block.x * scale,
-                      top: block.y * scale,
-                      width: math.max(minWidth, block.w) * scale,
-                      height: math.max(minHeight, block.h) * scale,
-                      child: BlockWidget(
-                        block: block,
-                        selected: selectedId == block.id,
-                        editing: editing,
-                        textEditing: textEditingId == block.id,
-                        onTap: () => onSelect(block.id),
-                        onEditText: () => onEditText(block.id),
-                        onMove: (delta) => onChanged(
-                          block
-                            ..x = (block.x + delta.dx / scale)
-                                .clamp(0, PageViewport.modelPageSize.width - block.w)
-                            ..y = (block.y + delta.dy / scale)
-                                .clamp(0, PageViewport.modelPageSize.height - block.h),
+        return SizedBox(
+          width: workspaceSize.width,
+          height: workspaceSize.height,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerDown: editing
+                      ? (event) {
+                          final point = event.localPosition;
+                          final hitsBlock = blocks.any(
+                            (block) => Rect.fromLTWH(
+                              (block.x + worldOrigin.dx) * scale,
+                              (block.y + worldOrigin.dy) * scale,
+                              math.max(minWidth, block.w) * scale,
+                              math.max(minHeight, block.h) * scale,
+                            ).contains(point),
+                          );
+                          if (!hitsBlock) onSelect(null);
+                        }
+                      : null,
+                  child: Stack(
+                    children: [
+                      for (final block in blocks)
+                        Positioned(
+                          left: (block.x + worldOrigin.dx) * scale,
+                          top: (block.y + worldOrigin.dy) * scale,
+                          width: math.max(minWidth, block.w) * scale,
+                          height: math.max(minHeight, block.h) * scale,
+                          child: Transform.rotate(
+                            angle: block.rotation,
+                            child: BlockWidget(
+                              block: block,
+                              selected: selectedId == block.id,
+                              editing: editing,
+                              textEditing: textEditingId == block.id,
+                              onTap: () => onSelect(block.id),
+                              onEditText: () => onEditText(block.id),
+                              onMove: (delta) => onChanged(
+                                block
+                                  ..x = block.x + delta.dx / scale
+                                  ..y = block.y + delta.dy / scale,
+                              ),
+                              onResize: (delta) => onChanged(
+                                block
+                                  ..w = math.max(
+                                    minWidth,
+                                    block.w + delta.dx / scale,
+                                  )
+                                  ..h = math.max(
+                                    minHeight,
+                                    block.h + delta.dy / scale,
+                                  ),
+                              ),
+                              onRotate: (delta) =>
+                                  onChanged(block..rotation += delta),
+                              onTextChanged: (text) =>
+                                  onChanged(block..text = text),
+                            ),
+                          ),
                         ),
-                        onResize: (delta) => onChanged(
-                          block
-                            ..w = (block.w + delta.dx / scale)
-                                .clamp(minWidth, PageViewport.modelPageSize.width - block.x)
-                            ..h = (block.h + delta.dy / scale)
-                                .clamp(minHeight, PageViewport.modelPageSize.height - block.y),
-                        ),
-                        onTextChanged: (text) => onChanged(block..text = text),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );

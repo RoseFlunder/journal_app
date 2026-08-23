@@ -8,6 +8,12 @@ import 'package:journal_app/services/journal_store.dart';
 
 void main() {
   group('Entry JSON', () {
+    test('defaults rotation for older saved blocks', () {
+      final block = ContentBlock.fromJson({'id': 'legacy', 'type': 'text'});
+
+      expect(block.rotation, 0);
+    });
+
     test('round-trips all fields', () {
       final entry = Entry(
         id: 'abc',
@@ -22,6 +28,7 @@ void main() {
             y: 2,
             w: 30,
             h: 10,
+            rotation: 0.35,
           ),
         ],
         music: 'asset1',
@@ -40,6 +47,7 @@ void main() {
       expect(block.type, BlockType.text);
       expect(block.text, 'hi');
       expect(block.w, 30);
+      expect(block.rotation, closeTo(0.35, 0.0001));
     });
 
     test('tolerates missing optional fields', () {
@@ -51,6 +59,7 @@ void main() {
       expect(decoded.blocks, isEmpty);
       expect(decoded.music, isNull);
       expect(decoded.view, isNull);
+      expect(decoded.blocks, isEmpty);
     });
   });
 
@@ -88,8 +97,12 @@ void main() {
       store.updateEntry(b.id, (e) => e.title = 'Second');
       expect(store.entries[1].title, 'Second');
 
-      final assetId =
-          await store.addAsset(b.id, AssetKind.image, 'image/jpeg', [1, 2, 3]);
+      final assetId = await store.addAsset(
+        b.id,
+        AssetKind.image,
+        'image/jpeg',
+        [1, 2, 3],
+      );
       expect(store.getAsset(assetId), Uint8List.fromList([1, 2, 3]));
       expect(store.getAssetMime(assetId), 'image/jpeg');
 
