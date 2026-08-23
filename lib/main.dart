@@ -44,7 +44,7 @@ class _CozyBloomBootstrapState extends State<CozyBloomBootstrap> {
       final store = JournalStore();
       await store.init();
       final elapsed = DateTime.now().difference(_startedAt!);
-      const minimum = Duration(milliseconds: 800);
+      const minimum = Duration(seconds: 2);
       if (elapsed < minimum) await Future<void>.delayed(minimum - elapsed);
       if (!mounted) return;
       setState(() => _store = store);

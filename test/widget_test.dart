@@ -36,7 +36,7 @@ void main() {
   });
 
   testWidgets(
-    'create a page, navigate with the drawer, find it in TOC, delete it',
+    'create a page, navigate with home/back controls, find it in TOC, delete it',
     (tester) async {
       store = JournalStore();
       await store.init();
@@ -49,8 +49,31 @@ void main() {
       );
 
       // Starts on the (empty) table of contents.
-      expect(find.text('Journal'), findsOneWidget);
+      expect(find.text('Cozy Bloom Journal'), findsNWidgets(2));
       expect(find.text('This journal is empty.'), findsOneWidget);
+      expect(find.byTooltip('Home'), findsNothing);
+      expect(
+        tester
+            .widget<IconButton>(
+              find.ancestor(
+                of: find.byIcon(Icons.chevron_left),
+                matching: find.byType(IconButton),
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<IconButton>(
+              find.ancestor(
+                of: find.byIcon(Icons.chevron_right),
+                matching: find.byType(IconButton),
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
 
       // Create the first page from the FAB.
       await tester.tap(find.byType(FloatingActionButton));
@@ -60,30 +83,45 @@ void main() {
       expect(find.byType(AppBar), findsNothing);
       expect(find.text('Untitled page'), findsOneWidget);
       expect(find.byTooltip('Edit title'), findsNothing);
+      expect(find.byTooltip('Home'), findsOneWidget);
       expect(
-        find.byTooltip('Previous page (PageUp / ←)'),
-        findsNothing,
+        tester
+            .widget<IconButton>(
+              find.ancestor(
+                of: find.byIcon(Icons.chevron_left),
+                matching: find.byType(IconButton),
+              ),
+            )
+            .onPressed,
+        isNotNull,
       );
       expect(
-        find.byTooltip('Next page (PageDown / →)'),
-        findsNothing,
+        tester
+            .widget<IconButton>(
+              find.ancestor(
+                of: find.byIcon(Icons.chevron_right),
+                matching: find.byType(IconButton),
+              ),
+            )
+            .onPressed,
+        isNull,
       );
+      expect(
+        tester
+            .getRect(find.text('Untitled page'))
+            .overlaps(tester.getRect(find.byTooltip('Home'))),
+        isFalse,
+      );
+      expect(find.byTooltip('Previous page (PageUp / ←)'), findsNothing);
+      expect(find.byTooltip('Next page (PageDown / →)'), findsNothing);
 
       // Horizontal drags belong to the entry viewport and do not change pages.
       await tester.drag(find.byType(PageView), const Offset(800, 0));
       await tester.pumpAndSettle();
       expect(find.byType(AppBar), findsNothing);
 
-      // Open navigation and return to the table of contents.
-      await tester.tap(find.byTooltip('Open page navigation'));
-      await tester.pumpAndSettle();
-      expect(find.byType(Drawer), findsOneWidget);
-      await tester.tap(
-        find.descendant(
-          of: find.byType(Drawer),
-          matching: find.text('Contents'),
-        ),
-      );
+      // Home returns to the landing page.
+      await tester.tap(find.byTooltip('Home'));
       await tester.pumpAndSettle();
       expect(find.byType(AppBar), findsOneWidget);
       expect(find.text('This journal is empty.'), findsNothing);
@@ -96,15 +134,8 @@ void main() {
       expect(find.byType(AppBar), findsNothing);
       expect(find.text('Untitled page'), findsOneWidget);
 
-      // Open navigation from the entry page and return to the TOC.
-      await tester.tap(find.byTooltip('Open page navigation'));
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.descendant(
-          of: find.byType(Drawer),
-          matching: find.text('Contents'),
-        ),
-      );
+      // System back returns to the landing page.
+      await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Delete page'));
       await tester.pumpAndSettle();
@@ -116,6 +147,96 @@ void main() {
       expect(store.entries, isEmpty);
     },
   );
+
+  testWidgets('edge navigation controls follow page boundaries', (
+    tester,
+  ) async {
+    store = JournalStore();
+    await store.init();
+    for (final existing in store.entries.toList()) {
+      await store.deleteEntry(existing.id);
+    }
+    await store.addEntry();
+    await store.addEntry();
+    await store.addEntry();
+    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<IconButton>(
+              find.ancestor(
+                of: find.byIcon(Icons.chevron_left),
+                matching: find.byType(IconButton),
+              ),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<IconButton>(
+              find.ancestor(
+                of: find.byIcon(Icons.chevron_right),
+                matching: find.byType(IconButton),
+              ),
+          )
+          .onPressed,
+      isNotNull,
+    );
+
+    await tester.tap(find.byTooltip('Next page'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<IconButton>(
+              find.ancestor(
+                of: find.byIcon(Icons.chevron_left),
+                matching: find.byType(IconButton),
+              ),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    expect(
+      tester
+          .widget<IconButton>(
+              find.ancestor(
+                of: find.byIcon(Icons.chevron_right),
+                matching: find.byType(IconButton),
+              ),
+          )
+          .onPressed,
+      isNotNull,
+    );
+
+    await tester.tap(find.byTooltip('Next page'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Next page'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<IconButton>(
+              find.ancestor(
+                of: find.byIcon(Icons.chevron_left),
+                matching: find.byType(IconButton),
+              ),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    expect(
+      tester
+          .widget<IconButton>(
+              find.ancestor(
+                of: find.byIcon(Icons.chevron_right),
+                matching: find.byType(IconButton),
+              ),
+          )
+          .onPressed,
+      isNull,
+    );
+  });
 
   testWidgets('M2 paper theme renders on the contents and entry pages', (
     tester,
@@ -135,7 +256,18 @@ void main() {
     );
     final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
     expect(app.theme!.colorScheme.primary, PaperPage.ink);
-    expect(tester.widget<Text>(find.text('Journal')).style?.fontFamily, 'Lora');
+    expect(
+      tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byType(AppBar),
+              matching: find.text('Cozy Bloom Journal'),
+            ),
+          )
+          .style
+          ?.fontFamily,
+      'Lora',
+    );
 
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
@@ -425,12 +557,16 @@ void main() {
     expect(store.entries.single.title, 'A new title');
     expect(find.byKey(const ValueKey('entry-title')), findsOneWidget);
     expect(
-      tester.widget<TextField>(find.byKey(const ValueKey('entry-title'))).style
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('entry-title')))
+          .style
           ?.fontSize,
       28,
     );
     expect(
-      tester.widget<TextField>(find.byKey(const ValueKey('entry-title'))).style
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('entry-title')))
+          .style
           ?.fontWeight,
       FontWeight.bold,
     );
@@ -472,11 +608,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 350));
     expect(store.entries.single.view?.zoom, 2);
 
-    await tester.tap(find.byTooltip('Open page navigation'));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.descendant(of: find.byType(Drawer), matching: find.text('Contents')),
-    );
+    await tester.tap(find.byTooltip('Home'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Untitled page'));
     await tester.pumpAndSettle();

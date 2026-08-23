@@ -58,7 +58,7 @@ class ContentsPage extends StatelessWidget {
           child: Image.asset('assets/branding/cozy_bloom_icon.png'),
         ),
         title: Text(
-          'Journal',
+          'Cozy Bloom Journal',
           style: Theme.of(context).textTheme.headlineSmall,
         ),
         actions: [

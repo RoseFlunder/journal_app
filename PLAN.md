@@ -102,7 +102,7 @@ lib/
     audio_service.dart          // single AudioPlayer wrapper, loop mode
     image_source.dart           // pick, validate, downscale image bytes
   screens/
-    journal_screen.dart         // non-scrollable PageView + drawer over [TOC, ...pages]
+    journal_screen.dart         // non-scrollable PageView + home/edge navigation over [TOC, ...pages]
     contents_page.dart          // paper-styled TOC: title + date, tap -> jump
     entry_page.dart             // renders one Entry as a paper page
   editor/
@@ -177,11 +177,11 @@ across the page:
   `PageController` remains the single path for animated page changes.
 2. `ContentsPage` lists entries (title + `createdAt`), tap →
    `pageController.animateToPage(index + 1)`.
-3. Each `EntryPage` has a top navigation button that opens a dismissible drawer
-  listing pages and highlighting the current entry. Selecting an entry or
-  Contents closes the drawer before navigating.
+3. Entry pages expose a Home button that returns to Contents. Journal-level
+  Previous and Next controls sit at the page edges and are disabled at the
+  corresponding boundaries.
 4. Each `EntryPage` has an edit affordance (pencil) toggling edit mode.
-5. "New page" (FAB, TOC button, or drawer action) appends an entry, saves,
+5. "New page" (FAB or TOC button) appends an entry, saves,
   and navigates there.
 6. Keyboard PageUp/PageDown, Left/Right, and Home remain available for fast
   navigation. Previous/Next controls are explicit and disabled at boundaries.
@@ -252,8 +252,7 @@ across the page:
    −/+/fit toolbar; default fit-to-screen; per-page zoom/pan persisted in
    `Entry.view`. TOC stays fixed.
 8. **Page navigation:** outer page swiping is disabled on Android, Windows,
-  and Web. Entry pages expose a top navigation button that opens an on-demand
-  drawer for direct page selection; Contents and keyboard/previous/next
+  and Web. Entry pages expose a Home button; edge and keyboard/previous/next
   navigation remain available.
 9. **Editing gestures:** tapping outside a text block exits its text field;
   dragging the selected border moves the block. The non-scrollable outer
