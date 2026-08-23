@@ -1,14 +1,9 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/entry.dart';
-
-typedef BlockResizeUpdate = void Function(
-  Offset globalPosition,
-  Offset globalDelta,
-);
 
 class BlockWidget extends StatefulWidget {
   const BlockWidget({
@@ -22,7 +17,6 @@ class BlockWidget extends StatefulWidget {
     required this.onMoveStart,
     required this.onMoveUpdate,
     required this.onMoveEnd,
-    required this.onResize,
     required this.onRotate,
     required this.onTextChanged,
     this.preserveAspectRatio = false,
@@ -40,7 +34,6 @@ class BlockWidget extends StatefulWidget {
   final ValueChanged<Offset> onMoveStart;
   final ValueChanged<Offset> onMoveUpdate;
   final VoidCallback onMoveEnd;
-  final BlockResizeUpdate onResize;
   final ValueChanged<double> onRotate;
   final ValueChanged<String> onTextChanged;
   final bool preserveAspectRatio;
@@ -54,7 +47,7 @@ class BlockWidget extends StatefulWidget {
 
 class _BlockWidgetState extends State<BlockWidget> {
   late final TextEditingController _controller;
-  bool _resizing = false;
+  late final FocusNode _textFocusNode;
   bool _movingEdge = false;
   bool _movingBody = false;
   bool _rotating = false;
@@ -67,6 +60,8 @@ class _BlockWidgetState extends State<BlockWidget> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.block.text);
+    _textFocusNode = FocusNode();
+    if (widget.textEditing) _scheduleTextFocus();
   }
 
   @override
@@ -79,11 +74,17 @@ class _BlockWidgetState extends State<BlockWidget> {
         selection: TextSelection.collapsed(offset: widget.block.text.length),
       );
     }
+    if (!oldWidget.textEditing && widget.textEditing) {
+      _scheduleTextFocus();
+    } else if (oldWidget.textEditing && !widget.textEditing) {
+      _textFocusNode.unfocus();
+    }
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _textFocusNode.dispose();
     super.dispose();
   }
 
@@ -104,9 +105,11 @@ class _BlockWidgetState extends State<BlockWidget> {
         ? TextField(
             key: ValueKey('block-text-${widget.block.id}'),
             controller: _controller,
-            autofocus: true,
+            focusNode: _textFocusNode,
             maxLines: null,
             expands: true,
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
             onChanged: widget.onTextChanged,
             style: _textStyle(context),
             decoration: const InputDecoration(
@@ -133,30 +136,28 @@ class _BlockWidgetState extends State<BlockWidget> {
       onPointerCancel: widget.editing ? _handlePointerUp : null,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: widget.editing ? widget.onTap : widget.onOpenImage,
-        onDoubleTap: widget.editing ? widget.onEditText : null,
+        onTap: widget.editing
+            ? () {
+                widget.onTap();
+                if (widget.block.type == BlockType.text) {
+                  widget.onEditText();
+                }
+              }
+            : widget.onOpenImage,
         onPanDown: widget.editing
             ? (details) => _panDownGlobalPosition = details.globalPosition
             : null,
         onPanStart: widget.editing
             ? (details) {
                 final size = context.size ?? Size.zero;
-                final inResizeCorner =
-                    details.localPosition.dx >= size.width - 56 &&
-                    details.localPosition.dy >= size.height - 56;
-                _resizing = inResizeCorner;
                 _movingEdge =
-                    !inResizeCorner &&
-                    (details.localPosition.dx <= 20 ||
-                        details.localPosition.dy <= 20 ||
-                        details.localPosition.dx >= size.width - 20 ||
-                        details.localPosition.dy >= size.height - 20);
+                    details.localPosition.dx <= 20 ||
+                    details.localPosition.dy <= 20 ||
+                    details.localPosition.dx >= size.width - 20 ||
+                    details.localPosition.dy >= size.height - 20;
                 widget.onTap();
                 _movingBody =
-                    _moveEdgePointer == null &&
-                    !_resizing &&
-                    !_movingEdge &&
-                    !_rotating;
+                    _moveEdgePointer == null && !_movingEdge && !_rotating;
                 if (_movingBody) {
                   widget.onMoveStart(
                     _panDownGlobalPosition ?? details.globalPosition,
@@ -168,9 +169,7 @@ class _BlockWidgetState extends State<BlockWidget> {
         onPanUpdate: widget.editing
             ? (details) {
                 if (_rotating) return;
-                if (_resizing) {
-                  widget.onResize(details.globalPosition, details.delta);
-                } else if (_movingBody) {
+                if (_movingBody) {
                   widget.onMoveUpdate(details.globalPosition);
                 }
               }
@@ -230,34 +229,6 @@ class _BlockWidgetState extends State<BlockWidget> {
                   height: 20,
                   child: _buildMoveEdge(),
                 ),
-              if (widget.editing && widget.selected)
-                Positioned(
-                  right: -12,
-                  bottom: -12,
-                  child: Listener(
-                    behavior: HitTestBehavior.opaque,
-                    onPointerMove: (event) =>
-                        widget.onResize(event.position, event.delta),
-                    child: Container(
-                      key: ValueKey('resize-${widget.block.id}'),
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFFC97068),
-                          width: 3,
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.open_in_full,
-                        size: 20,
-                        color: Color(0xFFC97068),
-                      ),
-                    ),
-                  ),
-                ),
               if (widget.editing &&
                   widget.selected &&
                   (widget.block.type == BlockType.text || _isVisualBlock))
@@ -303,6 +274,14 @@ class _BlockWidgetState extends State<BlockWidget> {
         fontStyle: widget.block.italic ? FontStyle.italic : FontStyle.normal,
       );
 
+  void _scheduleTextFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.editing || !widget.textEditing) return;
+      _textFocusNode.requestFocus();
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+    });
+  }
+
   void _handlePointerDown(PointerDownEvent event) {
     _pointers[event.pointer] = event.localPosition;
     if (_pointers.length == 2 &&
@@ -313,7 +292,6 @@ class _BlockWidgetState extends State<BlockWidget> {
       }
       _rotating = true;
       _lastPointerAngle = _pointerAngle;
-      _resizing = false;
       _movingEdge = false;
       _movingBody = false;
       _moveEdgePointer = null;
@@ -371,7 +349,6 @@ class _BlockWidgetState extends State<BlockWidget> {
 
   void _finishBodyGesture() {
     if (_movingBody) widget.onMoveEnd();
-    _resizing = false;
     _movingEdge = false;
     _movingBody = false;
     _panDownGlobalPosition = null;

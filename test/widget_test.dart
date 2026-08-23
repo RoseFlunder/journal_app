@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -323,11 +324,24 @@ void main() {
     expect(find.byType(EntryCanvas), findsOneWidget);
     expect(find.byType(BlockWidget), findsOneWidget);
     expect(find.byKey(const ValueKey('entry-title')), findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(2));
+    final blockId = store.entries.single.blocks.single.id;
+    expect(store.entries.single.blocks.single.w, 30);
+    expect(store.entries.single.blocks.single.h, 11);
+    expect(store.entries.single.blocks.single.fontSize, 26);
+    expect(find.byKey(ValueKey('block-text-$blockId')), findsOneWidget);
+    expect(tester.testTextInput.isVisible, isTrue);
 
     await tester.tap(find.byTooltip('Edit text'));
     await tester.pump();
-    expect(find.byType(TextField), findsNWidgets(2));
-    final blockId = store.entries.single.blocks.single.id;
+    expect(find.byKey(ValueKey('block-text-$blockId')), findsNothing);
+    expect(tester.testTextInput.isVisible, isFalse);
+
+    await tester.tap(find.byTooltip('Edit text'));
+    await tester.pump();
+    expect(find.byKey(ValueKey('block-text-$blockId')), findsOneWidget);
+    expect(tester.testTextInput.isVisible, isTrue);
+
     await tester.enterText(
       find.byKey(ValueKey('block-text-$blockId')),
       'A first note',
@@ -359,7 +373,7 @@ void main() {
     await tester.pump();
     expect(store.entries.single.blocks.single.bold, isTrue);
     expect(store.entries.single.blocks.single.italic, isTrue);
-    expect(store.entries.single.blocks.single.fontSize, 23);
+    expect(store.entries.single.blocks.single.fontSize, 28);
 
     await tester.tap(find.byKey(const ValueKey('entry-title')));
     await tester.pump();
@@ -386,6 +400,15 @@ void main() {
     expect(find.byKey(ValueKey('block-text-$blockId')), findsNothing);
     expect(find.byKey(const ValueKey('entry-title')), findsOneWidget);
     expect(find.byType(BlockWidget), findsOneWidget);
+
+    await tester.tap(find.text('A first note'));
+    await tester.pump();
+    expect(find.byKey(ValueKey('block-text-$blockId')), findsOneWidget);
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    await tester.tap(find.byTooltip('Edit text'));
+    await tester.pump();
+    expect(find.byKey(ValueKey('block-text-$blockId')), findsNothing);
 
     final canvasCenter = tester.getCenter(find.byType(EntryCanvas));
     await tester.dragFrom(canvasCenter, const Offset(40, 0));
@@ -450,7 +473,6 @@ void main() {
               onMoveStart: (_) {},
               onMoveUpdate: (_) {},
               onMoveEnd: () {},
-              onResize: (_, _) {},
               onRotate: (delta) => rotation += delta,
               onTextChanged: (_) {},
             ),
@@ -496,7 +518,6 @@ void main() {
                   onMoveStart: (_) {},
                   onMoveUpdate: (_) {},
                   onMoveEnd: () {},
-                  onResize: (_, _) {},
                   onRotate: (_) {},
                   onTextChanged: (_) {},
                 ),
@@ -548,7 +569,6 @@ void main() {
               onMoveStart: (_) {},
               onMoveUpdate: (_) {},
               onMoveEnd: () {},
-              onResize: (_, _) {},
               onRotate: (_) {},
               onTextChanged: (_) {},
             ),
@@ -820,6 +840,256 @@ void main() {
     );
     await gesture.up();
   });
+
+  testWidgets('resize handle tracks multi-event touch at every canvas scale', (
+    tester,
+  ) async {
+    Future<void> verifyAtScale(double transformScale) async {
+      final block = ContentBlock(
+        id: 'scaled-resize-$transformScale',
+        type: BlockType.text,
+        text: 'Resize me',
+        x: 4,
+        y: 4,
+        w: 30,
+        h: 20,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox(
+            width: 800,
+            height: 600,
+            child: Transform.scale(
+              alignment: Alignment.topLeft,
+              scale: transformScale,
+              child: StatefulBuilder(
+                builder: (context, setState) => EntryCanvas(
+                  key: ValueKey('resize-$transformScale'),
+                  workspaceSize: const Size(400, 300),
+                  blocks: [block],
+                  editing: true,
+                  selectedId: block.id,
+                  textEditingId: null,
+                  onSelect: (_) {},
+                  onEditText: (_) {},
+                  onChanged: (_) => setState(() {}),
+                  imageBytes: (_) => null,
+                  onOpenImage: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final resizeHandle = find.byKey(ValueKey('resize-${block.id}'));
+      final beforeHandleCenter = tester.getCenter(resizeHandle);
+      final beforeSize = Size(block.w, block.h);
+      final gesture = await tester.startGesture(beforeHandleCenter);
+
+      await gesture.moveBy(const Offset(18, 12));
+      await tester.pump();
+      expect(
+        tester.getCenter(resizeHandle) - beforeHandleCenter,
+        offsetMoreOrLessEquals(const Offset(18, 12), epsilon: 0.01),
+      );
+
+      await gesture.moveBy(const Offset(22, -4));
+      await tester.pump();
+      expect(
+        tester.getCenter(resizeHandle) - beforeHandleCenter,
+        offsetMoreOrLessEquals(const Offset(40, 8), epsilon: 0.01),
+      );
+      expect(
+        Offset(block.w - beforeSize.width, block.h - beforeSize.height),
+        offsetMoreOrLessEquals(
+          Offset(
+            40 / (PageViewport.modelToRenderScale * transformScale),
+            8 / (PageViewport.modelToRenderScale * transformScale),
+          ),
+          epsilon: 0.01,
+        ),
+      );
+      await gesture.up();
+    }
+
+    await verifyAtScale(0.5);
+    await verifyAtScale(1.5);
+  });
+
+  testWidgets('viewport resize stays stable for rotated blocks', (
+    tester,
+  ) async {
+    Future<void> verifyAtZoom(double zoom) async {
+      final block = ContentBlock(
+        id: 'viewport-resize-$zoom',
+        type: BlockType.text,
+        text: 'Rotate and resize',
+        x: -10,
+        y: -8,
+        w: 30,
+        h: 20,
+        rotation: math.pi / 6,
+      );
+      var resizeActive = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox(
+            width: 800,
+            height: 600,
+            child: StatefulBuilder(
+              builder: (context, setState) => PageViewport(
+                canvasSize: const Size(400, 300),
+                fitSize: const Size(400, 300),
+                initialView: ViewState(zoom: zoom),
+                gesturesEnabled: !resizeActive,
+                child: EntryCanvas(
+                  workspaceSize: const Size(400, 300),
+                  blocks: [block],
+                  editing: true,
+                  selectedId: block.id,
+                  textEditingId: null,
+                  onSelect: (_) {},
+                  onEditText: (_) {},
+                  onResizeActiveChanged: (active) =>
+                      setState(() => resizeActive = active),
+                  onChanged: (_) => setState(() {}),
+                  imageBytes: (_) => null,
+                  onOpenImage: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final handle = find.byKey(ValueKey('resize-${block.id}'));
+      final beforeHandleCenter = tester.getCenter(handle);
+      final beforeCenter = Offset(block.x + block.w / 2, block.y + block.h / 2);
+      final beforeHalf = Offset(block.w / 2, block.h / 2);
+      final beforeOpposite =
+          beforeCenter -
+          Offset(
+            beforeHalf.dx * math.cos(block.rotation) -
+                beforeHalf.dy * math.sin(block.rotation),
+            beforeHalf.dx * math.sin(block.rotation) +
+                beforeHalf.dy * math.cos(block.rotation),
+          );
+      final viewer = tester.widget<InteractiveViewer>(
+        find.byType(InteractiveViewer),
+      );
+      final beforeScale = viewer.transformationController!.value
+          .getMaxScaleOnAxis();
+      final beforeTranslation = viewer.transformationController!.value
+          .getTranslation();
+      final gesture = await tester.startGesture(beforeHandleCenter);
+
+      await gesture.moveBy(const Offset(18, 12));
+      await tester.pump();
+      expect(resizeActive, isTrue);
+      expect(
+        tester.getCenter(handle) - beforeHandleCenter,
+        offsetMoreOrLessEquals(const Offset(18, 12), epsilon: 0.1),
+      );
+      expect(
+        tester
+            .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+            .panEnabled,
+        isFalse,
+      );
+
+      await gesture.moveBy(const Offset(22, -4));
+      await tester.pump();
+      expect(
+        tester.getCenter(handle) - beforeHandleCenter,
+        offsetMoreOrLessEquals(const Offset(40, 8), epsilon: 0.1),
+      );
+      final afterCenter = Offset(block.x + block.w / 2, block.y + block.h / 2);
+      final afterHalf = Offset(block.w / 2, block.h / 2);
+      final afterOpposite =
+          afterCenter -
+          Offset(
+            afterHalf.dx * math.cos(block.rotation) -
+                afterHalf.dy * math.sin(block.rotation),
+            afterHalf.dx * math.sin(block.rotation) +
+                afterHalf.dy * math.cos(block.rotation),
+          );
+      expect(afterOpposite.dx, closeTo(beforeOpposite.dx, 0.001));
+      expect(afterOpposite.dy, closeTo(beforeOpposite.dy, 0.001));
+      await gesture.up();
+      await tester.pump();
+
+      final afterViewer = tester.widget<InteractiveViewer>(
+        find.byType(InteractiveViewer),
+      );
+      final afterTransform = afterViewer.transformationController!.value;
+      final afterTranslation = afterTransform.getTranslation();
+      expect(resizeActive, isFalse);
+      expect(afterTransform.getMaxScaleOnAxis(), closeTo(beforeScale, 0.001));
+      expect(afterTranslation.x, closeTo(beforeTranslation.x, 0.01));
+      expect(afterTranslation.y, closeTo(beforeTranslation.y, 0.01));
+    }
+
+    await verifyAtZoom(0.5);
+    await verifyAtZoom(1.5);
+  });
+
+  testWidgets('visual resize preserves aspect ratio and clamps minimum size', (
+    tester,
+  ) async {
+    for (final type in [BlockType.image, BlockType.sticker]) {
+      final block = ContentBlock(
+        id: 'visual-resize-${type.name}',
+        type: type,
+        w: 30,
+        h: 20,
+        stickerId: type == BlockType.sticker ? 'daisy' : null,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox(
+            width: 800,
+            height: 600,
+            child: EntryCanvas(
+              workspaceSize: const Size(400, 300),
+              blocks: [block],
+              editing: true,
+              selectedId: block.id,
+              textEditingId: null,
+              onSelect: (_) {},
+              onEditText: (_) {},
+              onChanged: (_) {},
+              imageBytes: (_) => null,
+              onOpenImage: (_) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final handle = find.byKey(ValueKey('resize-${block.id}'));
+      final beforeCenter = Offset(block.x + block.w / 2, block.y + block.h / 2);
+      final beforeOpposite = beforeCenter - Offset(block.w / 2, block.h / 2);
+      final gesture = await tester.startGesture(tester.getCenter(handle));
+      await gesture.moveBy(const Offset(-500, -300));
+      await tester.pump();
+      await gesture.up();
+
+      expect(block.w, greaterThanOrEqualTo(EntryCanvas.minWidth));
+      expect(block.h, greaterThanOrEqualTo(EntryCanvas.minHeight));
+      expect(block.h / block.w, closeTo(2 / 3, 0.001));
+      final afterCenter = Offset(block.x + block.w / 2, block.y + block.h / 2);
+      final afterOpposite = afterCenter - Offset(block.w / 2, block.h / 2);
+      expect(afterOpposite.dx, closeTo(beforeOpposite.dx, 0.001));
+      expect(afterOpposite.dy, closeTo(beforeOpposite.dy, 0.001));
+    }
+  });
+
   testWidgets('splash wordmark fades in and is capped at 600 pixels', (
     tester,
   ) async {

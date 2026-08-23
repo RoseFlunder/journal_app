@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../models/entry.dart';
@@ -17,6 +18,7 @@ class EntryCanvas extends StatefulWidget {
     required this.onSelect,
     required this.onEditText,
     required this.onChanged,
+    this.onResizeActiveChanged,
     required this.imageBytes,
     this.imageProvider,
     required this.onOpenImage,
@@ -31,6 +33,7 @@ class EntryCanvas extends StatefulWidget {
   final ValueChanged<String?> onSelect;
   final ValueChanged<String> onEditText;
   final ValueChanged<ContentBlock> onChanged;
+  final ValueChanged<bool>? onResizeActiveChanged;
   final Uint8List? Function(String assetId) imageBytes;
   final ImageProvider<Object>? Function(String assetId)? imageProvider;
   final ValueChanged<ContentBlock> onOpenImage;
@@ -45,16 +48,52 @@ class EntryCanvas extends StatefulWidget {
 }
 
 class _EntryCanvasState extends State<EntryCanvas> {
+  static const _resizeHandleSize = 48.0;
   _BlockMoveSession? _moveSession;
+  _BlockResizeSession? _resizeSession;
+  Matrix4? _resizeGlobalToCanvas;
+  int? _resizePointer;
+  bool _resizeActiveNotified = false;
+
+  @override
+  void dispose() {
+    _moveSession = null;
+    _resizeSession = null;
+    _resizeGlobalToCanvas = null;
+    _resizePointer = null;
+    if (_resizeActiveNotified) {
+      _resizeActiveNotified = false;
+      final onResizeActiveChanged = widget.onResizeActiveChanged;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        onResizeActiveChanged?.call(false);
+      });
+    }
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(covariant EntryCanvas oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final activeBlockId = _moveSession?.blockId;
+    final activeBlockIds = {
+      if (_moveSession case final session?) session.blockId,
+      if (_resizeSession case final session?) session.blockId,
+    };
+    final resizeSelectionChanged =
+        _resizeSession != null && _resizeSession!.blockId != widget.selectedId;
     if (!widget.editing ||
-        (activeBlockId != null &&
-            !widget.blocks.any((block) => block.id == activeBlockId))) {
+        resizeSelectionChanged ||
+        activeBlockIds.any(
+          (id) => !widget.blocks.any((block) => block.id == id),
+        )) {
       _moveSession = null;
+      _resizeSession = null;
+      _resizeGlobalToCanvas = null;
+      _resizePointer = null;
+      if (_resizeActiveNotified) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _setResizeActive(false);
+        });
+      }
     }
   }
 
@@ -63,6 +102,15 @@ class _EntryCanvasState extends State<EntryCanvas> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final scale = PageViewport.modelToRenderScale;
+        ContentBlock? selectedBlock;
+        if (widget.editing && widget.selectedId != null) {
+          for (final block in widget.blocks) {
+            if (block.id == widget.selectedId) {
+              selectedBlock = block;
+              break;
+            }
+          }
+        }
 
         return SizedBox(
           width: widget.workspaceSize.width,
@@ -75,6 +123,14 @@ class _EntryCanvasState extends State<EntryCanvas> {
                   onPointerDown: widget.editing
                       ? (event) {
                           final point = event.localPosition;
+                          if (selectedBlock != null &&
+                              _containsResizeHandle(
+                                point,
+                                selectedBlock,
+                                scale,
+                              )) {
+                            return;
+                          }
                           final hitsBlock = widget.blocks.any(
                             (block) => _containsBlock(point, block, scale),
                           );
@@ -105,18 +161,6 @@ class _EntryCanvasState extends State<EntryCanvas> {
                               onMoveUpdate: (globalPosition) =>
                                   _updateMove(context, block, globalPosition),
                               onMoveEnd: _endMove,
-                              onResize: (globalPosition, globalDelta) =>
-                                  widget.onChanged(
-                                    _resizedBlock(
-                                      block,
-                                      _canvasDelta(
-                                        context,
-                                        globalPosition,
-                                        globalDelta,
-                                      ),
-                                      scale,
-                                    ),
-                                  ),
                               onRotate: (delta) =>
                                   widget.onChanged(block..rotation += delta),
                               imageBytes:
@@ -140,6 +184,8 @@ class _EntryCanvasState extends State<EntryCanvas> {
                             ),
                           ),
                         ),
+                      if (selectedBlock != null)
+                        _buildResizeHandle(context, selectedBlock, scale),
                     ],
                   ),
                 ),
@@ -151,17 +197,48 @@ class _EntryCanvasState extends State<EntryCanvas> {
     );
   }
 
-  ContentBlock _resizedBlock(ContentBlock block, Offset delta, double scale) {
-    final width = math.max(EntryCanvas.minWidth, block.w + delta.dx / scale);
+  ContentBlock _resizedBlock(
+    ContentBlock block,
+    _BlockResizeSession session,
+    Offset pointer,
+  ) {
+    final localDelta = _rotate(
+      pointer - session.startPointer,
+      -session.rotation,
+    );
+    double width;
+    double height;
     if (block.type != BlockType.image && block.type != BlockType.sticker) {
-      return block
-        ..w = width
-        ..h = math.max(EntryCanvas.minHeight, block.h + delta.dy / scale);
+      width = math.max(
+        EntryCanvas.minWidth,
+        session.startSize.width + localDelta.dx,
+      );
+      height = math.max(
+        EntryCanvas.minHeight,
+        session.startSize.height + localDelta.dy,
+      );
+    } else {
+      final ratio = session.aspectRatio;
+      final widthDelta =
+          (localDelta.dx + ratio * localDelta.dy) / (1 + ratio * ratio);
+      width = math.max(
+        EntryCanvas.minWidth,
+        math.max(
+          EntryCanvas.minHeight / ratio,
+          session.startSize.width + widthDelta,
+        ),
+      );
+      height = math.max(EntryCanvas.minHeight, width * ratio);
     }
-    final aspectRatio = block.w <= 0 ? 1.0 : block.h / block.w;
+    final center =
+        session.oppositeCorner +
+        _rotate(Offset(width / 2, height / 2), session.rotation);
+    final topLeft = center - Offset(width / 2, height / 2);
     return block
+      ..x = topLeft.dx
+      ..y = topLeft.dy
       ..w = width
-      ..h = math.max(EntryCanvas.minHeight, width * aspectRatio);
+      ..h = height;
   }
 
   void _startMove(
@@ -196,24 +273,162 @@ class _EntryCanvasState extends State<EntryCanvas> {
 
   void _endMove() => _moveSession = null;
 
+  void _startResize(
+    BuildContext canvasContext,
+    ContentBlock block,
+    Offset globalPosition,
+  ) {
+    final renderObject = canvasContext.findRenderObject();
+    if (renderObject is! RenderBox) return;
+    _resizeGlobalToCanvas = Matrix4.inverted(renderObject.getTransformTo(null));
+    final pointer = _resizePointerToModel(globalPosition);
+    if (pointer == null) return;
+    final width = math.max(EntryCanvas.minWidth, block.w);
+    final height = math.max(EntryCanvas.minHeight, block.h);
+    final center = Offset(block.x + width / 2, block.y + height / 2);
+    final oppositeCorner =
+        center - _rotate(Offset(width / 2, height / 2), block.rotation);
+    _resizeSession = _BlockResizeSession(
+      blockId: block.id,
+      startPointer: pointer,
+      startSize: Size(width, height),
+      aspectRatio: height / width,
+      rotation: block.rotation,
+      oppositeCorner: oppositeCorner,
+    );
+  }
+
+  void _updateResize(
+    BuildContext canvasContext,
+    ContentBlock block,
+    Offset globalPosition,
+  ) {
+    final session = _resizeSession;
+    if (session == null || session.blockId != block.id) return;
+    final pointer = _resizePointerToModel(globalPosition);
+    if (pointer == null) return;
+    widget.onChanged(_resizedBlock(block, session, pointer));
+  }
+
+  void _endResize() {
+    _resizeSession = null;
+    _resizeGlobalToCanvas = null;
+    _resizePointer = null;
+    _setResizeActive(false);
+  }
+
+  Widget _buildResizeHandle(
+    BuildContext canvasContext,
+    ContentBlock block,
+    double scale,
+  ) {
+    final width = math.max(EntryCanvas.minWidth, block.w);
+    final height = math.max(EntryCanvas.minHeight, block.h);
+    final center = Offset(
+      block.x + widget.worldOrigin.dx + width / 2,
+      block.y + widget.worldOrigin.dy + height / 2,
+    );
+    final corner =
+        center + _rotate(Offset(width / 2, height / 2), block.rotation);
+    final handleOffset =
+        corner * scale -
+        const Offset(_resizeHandleSize / 2, _resizeHandleSize / 2);
+    return Positioned(
+      left: handleOffset.dx,
+      top: handleOffset.dy,
+      width: _resizeHandleSize,
+      height: _resizeHandleSize,
+      child: RawGestureDetector(
+        key: ValueKey('resize-${block.id}'),
+        gestures: {
+          EagerGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<EagerGestureRecognizer>(
+                EagerGestureRecognizer.new,
+                (recognizer) {},
+              ),
+        },
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (event) {
+            if (_resizePointer != null) return;
+            _resizePointer = event.pointer;
+            _setResizeActive(true);
+            _startResize(canvasContext, block, event.position);
+          },
+          onPointerMove: (event) {
+            if (_resizePointer == event.pointer) {
+              _updateResize(canvasContext, block, event.position);
+            }
+          },
+          onPointerUp: (event) {
+            if (_resizePointer == event.pointer) _endResize();
+          },
+          onPointerCancel: (event) {
+            if (_resizePointer == event.pointer) _endResize();
+          },
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFFC97068), width: 3),
+            ),
+            child: const Icon(
+              Icons.open_in_full,
+              size: 20,
+              color: Color(0xFFC97068),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _setResizeActive(bool active) {
+    if (_resizeActiveNotified == active) return;
+    _resizeActiveNotified = active;
+    widget.onResizeActiveChanged?.call(active);
+  }
+
+  Offset? _resizePointerToModel(Offset globalPosition) {
+    final transform = _resizeGlobalToCanvas;
+    if (transform == null) return null;
+    return MatrixUtils.transformPoint(transform, globalPosition) /
+            PageViewport.modelToRenderScale -
+        widget.worldOrigin;
+  }
+
+  Offset _rotate(Offset point, double angle) {
+    final cosine = math.cos(angle);
+    final sine = math.sin(angle);
+    return Offset(
+      point.dx * cosine - point.dy * sine,
+      point.dx * sine + point.dy * cosine,
+    );
+  }
+
+  bool _containsResizeHandle(Offset point, ContentBlock block, double scale) {
+    final width = math.max(EntryCanvas.minWidth, block.w);
+    final height = math.max(EntryCanvas.minHeight, block.h);
+    final center = Offset(
+      (block.x + widget.worldOrigin.dx) * scale + width * scale / 2,
+      (block.y + widget.worldOrigin.dy) * scale + height * scale / 2,
+    );
+    final corner =
+        center +
+        _rotate(Offset(width * scale / 2, height * scale / 2), block.rotation);
+    return Rect.fromCenter(
+      center: corner,
+      width: _resizeHandleSize,
+      height: _resizeHandleSize,
+    ).contains(point);
+  }
+
   Offset? _globalToModel(BuildContext context, Offset globalPosition) {
     final renderObject = context.findRenderObject();
     if (renderObject is! RenderBox) return null;
     return renderObject.globalToLocal(globalPosition) /
             PageViewport.modelToRenderScale -
         widget.worldOrigin;
-  }
-
-  Offset _canvasDelta(
-    BuildContext context,
-    Offset globalPosition,
-    Offset globalDelta,
-  ) {
-    final renderObject = context.findRenderObject();
-    if (renderObject is! RenderBox) return globalDelta;
-    final previousPosition = globalPosition - globalDelta;
-    return renderObject.globalToLocal(globalPosition) -
-        renderObject.globalToLocal(previousPosition);
   }
 
   bool _containsBlock(Offset point, ContentBlock block, double scale) {
@@ -242,4 +457,22 @@ class _BlockMoveSession {
 
   final String blockId;
   final Offset grabOffset;
+}
+
+class _BlockResizeSession {
+  const _BlockResizeSession({
+    required this.blockId,
+    required this.startPointer,
+    required this.startSize,
+    required this.aspectRatio,
+    required this.rotation,
+    required this.oppositeCorner,
+  });
+
+  final String blockId;
+  final Offset startPointer;
+  final Size startSize;
+  final double aspectRatio;
+  final double rotation;
+  final Offset oppositeCorner;
 }

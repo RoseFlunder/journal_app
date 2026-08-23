@@ -14,6 +14,7 @@ class PageViewport extends StatefulWidget {
     this.initialView,
     this.onViewChanged,
     this.interactive = true,
+    this.gesturesEnabled = true,
     this.controlsVisible = true,
     this.minZoom = 0.5,
     this.maxZoom = 3.0,
@@ -39,6 +40,7 @@ class PageViewport extends StatefulWidget {
   final ViewState? initialView;
   final ValueChanged<ViewState>? onViewChanged;
   final bool interactive;
+  final bool gesturesEnabled;
   final bool controlsVisible;
   final double minZoom;
   final double maxZoom;
@@ -216,7 +218,11 @@ class _PageViewportState extends State<PageViewport> {
       _controller.value = _resetTransform(focus: widget.fitFocus);
 
   void _handlePointerSignal(PointerSignalEvent event) {
-    if (!widget.interactive || event is! PointerScrollEvent) return;
+    if (!widget.interactive ||
+        !widget.gesturesEnabled ||
+        event is! PointerScrollEvent) {
+      return;
+    }
     final isZoom = HardwareKeyboard.instance.logicalKeysPressed.contains(
       LogicalKeyboardKey.control,
     );
@@ -247,14 +253,16 @@ class _PageViewportState extends State<PageViewport> {
             fit: StackFit.expand,
             children: [
               GestureDetector(
-                onDoubleTap: widget.interactive ? _resetView : null,
+                onDoubleTap: widget.interactive && widget.gesturesEnabled
+                    ? _resetView
+                    : null,
                 child: InteractiveViewer(
                   transformationController: _controller,
                   minScale: widget.minZoom,
                   maxScale: widget.maxZoom * 2,
                   constrained: false,
-                  panEnabled: widget.interactive,
-                  scaleEnabled: widget.interactive,
+                  panEnabled: widget.interactive && widget.gesturesEnabled,
+                  scaleEnabled: widget.interactive && widget.gesturesEnabled,
                   boundaryMargin: const EdgeInsets.all(double.infinity),
                   child: SizedBox(
                     width: widget.canvasSize.width,

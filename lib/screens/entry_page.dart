@@ -59,6 +59,7 @@ class _EntryPageState extends State<EntryPage> {
   static const _minFontSize = 12.0;
   static const _maxFontSize = 48.0;
   bool _editing = false;
+  bool _resizeActive = false;
   bool _titleFocused = false;
   String? _selectedId;
   String? _textEditingId;
@@ -79,6 +80,22 @@ class _EntryPageState extends State<EntryPage> {
 
   void _changeBlock(ContentBlock block) {
     widget.onBlocksChanged(List<ContentBlock>.from(widget.entry.blocks));
+  }
+
+  void _beginTextEditing(String blockId) {
+    setState(() {
+      _titleFocused = false;
+      _selectedId = blockId;
+      _textEditingId = blockId;
+    });
+  }
+
+  void _stopTextEditing() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _titleFocused = false;
+      _textEditingId = null;
+    });
   }
 
   ContentBlock? get _editingTextBlock {
@@ -193,13 +210,15 @@ class _EntryPageState extends State<EntryPage> {
       text: '',
       x: -20,
       y: 12 + (widget.entry.blocks.length * 8) % 80,
-      w: 60,
-      h: 22,
+      w: 30,
+      h: 11,
+      fontSize: 26,
     );
     widget.onBlocksChanged([...widget.entry.blocks, block]);
     setState(() {
       _titleFocused = false;
       _selectedId = block.id;
+      _textEditingId = block.id;
     });
   }
 
@@ -419,6 +438,7 @@ class _EntryPageState extends State<EntryPage> {
               canvasSize: _workspaceSize,
               fitSize: PageViewport.pageSize,
               controlsVisible: widget.controlsVisible,
+              gesturesEnabled: !_resizeActive,
               initialFocus: _headerPosition,
               fitFocus: Offset(
                 _pageFramePosition.dx + PageViewport.pageSize.width / 2,
@@ -444,6 +464,10 @@ class _EntryPageState extends State<EntryPage> {
                       editing: _editing,
                       selectedId: _selectedId,
                       textEditingId: _textEditingId,
+                      onResizeActiveChanged: (active) {
+                        if (_resizeActive == active || !mounted) return;
+                        setState(() => _resizeActive = active);
+                      },
                       onSelect: (id) {
                         if (id == null) {
                           FocusScope.of(context).unfocus();
@@ -459,11 +483,7 @@ class _EntryPageState extends State<EntryPage> {
                           _textEditingId = null;
                         });
                       },
-                      onEditText: (id) => setState(() {
-                        _titleFocused = false;
-                        _selectedId = id;
-                        _textEditingId = id;
-                      }),
+                      onEditText: _beginTextEditing,
                       onChanged: _changeBlock,
                       imageBytes: widget.store.getAsset,
                       imageProvider: _imageProvider,
@@ -568,13 +588,17 @@ class _EntryPageState extends State<EntryPage> {
                     editing: true,
                     hasSelection: _selectedId != null,
                     textEditing: _textEditingId != null,
-                    onToggleEditing: () => setState(() {
-                      _editing = false;
-                      _titleFocused = false;
-                      widget.onEditingChanged(false);
-                      _selectedId = null;
-                      _textEditingId = null;
-                    }),
+                    onToggleEditing: () {
+                      FocusScope.of(context).unfocus();
+                      setState(() {
+                        _editing = false;
+                        _resizeActive = false;
+                        _titleFocused = false;
+                        widget.onEditingChanged(false);
+                        _selectedId = null;
+                        _textEditingId = null;
+                      });
+                    },
                     onAddText: _addText,
                     onAddImage: _addImage,
                     onAddSticker: _addSticker,
@@ -582,7 +606,7 @@ class _EntryPageState extends State<EntryPage> {
                     onEditText: () {
                       final block = _editingTextBlock;
                       if (block != null) {
-                        setState(() => _textEditingId = block.id);
+                        _stopTextEditing();
                       } else {
                         final selected = _selectedId == null
                             ? null
@@ -592,7 +616,7 @@ class _EntryPageState extends State<EntryPage> {
                                     ContentBlock(id: '', type: BlockType.image),
                               );
                         if (selected?.type == BlockType.text) {
-                          setState(() => _textEditingId = selected!.id);
+                          _beginTextEditing(selected!.id);
                         }
                       }
                     },
