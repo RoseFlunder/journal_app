@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -17,6 +18,9 @@ class BlockWidget extends StatefulWidget {
     required this.onResize,
     required this.onRotate,
     required this.onTextChanged,
+    this.preserveAspectRatio = false,
+    this.imageBytes,
+    this.onOpenImage,
   });
 
   final ContentBlock block;
@@ -29,6 +33,9 @@ class BlockWidget extends StatefulWidget {
   final ValueChanged<Offset> onResize;
   final ValueChanged<double> onRotate;
   final ValueChanged<String> onTextChanged;
+  final bool preserveAspectRatio;
+  final Uint8List? imageBytes;
+  final VoidCallback? onOpenImage;
 
   @override
   State<BlockWidget> createState() => _BlockWidgetState();
@@ -68,7 +75,11 @@ class _BlockWidgetState extends State<BlockWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final content = widget.editing && widget.selected && widget.textEditing
+    final content = widget.block.type == BlockType.image
+      ? (widget.imageBytes == null
+          ? const Center(child: Icon(Icons.broken_image_outlined))
+          : Image.memory(widget.imageBytes!, fit: BoxFit.contain))
+      : widget.editing && widget.selected && widget.textEditing
         ? TextField(
             controller: _controller,
             autofocus: true,
@@ -100,7 +111,7 @@ class _BlockWidgetState extends State<BlockWidget> {
       onPointerCancel: widget.editing ? _handlePointerUp : null,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: widget.editing ? widget.onTap : null,
+        onTap: widget.editing ? widget.onTap : widget.onOpenImage,
         onDoubleTap: widget.editing ? widget.onEditText : null,
         onPanStart: widget.editing
             ? (details) {
@@ -216,7 +227,8 @@ class _BlockWidgetState extends State<BlockWidget> {
                 ),
               if (widget.editing &&
                   widget.selected &&
-                  widget.block.type == BlockType.text)
+                    (widget.block.type == BlockType.text ||
+                      widget.block.type == BlockType.image))
                 Positioned(
                   top: -48,
                   left: 0,
@@ -231,10 +243,15 @@ class _BlockWidgetState extends State<BlockWidget> {
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 3),
                       ),
-                      child: const Icon(
-                        Icons.rotate_right,
-                        size: 23,
-                        color: Colors.white,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onPanUpdate: (details) =>
+                            widget.onRotate(details.delta.dx / 100),
+                        child: const Icon(
+                          Icons.rotate_right,
+                          size: 23,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
@@ -250,7 +267,8 @@ class _BlockWidgetState extends State<BlockWidget> {
     _pointers[event.pointer] = event.localPosition;
     if (_pointers.length == 2 &&
         widget.selected &&
-        widget.block.type == BlockType.text) {
+        (widget.block.type == BlockType.text ||
+          widget.block.type == BlockType.image)) {
       _rotating = true;
       _lastPointerAngle = _pointerAngle;
       _resizing = false;

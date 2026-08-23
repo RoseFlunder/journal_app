@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -16,6 +17,8 @@ class EntryCanvas extends StatelessWidget {
     required this.onSelect,
     required this.onEditText,
     required this.onChanged,
+    required this.imageBytes,
+    required this.onOpenImage,
     this.workspaceSize = PageViewport.pageSize,
     this.worldOrigin = Offset.zero,
   });
@@ -27,6 +30,8 @@ class EntryCanvas extends StatelessWidget {
   final ValueChanged<String?> onSelect;
   final ValueChanged<String> onEditText;
   final ValueChanged<ContentBlock> onChanged;
+  final Uint8List? Function(String assetId) imageBytes;
+  final ValueChanged<ContentBlock> onOpenImage;
   final Size workspaceSize;
   final Offset worldOrigin;
 
@@ -51,12 +56,7 @@ class EntryCanvas extends StatelessWidget {
                       ? (event) {
                           final point = event.localPosition;
                           final hitsBlock = blocks.any(
-                            (block) => Rect.fromLTWH(
-                              (block.x + worldOrigin.dx) * scale,
-                              (block.y + worldOrigin.dy) * scale,
-                              math.max(minWidth, block.w) * scale,
-                              math.max(minHeight, block.h) * scale,
-                            ).contains(point),
+                            (block) => _containsBlock(point, block, scale),
                           );
                           if (!hitsBlock) onSelect(null);
                         }
@@ -84,20 +84,19 @@ class EntryCanvas extends StatelessWidget {
                                   ..y = block.y + delta.dy / scale,
                               ),
                               onResize: (delta) => onChanged(
-                                block
-                                  ..w = math.max(
-                                    minWidth,
-                                    block.w + delta.dx / scale,
-                                  )
-                                  ..h = math.max(
-                                    minHeight,
-                                    block.h + delta.dy / scale,
-                                  ),
+                                _resizedBlock(block, delta, scale),
                               ),
                               onRotate: (delta) =>
                                   onChanged(block..rotation += delta),
+                                imageBytes: block.assetId == null
+                                  ? null
+                                  : imageBytes(block.assetId!),
+                                onOpenImage: block.type == BlockType.image
+                                  ? () => onOpenImage(block)
+                                  : null,
                               onTextChanged: (text) =>
                                   onChanged(block..text = text),
+                                preserveAspectRatio: block.type == BlockType.image,
                             ),
                           ),
                         ),
@@ -110,5 +109,39 @@ class EntryCanvas extends StatelessWidget {
         );
       },
     );
+  }
+
+  ContentBlock _resizedBlock(
+    ContentBlock block,
+    Offset delta,
+    double scale,
+  ) {
+    final width = math.max(minWidth, block.w + delta.dx / scale);
+    if (block.type != BlockType.image) {
+      return block
+        ..w = width
+        ..h = math.max(minHeight, block.h + delta.dy / scale);
+    }
+    final aspectRatio = block.w <= 0 ? 1.0 : block.h / block.w;
+    return block
+      ..w = width
+      ..h = math.max(minHeight, width * aspectRatio);
+  }
+
+  bool _containsBlock(Offset point, ContentBlock block, double scale) {
+    final width = math.max(minWidth, block.w) * scale;
+    final height = math.max(minHeight, block.h) * scale;
+    final center = Offset(
+      (block.x + worldOrigin.dx) * scale + width / 2,
+      (block.y + worldOrigin.dy) * scale + height / 2,
+    );
+    final offset = point - center;
+    final cosine = math.cos(-block.rotation);
+    final sine = math.sin(-block.rotation);
+    final local = Offset(
+      offset.dx * cosine - offset.dy * sine,
+      offset.dx * sine + offset.dy * cosine,
+    );
+    return local.dx.abs() <= width / 2 && local.dy.abs() <= height / 2;
   }
 }

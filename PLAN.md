@@ -31,6 +31,7 @@ class ContentBlock {
   String? assetId;          // image blocks: key into the assets box
   Offset position;          // in *page units* (virtual page = 100 x 141.4)
   Size size;                // in page units
+  double rotation;          // radians around the block center
 }
 ```
 
@@ -58,7 +59,7 @@ Hive boxes:
 
 - `JournalStore` is the single writer: load all entries at startup, rewrite
   the affected box entry on every change.
-- Picked images are **downscaled** (e.g. max ~1600 px JPEG) before being
+- Picked images are **downscaled** (max side 1600 px, JPEG quality ~80) before being
   stored — keeps IndexedDB quota usage sane on Web and makes the app feel
   faster.
 - Deleting an entry also deletes its `assets` records.
@@ -70,6 +71,7 @@ Hive boxes:
 | Package            | Purpose                                    |
 |--------------------|--------------------------------------------|
 | `hive` + `hive_flutter` | all persistence (files on mobile/desktop, IndexedDB on Web) |
+| `image`            | validate, resize and encode picked images  |
 | `image_picker`     | pick/take pictures (gallery + camera)      |
 | `file_picker`      | pick a local audio file as background music|
 | `just_audio`       | play/pause/loop the music                  |
@@ -98,7 +100,7 @@ lib/
   services/
     journal_store.dart          // ChangeNotifier: CRUD + Hive persistence
     audio_service.dart          // single AudioPlayer wrapper, loop mode
-    image_downscaler.dart       // pick -> downscale -> store as asset
+    image_source.dart           // pick, validate, downscale image bytes
   screens/
     journal_screen.dart         // non-scrollable PageView + drawer over [TOC, ...pages]
     contents_page.dart          // paper-styled TOC: title + date, tap -> jump
@@ -128,6 +130,8 @@ lib/
   - drag corner handles → resize (min size clamps); for images this scales
     the **display only** — the stored asset keeps its downscaled original
     quality (no re-encoding),
+    while preserving the image aspect ratio,
+  - rotate handle → rotate text and image blocks around their center,
   - toolbar: add text box, add image, bring-to-front (re-order list),
     delete selection,
   - text blocks: tap in edit mode focuses a transparent `TextField`.
@@ -211,8 +215,10 @@ across the page:
 - **[x] M4 – Free-positioned text blocks:** `EntryCanvas` + `BlockWidget` with
   select/drag/resize, add/delete text boxes, in-place text editing — built
   on the viewport's transform from M3.
-- **M5 – Pictures as blocks:** pick image → downscale → store in assets box;
-  add image block, drag/resize like text, tap → full-screen viewer.
+- **[x] M5 – Pictures as blocks:** pick image → validate/downscale → store in
+  assets box; add image block, drag/resize/rotate like text, tap → full-screen
+  viewer. Regression coverage includes image serialization, processing,
+  rendering, and rotation-control exposure.
 - **M6 – Music:** pick audio file → assets box, `AudioService`
   (loop), `MusicPlayerBar` with manual play/pause on the page, stop on
   page swap.
@@ -232,7 +238,8 @@ across the page:
 5. **Images:** downscaled on save (max side 1600 px, JPEG q ~80) to keep
    storage small; resizable on the page via handles (display scaling only,
    stored original untouched).
-6. **Block rotation:** not needed for now.
+6. **Block rotation:** supported for text and image blocks around the block
+  center.
 7. **Zoom & pan:** required — desktop/Web have far more screen space than
    mobile. Pinch/touch drag, scroll-wheel pan, ctrl+wheel zoom, on-screen
    −/+/fit toolbar; default fit-to-screen; per-page zoom/pan persisted in

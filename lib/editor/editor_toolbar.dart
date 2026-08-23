@@ -8,6 +8,7 @@ class EditorToolbar extends StatelessWidget {
     required this.textEditing,
     required this.onToggleEditing,
     required this.onAddText,
+    required this.onAddImage,
     required this.onEditTitle,
     required this.onEditText,
     required this.onDelete,
@@ -19,6 +20,7 @@ class EditorToolbar extends StatelessWidget {
   final bool textEditing;
   final VoidCallback onToggleEditing;
   final VoidCallback onAddText;
+  final VoidCallback onAddImage;
   final VoidCallback onEditTitle;
   final VoidCallback onEditText;
   final VoidCallback onDelete;
@@ -44,6 +46,12 @@ class EditorToolbar extends StatelessWidget {
               color: Colors.white,
               onPressed: onAddText,
               icon: const Icon(Icons.text_fields),
+            ),
+            IconButton(
+              tooltip: 'Add image',
+              color: Colors.white,
+              onPressed: onAddImage,
+              icon: const Icon(Icons.image_outlined),
             ),
             IconButton(
               tooltip: 'Edit title',

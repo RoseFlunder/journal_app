@@ -3,7 +3,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:image/image.dart' as img;
 import 'package:journal_app/models/entry.dart';
+import 'package:journal_app/services/image_source.dart';
 import 'package:journal_app/services/journal_store.dart';
 
 void main() {
@@ -48,6 +50,52 @@ void main() {
       expect(block.text, 'hi');
       expect(block.w, 30);
       expect(block.rotation, closeTo(0.35, 0.0001));
+    });
+
+    test('round-trips image block fields', () {
+      final entry = Entry(
+        id: 'image-entry',
+        createdAt: DateTime.utc(2025),
+        blocks: [
+          ContentBlock(
+            id: 'image-block',
+            type: BlockType.image,
+            assetId: 'asset-1',
+            w: 80,
+            h: 45,
+            rotation: 0.5,
+          ),
+        ],
+      );
+
+      final block = Entry.fromJson(entry.toJson()).blocks.single;
+
+      expect(block.type, BlockType.image);
+      expect(block.assetId, 'asset-1');
+      expect(block.w, 80);
+      expect(block.h, 45);
+      expect(block.rotation, closeTo(0.5, 0.0001));
+    });
+
+    test('downscales images to the maximum side and preserves aspect ratio', () {
+      final source = img.Image(width: 2000, height: 1000);
+      final bytes = Uint8List.fromList(img.encodePng(source));
+
+      final result = const ImageProcessor().process(bytes);
+      final decoded = img.decodeImage(result.bytes)!;
+
+      expect(result.mime, 'image/jpeg');
+      expect(result.width, 1600);
+      expect(result.height, 800);
+      expect(decoded.width, 1600);
+      expect(decoded.height, 800);
+    });
+
+    test('rejects invalid image bytes', () {
+      expect(
+        () => const ImageProcessor().process(Uint8List.fromList([1, 2, 3])),
+        throwsFormatException,
+      );
     });
 
     test('tolerates missing optional fields', () {

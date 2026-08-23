@@ -5,6 +5,8 @@ import 'package:uuid/uuid.dart';
 import '../editor/editor_toolbar.dart';
 import '../editor/entry_canvas.dart';
 import '../models/entry.dart';
+import '../services/image_source.dart';
+import '../services/journal_store.dart';
 import '../widgets/page_viewport.dart';
 import '../widgets/paper_page.dart';
 
@@ -16,6 +18,7 @@ class EntryPage extends StatefulWidget {
   const EntryPage({
     super.key,
     required this.entry,
+    required this.store,
     required this.index,
     required this.total,
     required this.onViewChanged,
@@ -26,10 +29,13 @@ class EntryPage extends StatefulWidget {
     required this.onContents,
     required this.onPrev,
     required this.onNext,
+    this.imageSource,
+    this.imageProcessor = const ImageProcessor(),
   });
 
   /// Index of this entry within the journal (0-based).
   final Entry entry;
+  final JournalStore store;
   final int index;
   final int total;
   final ValueChanged<ViewState> onViewChanged;
@@ -41,6 +47,8 @@ class EntryPage extends StatefulWidget {
   final VoidCallback onContents;
   final VoidCallback onPrev;
   final VoidCallback onNext;
+  final ImageSourceService? imageSource;
+  final ImageProcessor imageProcessor;
 
   @override
   State<EntryPage> createState() => _EntryPageState();
@@ -58,6 +66,9 @@ class _EntryPageState extends State<EntryPage> {
   late final TextEditingController _titleController = TextEditingController(
     text: widget.entry.title,
   );
+  late final ImageSourceService _imageSource =
+      widget.imageSource ?? PlatformImageSource();
+  bool _pickingImage = false;
 
   @override
   void dispose() {
@@ -83,12 +94,77 @@ class _EntryPageState extends State<EntryPage> {
     setState(() => _selectedId = block.id);
   }
 
+  Future<void> _addImage() async {
+    if (_pickingImage) return;
+    setState(() => _pickingImage = true);
+    try {
+      final picked = await _imageSource.pickImage(context);
+      if (!mounted || picked == null) return;
+      final image = widget.imageProcessor.process(picked.bytes);
+      final assetId = await widget.store.addAsset(
+        widget.entry.id,
+        AssetKind.image,
+        image.mime,
+        image.bytes,
+      );
+      if (!mounted) return;
+      final width = 80.0;
+      final height = width * image.height / image.width;
+      final block = ContentBlock(
+        id: _uuid.v4(),
+        type: BlockType.image,
+        assetId: assetId,
+        x: -20,
+        y: 12 + (widget.entry.blocks.length * 8) % 80,
+        w: width,
+        h: height,
+      );
+      widget.onBlocksChanged([...widget.entry.blocks, block]);
+      setState(() => _selectedId = block.id);
+    } on FormatException catch (error) {
+      if (mounted) _showImageError(error.message);
+    } catch (error) {
+      if (mounted) _showImageError('Could not add image: $error');
+    } finally {
+      if (mounted) setState(() => _pickingImage = false);
+    }
+  }
+
+  void _showImageError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _openImage(ContentBlock block) async {
+    final assetId = block.assetId;
+    final bytes = assetId == null ? null : widget.store.getAsset(assetId);
+    if (bytes == null || !mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: InteractiveViewer(child: Image.memory(bytes, fit: BoxFit.contain)),
+      ),
+    );
+  }
+
   void _deleteSelected() {
     final selectedId = _selectedId;
     if (selectedId == null) return;
-    widget.onBlocksChanged(
-      widget.entry.blocks.where((block) => block.id != selectedId).toList(),
+    final selected = widget.entry.blocks.firstWhere(
+      (block) => block.id == selectedId,
     );
+    final remaining = widget.entry.blocks
+        .where((block) => block.id != selectedId)
+        .toList();
+    if (selected.type == BlockType.image && selected.assetId != null) {
+      widget.store.removeAssetIfUnreferenced(
+        selected.assetId!,
+        remaining,
+      );
+    }
+    widget.onBlocksChanged(remaining);
     setState(() => _selectedId = null);
   }
 
@@ -144,6 +220,8 @@ class _EntryPageState extends State<EntryPage> {
                           _textEditingId = id;
                         }),
                         onChanged: _changeBlock,
+                        imageBytes: widget.store.getAsset,
+                        onOpenImage: _openImage,
                       ),
                     ),
                     Positioned(
@@ -258,6 +336,7 @@ class _EntryPageState extends State<EntryPage> {
                   }
                 }),
                 onAddText: _addText,
+                onAddImage: _addImage,
                 onEditTitle: () => setState(() => _editingTitle = true),
                 onEditText: () => setState(() {
                   _textEditingId = _selectedId;

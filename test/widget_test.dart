@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:image/image.dart' as img;
 import 'package:journal_app/main.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/services/journal_store.dart';
@@ -202,6 +204,49 @@ void main() {
     await tester.tap(find.byIcon(Icons.delete_outline).last);
     await tester.pump();
     expect(store.entries.single.blocks, isEmpty);
+  });
+
+  testWidgets('image blocks render and expose rotation controls', (tester) async {
+    var rotation = 0.0;
+    final block = ContentBlock(
+      id: 'image-widget',
+      type: BlockType.image,
+      assetId: 'asset-1',
+      w: 120,
+      h: 80,
+    );
+    final bytes = Uint8List.fromList(
+      img.encodePng(img.Image(width: 2, height: 1)),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 240,
+          height: 200,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 60),
+            child: BlockWidget(
+              block: block,
+              selected: true,
+              editing: true,
+              textEditing: false,
+              imageBytes: bytes,
+              onTap: () {},
+              onEditText: () {},
+              onMove: (_) {},
+              onResize: (_) {},
+              onRotate: (delta) => rotation += delta,
+              onTextChanged: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(Image), findsOneWidget);
+    expect(find.byKey(const ValueKey('rotate-image-widget')), findsOneWidget);
+    expect(rotation, 0);
   });
 
   testWidgets('entry title is editable and loads near the top left', (

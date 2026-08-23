@@ -83,6 +83,7 @@ class _JournalScreenState extends State<JournalScreen> {
   Widget _buildEntryPage(Entry entry, int index, int total) {
     return EntryPage(
       entry: entry,
+      store: widget.store,
       index: index,
       total: total,
       onViewChanged: (view) => widget.store.updateEntry(

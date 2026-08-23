@@ -181,6 +181,16 @@ class JournalStore extends ChangeNotifier {
 
   void removeAsset(String id) => _assetsBox.delete(id);
 
+  void removeAssetIfUnreferenced(
+    String assetId,
+    Iterable<ContentBlock> remainingBlocks,
+  ) {
+    final stillReferenced = remainingBlocks.any(
+      (block) => block.type == BlockType.image && block.assetId == assetId,
+    );
+    if (!stillReferenced) removeAsset(assetId);
+  }
+
   void _removeAssetsForEntry(String entryId) {
     final ids = _assetsBox.keys
         .where((k) {
