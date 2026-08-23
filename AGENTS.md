@@ -8,6 +8,23 @@ Flutter journal app. Plan and architecture: `PLAN.md`.
 flutter test
 ```
 
+## Running the analyzer from Codex
+
+```sh
+flutter analyze
+```
+
+Run this command with sandbox escalation (outside the workspace filesystem
+restriction). Flutter needs access to its SDK cache and lock files under the
+user's Flutter installation. Inside the workspace-only sandbox, even
+`flutter --version` can hang without producing output; this is not an analyzer
+or output-capture problem. With escalation, `flutter analyze` returns its
+normal output in a few seconds.
+
+If a sandboxed attempt hangs, interrupt only that recorded command session.
+Do not terminate unrelated `dart.exe` processes, because they may belong to
+the VS Code Flutter extension.
+
 Reference tests:
 
 - `test/journal_test.dart` — pure unit tests (plain `test()`, no widget
@@ -47,10 +64,12 @@ The app persists to **real files via Hive** (`lib/services/journal_store.dart`).
    dir in `tearDownAll`.
 
 5. **If `flutter test` appears to hang with no output**, check for and kill
-   stray `dart` / `flutter_tools` processes from a cancelled run, then retry.
-   (Windows: list with
-   `Get-CimInstance Win32_Process -Filter "Name='dart.exe'"`, kill with
-   `taskkill /T /F /PID <pid>`.)
+   only the process/session started for that test run, then retry. Record its
+   PID/session ID when starting it. Do not kill `dart.exe` processes merely
+   because they exist; inspect their command lines first, since they may belong
+   to the VS Code Flutter extension. (Windows: inspect with
+   `Get-CimInstance Win32_Process -Filter "Name='dart.exe'"`, and kill a
+   verified stale process with `taskkill /T /F /PID <pid>`.)
 
 ## Other repo notes
 
