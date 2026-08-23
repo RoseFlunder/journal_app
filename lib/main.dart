@@ -44,7 +44,7 @@ class _CozyBloomBootstrapState extends State<CozyBloomBootstrap> {
       final store = JournalStore();
       await store.init();
       final elapsed = DateTime.now().difference(_startedAt!);
-      const minimum = Duration(seconds: 2);
+      const minimum = Duration(seconds: 5);
       if (elapsed < minimum) await Future<void>.delayed(minimum - elapsed);
       if (!mounted) return;
       setState(() => _store = store);
@@ -96,10 +96,20 @@ class CozyBloomSplash extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Image.asset(
-                  'assets/branding/cozy_bloom_wordmark.png',
-                  width: double.infinity,
-                  fit: BoxFit.contain,
+                TweenAnimationBuilder<double>(
+                  tween: Tween<double>(begin: 0, end: 1),
+                  duration: const Duration(milliseconds: 800),
+                  curve: Curves.easeIn,
+                  builder: (context, opacity, child) =>
+                      Opacity(opacity: opacity, child: child),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    child: Image.asset(
+                      'assets/branding/cozy_bloom_wordmark.png',
+                      width: double.infinity,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 28),
                 if (error == null)

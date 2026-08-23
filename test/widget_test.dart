@@ -777,4 +777,26 @@ void main() {
     expect(tester.getCenter(blockFinder).dx - beforeCenter.dx, closeTo(40, 1));
     expect(block.x - beforeX, closeTo(8, 0.2));
   });
+  testWidgets('splash wordmark fades in and is capped at 600 pixels', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(CozyBloomSplash(onRetry: () {}));
+    await tester.pump();
+
+    final image = find.byType(Image);
+    expect(tester.getSize(image).width, closeTo(600, 0.1));
+    final opacityFinder = find.ancestor(
+      of: image,
+      matching: find.byType(Opacity),
+    );
+    expect(tester.widget<Opacity>(opacityFinder.first).opacity, lessThan(1));
+
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(
+      tester.widget<Opacity>(opacityFinder.first).opacity,
+      closeTo(1, 0.01),
+    );
+  });
 }
