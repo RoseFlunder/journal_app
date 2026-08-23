@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 import 'package:journal_app/main.dart';
 import 'package:journal_app/services/journal_store.dart';
 import 'package:journal_app/widgets/paper_page.dart';
+import 'package:journal_app/widgets/page_viewport.dart';
 
 void main() {
   // This test exercises real file I/O (Hive) by design. The default
@@ -110,5 +111,33 @@ void main() {
       tester.widget<Text>(find.text('Untitled page')).style?.fontFamily,
       'Lora',
     );
+  });
+
+  testWidgets('entry viewport view state survives leaving and reopening',
+      (tester) async {
+    store = JournalStore();
+    await store.init();
+    for (final existing in store.entries.toList()) {
+      store.deleteEntry(existing.id);
+    }
+    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    final entry = store.entries.single;
+
+    await tester.tapAt(const Offset(200, 300));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tapAt(const Offset(200, 300));
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(store.entries.single.view?.zoom, 2);
+
+    await tester.drag(find.byType(PageView), const Offset(800, 0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Untitled page'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PageViewport), findsOneWidget);
+    expect(store.entries.single.view?.zoom, 2);
+    expect(store.entries.single.id, entry.id);
   });
 }

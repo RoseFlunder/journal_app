@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/entry.dart';
 import '../services/journal_store.dart';
 import 'contents_page.dart';
 import 'entry_page.dart';
@@ -63,6 +64,21 @@ class _JournalScreenState extends State<JournalScreen> {
     });
   }
 
+  Widget _buildEntryPage(Entry entry, int index, int total) {
+    return EntryPage(
+      entry: entry,
+      index: index,
+      total: total,
+      onViewChanged: (view) => widget.store.updateEntry(
+        entry.id,
+        (entry) => entry.view = view,
+      ),
+      onContents: _goToToc,
+      onPrev: _goPrev,
+      onNext: _goNext,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -87,13 +103,10 @@ class _JournalScreenState extends State<JournalScreen> {
                 onNewPage: _createPage,
               ),
               for (var i = 0; i < widget.store.entries.length; i++)
-                EntryPage(
-                  entry: widget.store.entries[i],
-                  index: i,
-                  total: widget.store.entries.length,
-                  onContents: _goToToc,
-                  onPrev: _goPrev,
-                  onNext: _goNext,
+                _buildEntryPage(
+                  widget.store.entries[i],
+                  i,
+                  widget.store.entries.length,
                 ),
             ],
           ),

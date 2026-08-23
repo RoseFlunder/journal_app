@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/entry.dart';
+import '../widgets/page_viewport.dart';
 import '../widgets/paper_page.dart';
 
 /// Shows one [Entry] as a journal page.
@@ -14,6 +15,7 @@ class EntryPage extends StatelessWidget {
     required this.entry,
     required this.index,
     required this.total,
+    required this.onViewChanged,
     required this.onContents,
     required this.onPrev,
     required this.onNext,
@@ -23,6 +25,7 @@ class EntryPage extends StatelessWidget {
   final Entry entry;
   final int index;
   final int total;
+  final ValueChanged<ViewState> onViewChanged;
 
   final VoidCallback onContents;
   final VoidCallback onPrev;
@@ -36,10 +39,13 @@ class EntryPage extends StatelessWidget {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(18),
-          child: PaperPage(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(48, 18, 28, 24),
-              child: Column(
+          child: PageViewport(
+            initialView: entry.view,
+            onViewChanged: onViewChanged,
+            child: PaperPage(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(48, 18, 28, 24),
+                child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Navigation row (desktop/web affordance).
@@ -90,6 +96,7 @@ class EntryPage extends StatelessWidget {
                     ),
                   ),
                 ],
+                ),
               ),
             ),
           ),
