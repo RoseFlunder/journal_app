@@ -186,11 +186,11 @@ across the page:
 
 ## 6. Milestones
 
-- **M1 – Skeleton & persistence:** pubspec deps, `Entry`/`ContentBlock`
+- **[x] M1 – Skeleton & persistence:** pubspec deps, `Entry`/`ContentBlock`
   models, Hive boxes, `JournalStore` (load/save), `JournalScreen` PageView
   with a plain TOC page + plain entry pages, create/jump/delete working.
   (Validate Web build early: `flutter run -d web-server`.)
-- **M2 – Paper theme:** `PaperPage`, palette, fonts, rules, shadows, TOC
+- **[x] M2 – Paper theme:** `PaperPage`, palette, fonts, rules, shadows, TOC
   styling. (App already "looks like a journal".)
 - **M3 – Page viewport:** `PageViewport` with zoom/pan (pinch, wheel,
   ctrl+wheel, toolbar, fit/2× double-click), per-entry view persistence.
@@ -206,6 +206,135 @@ across the page:
   confirm dialogs for delete, error toasts, app icon/README, Web release
   pass (no-cam image source, audio focus quirks), optional page-turn
   animation.
+
+## 9. M3 implementation plan – page viewport
+
+M3 adds a reusable viewport around entry pages. It must work with touch,
+mouse, trackpad and keyboard input on Android, Windows and Web while keeping
+the TOC fixed at fit-to-screen. M3 does not add block editing; the viewport
+must expose the transform and callbacks that M4 will use later.
+
+### 9.1 Viewport contract
+
+1. Create `lib/widgets/page_viewport.dart` with a small, testable API:
+  - `child` for the rendered page/canvas;
+  - `initialView` or equivalent `ViewState` input;
+  - `ValueChanged<ViewState>` callback for persistence;
+  - optional `enabled`/`interactive` flag so the TOC can remain fixed;
+  - configurable min/max zoom with defaults around `0.5` and `3.0`.
+2. Use `InteractiveViewer` as the transform owner. Keep one
+  `TransformationController` per viewport and derive zoom/pan from that
+  controller rather than maintaining a second competing transform.
+3. Render a stable virtual page surface at the M1 dimensions of `100 x
+  141.4` page units, then scale it to the available viewport using
+  `LayoutBuilder`. Keep all future block coordinates in this virtual page
+  space.
+4. Define conversion helpers between the viewport's screen transform and
+  `ViewState` page units. Clamp zoom and pan at one boundary so toolbar,
+  pointer input and restored state cannot produce divergent values.
+
+### 9.2 Input behavior
+
+1. Touch and pointer drag should pan in read mode; pinch should zoom. Do not
+  intercept gestures intended for future M4 block selection when the editor
+  is enabled later.
+2. Add a `Listener`/pointer-signal layer for desktop and Web wheel input:
+  - ordinary wheel or trackpad scroll pans when zoomed in;
+  - Ctrl+wheel changes zoom around the pointer position;
+  - clamp the resulting transform to the configured bounds.
+3. Add a compact overlay toolbar visible when the page is not at fit scale:
+  - zoom out;
+  - zoom in;
+  - fit/reset.
+  Use icon buttons with tooltips and stable button sizes so the overlay does
+  not change the page layout.
+4. Add double-tap/double-click handling on empty page space to toggle between
+  fit and 2x. Keep the behavior accessible to touch and mouse users, and do
+  not make it the only way to return to fit.
+5. Store no viewport state for the TOC. The TOC uses `enabled: false` or an
+  equivalent fixed-fit configuration.
+
+### 9.3 Persistence and integration
+
+1. Update `EntryPage` to wrap the entry content in `PageViewport` while
+  retaining the existing `PaperPage`, navigation buttons and M2 typography.
+2. Initialize each entry viewport from `entry.view`, treating null as fit.
+  Normalize invalid persisted values before applying them, including NaN,
+  infinity, zoom below the minimum, zoom above the maximum, and excessive
+  pan values.
+3. On meaningful transform changes, update `entry.view` and call the
+  existing `JournalStore.updateEntry` path. Avoid writing on every raw pointer
+  event; use a small debounce or update only after a settled controller
+  change so dragging remains responsive.
+4. Stop listening and dispose the transformation controller when an entry
+  page is removed. Ensure PageView rebuilds do not reset a page's controller
+  unnecessarily.
+5. Preserve the PageView's `[ContentsPage, ...EntryPage]` ordering and all M1
+  create, jump, swipe and delete flows. Deleting an entry must not leave a
+  stale viewport listener or write view state to another entry.
+
+### 9.4 Tests
+
+#### Pure/unit tests
+
+1. Test zoom and pan normalization, including default fit, min/max zoom,
+  invalid persisted numbers, and page-unit conversion.
+2. Test wheel intent: ordinary wheel pans, Ctrl+wheel zooms, and both paths
+  clamp at their limits.
+3. Test fit/2x toggle and persistence serialization through `ViewState` and
+  `JournalStore`, including reopening an entry with its saved view.
+
+#### Flutter widget tests
+
+1. Add a focused `page_viewport_test.dart` using an injected transformation
+  controller where practical. Assert the toolbar appears only after zooming,
+  fit restores the default transform, and overlay buttons have tooltips.
+2. Add pointer-signal tests for wheel and Ctrl+wheel. Use platform-agnostic
+  Flutter pointer events rather than relying on a browser-specific event
+  implementation.
+3. Extend the existing live-binding `widget_test.dart` to create an entry,
+  zoom it, return to the TOC, reopen it, and verify the view is restored.
+  Retain the current create/jump/delete regression coverage.
+4. Verify TOC behavior remains fixed: no viewport toolbar, no persisted TOC
+  state, and normal row tapping still jumps to the correct entry.
+
+#### Android validation
+
+1. Run `flutter test` for unit and widget coverage, then build and launch a
+  debug Android target on an emulator or connected device.
+2. Manually validate one-finger pan, pinch zoom, fit/2x double-tap, toolbar
+  controls, back-and-forth PageView navigation, and restored view state after
+  leaving and reopening an entry.
+3. Check narrow portrait and wider landscape layouts for clipped controls or
+  page content and confirm the TOC remains fixed.
+
+#### Windows validation
+
+1. Run `flutter analyze`, `flutter test`, and `flutter build windows`.
+2. Manually validate mouse drag pan, wheel pan, Ctrl+wheel zoom, double-click
+  toggle, keyboard focus/tooltips, and toolbar hit targets.
+3. Confirm a window resize preserves the virtual-page layout and does not
+  reset the saved zoom/pan unexpectedly. Windows plugin builds may require
+  Developer Mode as noted in `AGENTS.md`.
+
+#### Web validation
+
+1. Run `flutter build web` and start `flutter run -d web-server` for a browser
+  smoke test.
+2. Validate pointer drag, wheel pan, Ctrl+wheel zoom, trackpad pinch where
+  available, double-click toggle, and browser resize.
+3. Reload the browser and confirm Hive restores the entry view state. Check
+  that browser scrolling does not move the document instead of the journal
+  page, and that the TOC remains fixed.
+
+### 9.5 M3 completion gate
+
+M3 is complete when the viewport is reusable, the same transform drives all
+input paths, entry view state survives navigation and reload, the TOC remains
+fixed, all unit/widget tests pass, and Android, Windows and Web builds plus
+their manual interaction checks succeed. M4 must be able to place and hit-test
+blocks through the exposed page-unit transform without redesigning the
+viewport.
 
 ## 7. Decisions (confirmed)
 
