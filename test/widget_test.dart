@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:journal_app/main.dart';
 import 'package:journal_app/services/journal_store.dart';
+import 'package:journal_app/editor/block_widget.dart';
+import 'package:journal_app/editor/entry_canvas.dart';
 import 'package:journal_app/widgets/paper_page.dart';
 import 'package:journal_app/widgets/page_viewport.dart';
 
@@ -111,6 +113,45 @@ void main() {
       tester.widget<Text>(find.text('Untitled page')).style?.fontFamily,
       'Lora',
     );
+  });
+
+  testWidgets('M4 adds, edits, resizes and deletes text blocks', (tester) async {
+    store = JournalStore();
+    await store.init();
+    for (final existing in store.entries.toList()) {
+      store.deleteEntry(existing.id);
+    }
+    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Edit page'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Add text'));
+    await tester.pumpAndSettle();
+    expect(find.byType(EntryCanvas), findsOneWidget);
+    expect(find.byType(BlockWidget), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+
+    await tester.tap(find.byTooltip('Edit text'));
+    await tester.pump();
+    expect(find.byType(TextField), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'A first note');
+    await tester.pump();
+    expect(store.entries.single.blocks.single.text, 'A first note');
+
+    final beforeWidth = store.entries.single.blocks.single.w;
+    await tester.drag(
+      find.byKey(ValueKey('resize-${store.entries.single.blocks.single.id}')),
+      const Offset(40, 20),
+    );
+    await tester.pump();
+    expect(store.entries.single.blocks.single.w, greaterThan(beforeWidth));
+
+    await tester.tap(find.byIcon(Icons.delete_outline).last);
+    await tester.pump();
+    expect(store.entries.single.blocks, isEmpty);
   });
 
   testWidgets('entry viewport view state survives leaving and reopening',

@@ -20,6 +20,7 @@ class JournalScreen extends StatefulWidget {
 class _JournalScreenState extends State<JournalScreen> {
   final PageController _pageController = PageController();
   bool _animating = false;
+  bool _editingEntry = false;
 
   @override
   void dispose() {
@@ -73,6 +74,11 @@ class _JournalScreenState extends State<JournalScreen> {
         entry.id,
         (entry) => entry.view = view,
       ),
+      onBlocksChanged: (blocks) => widget.store.updateEntry(
+        entry.id,
+        (entry) => entry.blocks = blocks,
+      ),
+      onEditingChanged: (editing) => setState(() => _editingEntry = editing),
       onContents: _goToToc,
       onPrev: _goPrev,
       onNext: _goNext,
@@ -96,6 +102,9 @@ class _JournalScreenState extends State<JournalScreen> {
           },
           child: PageView(
             controller: _pageController,
+            physics: _editingEntry
+                ? const NeverScrollableScrollPhysics()
+                : null,
             children: [
               ContentsPage(
                 store: widget.store,

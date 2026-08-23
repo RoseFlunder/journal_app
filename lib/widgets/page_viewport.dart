@@ -19,6 +19,20 @@ class PageViewport extends StatefulWidget {
   });
 
   static const pageSize = Size(1000, 1414);
+    static const modelPageSize = Size(100, 141.4);
+    static const modelToRenderScale = 10.0;
+
+    static Offset modelToRender(Offset point) =>
+      point * modelToRenderScale;
+
+    static Size modelSizeToRender(Size size) =>
+      size * modelToRenderScale;
+
+    static Offset renderToModel(Offset point) =>
+      point / modelToRenderScale;
+
+    static Size renderSizeToModel(Size size) =>
+      size / modelToRenderScale;
 
   final Widget child;
   final ViewState? initialView;

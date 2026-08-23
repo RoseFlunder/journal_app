@@ -8,10 +8,11 @@ coordinate system designed for freely positioned text and image content.
 
 - [x] M1: skeleton, Hive persistence, PageView navigation, create/jump/delete
 - [x] M2: paper theme, bundled fonts, ruled pages and styled TOC
-- [ ] M3: zoom and pan viewport with per-entry view persistence
-- [ ] M4-M7: editing, images, music and final polish
+- [x] M3: zoom and pan viewport with per-entry view persistence
+- [x] M4: PowerPoint-style text block editing, positioning, resizing and persistence
+- [ ] M5-M7: images, music and final polish
 
-The active implementation plan is in [PLAN.md](PLAN.md). M3 is planned next.
+The active implementation plan is in [PLAN.md](PLAN.md). M5 is planned next.
 
 ## Run locally
 
@@ -53,8 +54,10 @@ filesystem access so the same path remains compatible with Web.
 
 ## Platform notes
 
-- Android supports touch pan and pinch interactions planned for M3.
-- Windows supports mouse, wheel and keyboard interactions planned for M3.
+- Android supports touch pan, pinch zoom, block movement, resizing and text
+  editing.
+- Windows supports mouse, wheel, keyboard, block movement, resizing and text
+  editing.
 - Web supports browser file dialogs and IndexedDB. Camera capture through
   `image_picker` is unavailable on Web and will be hidden in the image flow.
 - `just_audio` uses browser media facilities on Web and cannot provide
@@ -68,8 +71,13 @@ filesystem access so the same path remains compatible with Web.
 - `lib/screens/contents_page.dart`: table of contents
 - `lib/screens/entry_page.dart`: entry page rendering
 - `lib/widgets/paper_page.dart`: M2 paper surface and painter
+- `lib/widgets/page_viewport.dart`: M3 zoom and pan viewport
+- `lib/editor/entry_canvas.dart`: M4 free-positioned block canvas
+- `lib/editor/block_widget.dart`: selectable, movable and resizable text blocks
+- `lib/editor/editor_toolbar.dart`: edit-mode block actions
 - `test/journal_test.dart`: model and persistence tests
-- `test/widget_test.dart`: live-binding navigation and paper-theme tests
+- `test/page_viewport_test.dart`: viewport behavior tests
+- `test/widget_test.dart`: live-binding navigation, paper-theme and editor tests
 
 The application intentionally avoids direct `dart:io` storage in feature
 code, allowing Android, Windows and Web to share the same persistence layer.
