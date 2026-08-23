@@ -21,6 +21,7 @@ class EntryPage extends StatefulWidget {
     required this.onViewChanged,
     required this.onBlocksChanged,
     required this.onEditingChanged,
+    required this.onOpenNavigation,
     required this.onContents,
     required this.onPrev,
     required this.onNext,
@@ -34,6 +35,7 @@ class EntryPage extends StatefulWidget {
   final ValueChanged<List<ContentBlock>> onBlocksChanged;
   final ValueChanged<bool> onEditingChanged;
 
+  final VoidCallback onOpenNavigation;
   final VoidCallback onContents;
   final VoidCallback onPrev;
   final VoidCallback onNext;
@@ -98,7 +100,6 @@ class _EntryPageState extends State<EntryPage> {
               PageViewport(
                 initialView: widget.entry.view,
                 onViewChanged: widget.onViewChanged,
-                interactive: !_editing,
                 child: PaperPage(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(48, 18, 28, 24),
@@ -116,7 +117,7 @@ class _EntryPageState extends State<EntryPage> {
                       const Spacer(),
                       IconButton(
                         tooltip: 'Previous page (PageUp / \u2190)',
-                        onPressed: widget.onPrev,
+                        onPressed: widget.index > 0 ? widget.onPrev : null,
                         icon: const Icon(Icons.chevron_left),
                       ),
                       IconButton(
@@ -150,10 +151,17 @@ class _EntryPageState extends State<EntryPage> {
                       editing: _editing,
                       selectedId: _selectedId,
                       textEditingId: _textEditingId,
-                      onSelect: (id) => setState(() {
-                        _selectedId = id;
-                        _textEditingId = null;
-                      }),
+                      onSelect: (id) {
+                        if (id == null) {
+                          FocusScope.of(context).unfocus();
+                          setState(() => _textEditingId = null);
+                          return;
+                        }
+                        setState(() {
+                          _selectedId = id;
+                          _textEditingId = null;
+                        });
+                      },
                       onEditText: (id) => setState(() {
                         _selectedId = id;
                         _textEditingId = id;
@@ -164,6 +172,15 @@ class _EntryPageState extends State<EntryPage> {
                       ],
                     ),
                   ),
+                ),
+              ),
+              Positioned(
+                left: 12,
+                top: 12,
+                child: IconButton(
+                  tooltip: 'Open page navigation',
+                  onPressed: widget.onOpenNavigation,
+                  icon: const Icon(Icons.menu),
                 ),
               ),
               Positioned(

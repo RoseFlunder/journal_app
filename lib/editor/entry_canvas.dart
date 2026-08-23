@@ -48,8 +48,24 @@ class EntryCanvas extends StatelessWidget {
               top: top,
               width: pageSize.width,
               height: pageSize.height,
-              child: Stack(
-                children: [
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: editing
+                    ? (event) {
+                        final point = event.localPosition;
+                        final hitsBlock = blocks.any(
+                          (block) => Rect.fromLTWH(
+                            block.x * scale,
+                            block.y * scale,
+                            math.max(minWidth, block.w) * scale,
+                            math.max(minHeight, block.h) * scale,
+                          ).contains(point),
+                        );
+                        if (!hitsBlock) onSelect(null);
+                      }
+                    : null,
+                child: Stack(
+                  children: [
                   for (final block in blocks)
                     Positioned(
                       left: block.x * scale,
@@ -80,7 +96,8 @@ class EntryCanvas extends StatelessWidget {
                         onTextChanged: (text) => onChanged(block..text = text),
                       ),
                     ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],

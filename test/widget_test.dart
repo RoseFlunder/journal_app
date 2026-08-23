@@ -32,12 +32,17 @@ void main() {
   });
 
   testWidgets(
-    'create a page, jump to it, swipe back, find it in TOC, delete it',
+    'create a page, navigate with the drawer, find it in TOC, delete it',
     (tester) async {
       store = JournalStore();
       await store.init();
       await tester.pumpWidget(JournalApp(store: store));
       await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<PageView>(find.byType(PageView)).physics,
+        isA<NeverScrollableScrollPhysics>(),
+      );
 
       // Starts on the (empty) table of contents.
       expect(find.text('Journal'), findsOneWidget);
@@ -51,8 +56,18 @@ void main() {
       expect(find.byType(AppBar), findsNothing);
       expect(find.text('Untitled page'), findsOneWidget);
 
-      // Swipe right (previous page) back to the table of contents.
+      // Horizontal drags belong to the entry viewport and do not change pages.
       await tester.drag(find.byType(PageView), const Offset(800, 0));
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBar), findsNothing);
+
+      // Open navigation and return to the table of contents.
+      await tester.tap(find.byTooltip('Open page navigation'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Drawer), findsOneWidget);
+      await tester.tap(
+        find.descendant(of: find.byType(Drawer), matching: find.text('Contents')),
+      );
       await tester.pumpAndSettle();
       expect(find.byType(AppBar), findsOneWidget);
       expect(find.text('This journal is empty.'), findsNothing);
@@ -65,8 +80,12 @@ void main() {
       expect(find.byType(AppBar), findsNothing);
       expect(find.text('Untitled page'), findsOneWidget);
 
-      // Swipe back to the TOC and delete the page.
-      await tester.drag(find.byType(PageView), const Offset(800, 0));
+      // Open navigation from the entry page and return to the TOC.
+      await tester.tap(find.byTooltip('Open page navigation'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(of: find.byType(Drawer), matching: find.text('Contents')),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Delete page'));
       await tester.pumpAndSettle();
@@ -141,6 +160,32 @@ void main() {
     await tester.pump();
     expect(store.entries.single.blocks.single.text, 'A first note');
 
+    await tester.tapAt(tester.getCenter(find.byType(EntryCanvas)));
+    await tester.pump();
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byType(BlockWidget), findsOneWidget);
+
+    final canvasCenter = tester.getCenter(find.byType(EntryCanvas));
+    await tester.dragFrom(canvasCenter, const Offset(40, 0));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(store.entries.single.view?.panX, isNot(0));
+
+    await tester.tapAt(canvasCenter);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tapAt(canvasCenter);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byTooltip('Fit page'), findsOneWidget);
+    await tester.tap(find.byTooltip('Fit page'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final beforeX = store.entries.single.blocks.single.x;
+    await tester.drag(
+      find.byKey(ValueKey('move-${store.entries.single.blocks.single.id}')),
+      const Offset(24, 0),
+    );
+    await tester.pump();
+    expect(store.entries.single.blocks.single.x, greaterThan(beforeX));
+
     final beforeWidth = store.entries.single.blocks.single.w;
     await tester.drag(
       find.byKey(ValueKey('resize-${store.entries.single.blocks.single.id}')),
@@ -173,7 +218,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 350));
     expect(store.entries.single.view?.zoom, 2);
 
-    await tester.drag(find.byType(PageView), const Offset(800, 0));
+    await tester.tap(find.byTooltip('Open page navigation'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(of: find.byType(Drawer), matching: find.text('Contents')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Untitled page'));
     await tester.pumpAndSettle();

@@ -5,6 +5,7 @@ import '../models/entry.dart';
 import '../services/journal_store.dart';
 import 'contents_page.dart';
 import 'entry_page.dart';
+import '../widgets/journal_navigation_drawer.dart';
 
 /// Root of the journal: a [PageView] over
 /// `[table of contents, ...one page per entry]`.
@@ -18,6 +19,7 @@ class JournalScreen extends StatefulWidget {
 }
 
 class _JournalScreenState extends State<JournalScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final PageController _pageController = PageController();
   bool _animating = false;
   bool _editingEntry = false;
@@ -31,6 +33,7 @@ class _JournalScreenState extends State<JournalScreen> {
   int get _pageCount => widget.store.entries.length + 1;
 
   int get _currentPage {
+    if (!_pageController.hasClients) return 0;
     final page = _pageController.page;
     return page == null ? 0 : page.round().clamp(0, _pageCount - 1);
   }
@@ -57,6 +60,18 @@ class _JournalScreenState extends State<JournalScreen> {
   void _goPrev() => goToPageIndex(_currentPage - 1);
   void _goNext() => goToPageIndex(_currentPage + 1);
 
+  void _openNavigation() => _scaffoldKey.currentState?.openDrawer();
+
+  void _openEntryFromDrawer(int entryIndex) {
+    _scaffoldKey.currentState?.closeDrawer();
+    goToEntry(entryIndex);
+  }
+
+  void _openContentsFromDrawer() {
+    _scaffoldKey.currentState?.closeDrawer();
+    _goToToc();
+  }
+
   void _createPage() {
     final entry = widget.store.addEntry();
     // Wait for the PageView to pick up the new child, then animate to it.
@@ -79,6 +94,7 @@ class _JournalScreenState extends State<JournalScreen> {
         (entry) => entry.blocks = blocks,
       ),
       onEditingChanged: (editing) => setState(() => _editingEntry = editing),
+      onOpenNavigation: _openNavigation,
       onContents: _goToToc,
       onPrev: _goPrev,
       onNext: _goNext,
@@ -90,34 +106,42 @@ class _JournalScreenState extends State<JournalScreen> {
     return ListenableBuilder(
       listenable: widget.store,
       builder: (context, _) {
-        return CallbackShortcuts(
-          bindings: {
-            // Keyboard navigation (arrows also work when no text field is
-            // focused; PageUp/PageDown never do, so they always navigate).
-            SingleActivator(LogicalKeyboardKey.pageDown): _goNext,
-            SingleActivator(LogicalKeyboardKey.pageUp): _goPrev,
-            SingleActivator(LogicalKeyboardKey.home): _goToToc,
-            SingleActivator(LogicalKeyboardKey.arrowRight): _goNext,
-            SingleActivator(LogicalKeyboardKey.arrowLeft): _goPrev,
-          },
-          child: PageView(
-            controller: _pageController,
-            physics: _editingEntry
-                ? const NeverScrollableScrollPhysics()
-                : null,
-            children: [
-              ContentsPage(
-                store: widget.store,
-                onOpenPage: goToEntry,
-                onNewPage: _createPage,
-              ),
-              for (var i = 0; i < widget.store.entries.length; i++)
-                _buildEntryPage(
-                  widget.store.entries[i],
-                  i,
-                  widget.store.entries.length,
+        return Scaffold(
+          key: _scaffoldKey,
+          drawer: JournalNavigationDrawer(
+            entries: widget.store.entries,
+            currentEntryIndex: _currentPage - 1,
+            onOpenContents: _openContentsFromDrawer,
+            onOpenEntry: _openEntryFromDrawer,
+            onNewPage: _createPage,
+          ),
+          body: CallbackShortcuts(
+            bindings: {
+              // Keyboard navigation (arrows also work when no text field is
+              // focused; PageUp/PageDown never do, so they always navigate).
+              SingleActivator(LogicalKeyboardKey.pageDown): _goNext,
+              SingleActivator(LogicalKeyboardKey.pageUp): _goPrev,
+              SingleActivator(LogicalKeyboardKey.home): _goToToc,
+              SingleActivator(LogicalKeyboardKey.arrowRight): _goNext,
+              SingleActivator(LogicalKeyboardKey.arrowLeft): _goPrev,
+            },
+            child: PageView(
+              controller: _pageController,
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                ContentsPage(
+                  store: widget.store,
+                  onOpenPage: goToEntry,
+                  onNewPage: _createPage,
                 ),
-            ],
+                for (var i = 0; i < widget.store.entries.length; i++)
+                  _buildEntryPage(
+                    widget.store.entries[i],
+                    i,
+                    widget.store.entries.length,
+                  ),
+              ],
+            ),
           ),
         );
       },

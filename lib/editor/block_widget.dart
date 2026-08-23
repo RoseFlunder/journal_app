@@ -33,6 +33,7 @@ class BlockWidget extends StatefulWidget {
 class _BlockWidgetState extends State<BlockWidget> {
   late final TextEditingController _controller;
   bool _resizing = false;
+  bool _movingEdge = false;
 
   @override
   void initState() {
@@ -91,16 +92,32 @@ class _BlockWidgetState extends State<BlockWidget> {
       onPanStart: widget.editing
         ? (details) {
           final size = context.size ?? Size.zero;
-          _resizing = details.localPosition.dx >= size.width - 44 &&
+          final inResizeCorner = details.localPosition.dx >= size.width - 44 &&
             details.localPosition.dy >= size.height - 44;
+          _resizing = inResizeCorner;
+          _movingEdge = !inResizeCorner && (
+            details.localPosition.dx <= 12 ||
+            details.localPosition.dy <= 12 ||
+            details.localPosition.dx >= size.width - 12 ||
+            details.localPosition.dy >= size.height - 12
+          );
           widget.onTap();
         }
         : null,
       onPanUpdate: widget.editing
         ? (details) =>
-          _resizing ? widget.onResize(details.delta) : widget.onMove(details.delta)
+          _resizing
+              ? widget.onResize(details.delta)
+              : _movingEdge
+                  ? null
+                  : widget.onMove(details.delta)
         : null,
-      onPanEnd: widget.editing ? (_) => _resizing = false : null,
+      onPanEnd: widget.editing
+          ? (_) {
+              _resizing = false;
+              _movingEdge = false;
+            }
+          : null,
       child: DecoratedBox(
         decoration: BoxDecoration(
           border: widget.selected
@@ -111,6 +128,38 @@ class _BlockWidgetState extends State<BlockWidget> {
           fit: StackFit.expand,
           children: [
             content,
+            if (widget.editing && widget.selected)
+              Positioned(
+                left: 0,
+                top: 0,
+                right: 0,
+                height: 12,
+                child: _buildMoveEdge(key: ValueKey('move-${widget.block.id}')),
+              ),
+            if (widget.editing && widget.selected)
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 12,
+                child: _buildMoveEdge(),
+              ),
+            if (widget.editing && widget.selected)
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: 12,
+                child: _buildMoveEdge(),
+              ),
+            if (widget.editing && widget.selected)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 12,
+                child: _buildMoveEdge(),
+              ),
             if (widget.editing && widget.selected)
               Positioned(
                 right: 0,
@@ -132,6 +181,15 @@ class _BlockWidgetState extends State<BlockWidget> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildMoveEdge({Key? key}) {
+    return Listener(
+      key: key,
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (_) => widget.onTap(),
+      onPointerMove: (event) => widget.onMove(event.delta),
     );
   }
 }

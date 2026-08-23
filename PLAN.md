@@ -1,7 +1,7 @@
 # Journal App – Implementation Plan
 
-A paper-styled digital journal: swipeable pages, each with a title, creation
-date and freely positioned content (text boxes and pictures, drag & drop).
+A paper-styled digital journal: explicitly navigated pages, each with a title,
+creation date and freely positioned content (text boxes and pictures, drag & drop).
 Optional per-page background music with manual play/pause. The first page is
 a table of contents for jumping to any page. Everything is stored locally on
 device. Targets: **Android, Windows, Web**.
@@ -100,7 +100,7 @@ lib/
     audio_service.dart          // single AudioPlayer wrapper, loop mode
     image_downscaler.dart       // pick -> downscale -> store as asset
   screens/
-    journal_screen.dart         // PageView + PageController over [TOC, ...pages]
+    journal_screen.dart         // non-scrollable PageView + drawer over [TOC, ...pages]
     contents_page.dart          // paper-styled TOC: title + date, tap -> jump
     entry_page.dart             // renders one Entry as a paper page
   editor/
@@ -155,15 +155,30 @@ across the page:
   editor so the editor is built on it from day one).
 - TOC page stays fixed fit-to-screen (no zoom) — it is a list, not a page.
 
+### Editing interaction refinement
+
+- In edit mode, tapping blank canvas exits text editing and unfocuses the
+  text field while preserving the selected block.
+- A selected block's border is a move target above the text field, so the
+  block can be dragged after text editing without sacrificing interior text
+  entry.
+
 ### Navigation flow
 
-1. Root is `JournalScreen`: a `PageView` with
-   `children = [ContentsPage(), ...entries.map(EntryPage)]`.
+1. Root is `JournalScreen`: a non-scrollable `PageView` with
+  `children = [ContentsPage(), ...entries.map(EntryPage)]`; the
+  `PageController` remains the single path for animated page changes.
 2. `ContentsPage` lists entries (title + `createdAt`), tap →
    `pageController.animateToPage(index + 1)`.
-3. Each `EntryPage` has an edit affordance (pencil) toggling edit mode.
-4. "New page" (FAB or TOC button) appends an entry, saves, scrolls there.
-5. Music (confirmed behavior): **never autoplays.** Each page's music bar has
+3. Each `EntryPage` has a top navigation button that opens a dismissible drawer
+  listing pages and highlighting the current entry. Selecting an entry or
+  Contents closes the drawer before navigating.
+4. Each `EntryPage` has an edit affordance (pencil) toggling edit mode.
+5. "New page" (FAB, TOC button, or drawer action) appends an entry, saves,
+  and navigates there.
+6. Keyboard PageUp/PageDown, Left/Right, and Home remain available for fast
+  navigation. Previous/Next controls are explicit and disabled at boundaries.
+7. Music (confirmed behavior): **never autoplays.** Each page's music bar has
    a manual play/pause button. When the page is swapped away (PageView page
    changes), `AudioService.stop()` — music is per-page ambience.
 
@@ -181,8 +196,8 @@ across the page:
   - body/handwriting: *Caveat* or *Kalam*,
   - headings/dates: *Lora* or *EB Garamond*.
 - Date format: "Tuesday, 12 August 2025" style, small caps-ish.
-- Page transition: stock `PageView` slide first; a page-turn style transform
-  (`pageTransformBuilder`) is a nice-to-have later.
+- Page transition: the existing animated `PageController` transition remains;
+  outer page swiping is disabled so page viewport panning is unambiguous.
 
 ## 6. Milestones
 
@@ -222,4 +237,12 @@ across the page:
    mobile. Pinch/touch drag, scroll-wheel pan, ctrl+wheel zoom, on-screen
    −/+/fit toolbar; default fit-to-screen; per-page zoom/pan persisted in
    `Entry.view`. TOC stays fixed.
+8. **Page navigation:** outer page swiping is disabled on Android, Windows,
+  and Web. Entry pages expose a top navigation button that opens an on-demand
+  drawer for direct page selection; Contents and keyboard/previous/next
+  navigation remain available.
+9. **Editing gestures:** tapping outside a text block exits its text field;
+  dragging the selected border moves the block. The non-scrollable outer
+  `PageView` is covered by widget regression tests because its physics are
+  shared across Android, Windows, and Web.
 
