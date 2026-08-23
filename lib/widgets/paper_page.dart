@@ -17,6 +17,9 @@ class PaperPage extends StatelessWidget {
   static const paper = Color(0xFFF2E9D5);
   static const ink = Color(0xFF3B3226);
   static const margin = Color(0xFFC97068);
+  static const sage = Color(0xFFB7C1A7);
+  static const blush = Color(0xFFF2D7D3);
+  static const lilac = Color(0xFFDCCEF4);
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +38,7 @@ class PaperPage extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFF4EDDC), paper],
+          colors: [Color(0xFFFFFBF4), paper],
         ),
         border: Border.all(color: ink.withValues(alpha: 0.18)),
         borderRadius: BorderRadius.circular(3),

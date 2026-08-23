@@ -77,18 +77,18 @@ class _BlockWidgetState extends State<BlockWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final content = widget.block.type == BlockType.image
+    final content = _isVisualBlock
         ? (widget.imageProvider == null && widget.imageBytes == null
-          ? const Center(child: Icon(Icons.broken_image_outlined))
-          : Image(
-              image: widget.imageProvider ?? MemoryImage(widget.imageBytes!),
-              fit: BoxFit.contain,
-              gaplessPlayback: true,
-              errorBuilder: (context, error, stackTrace) => const Center(
-                child: Icon(Icons.broken_image_outlined),
-              ),
-            ))
-      : widget.editing && widget.selected && widget.textEditing
+              ? const Center(child: Icon(Icons.broken_image_outlined))
+              : Image(
+                  image:
+                      widget.imageProvider ?? MemoryImage(widget.imageBytes!),
+                  fit: BoxFit.contain,
+                  gaplessPlayback: true,
+                  errorBuilder: (context, error, stackTrace) =>
+                      const Center(child: Icon(Icons.broken_image_outlined)),
+                ))
+        : widget.editing && widget.selected && widget.textEditing
         ? TextField(
             controller: _controller,
             autofocus: true,
@@ -236,8 +236,7 @@ class _BlockWidgetState extends State<BlockWidget> {
                 ),
               if (widget.editing &&
                   widget.selected &&
-                    (widget.block.type == BlockType.text ||
-                      widget.block.type == BlockType.image))
+                  (widget.block.type == BlockType.text || _isVisualBlock))
                 Positioned(
                   top: -48,
                   left: 0,
@@ -276,8 +275,7 @@ class _BlockWidgetState extends State<BlockWidget> {
     _pointers[event.pointer] = event.localPosition;
     if (_pointers.length == 2 &&
         widget.selected &&
-        (widget.block.type == BlockType.text ||
-          widget.block.type == BlockType.image)) {
+        (widget.block.type == BlockType.text || _isVisualBlock)) {
       _rotating = true;
       _lastPointerAngle = _pointerAngle;
       _resizing = false;
@@ -322,4 +320,8 @@ class _BlockWidgetState extends State<BlockWidget> {
       onPointerMove: (event) => widget.onMove(event.delta),
     );
   }
+
+  bool get _isVisualBlock =>
+      widget.block.type == BlockType.image ||
+      widget.block.type == BlockType.sticker;
 }

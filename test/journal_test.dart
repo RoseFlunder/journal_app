@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:image/image.dart' as img;
 import 'package:journal_app/models/entry.dart';
+import 'package:journal_app/models/sticker.dart';
 import 'package:journal_app/services/image_source.dart';
 import 'package:journal_app/services/journal_store.dart';
 
@@ -90,19 +91,46 @@ void main() {
       expect(block.rotation, closeTo(0.5, 0.0001));
     });
 
-    test('downscales images to the maximum side and preserves aspect ratio', () {
-      final source = img.Image(width: 2000, height: 1000);
-      final bytes = Uint8List.fromList(img.encodePng(source));
+    test('round-trips sticker blocks and resolves the bundled catalog', () {
+      final entry = Entry(
+        id: 'sticker-entry',
+        createdAt: DateTime.utc(2025),
+        blocks: [
+          ContentBlock(
+            id: 'sticker-block',
+            type: BlockType.sticker,
+            stickerId: 'daisy',
+            w: 28,
+            h: 28,
+            rotation: -0.2,
+          ),
+        ],
+      );
 
-      final result = const ImageProcessor().process(bytes);
-      final decoded = img.decodeImage(result.bytes)!;
+      final block = Entry.fromJson(entry.toJson()).blocks.single;
 
-      expect(result.mime, 'image/jpeg');
-      expect(result.width, 1600);
-      expect(result.height, 800);
-      expect(decoded.width, 1600);
-      expect(decoded.height, 800);
+      expect(block.type, BlockType.sticker);
+      expect(block.stickerId, 'daisy');
+      expect(StickerCatalog.byId(block.stickerId)?.label, 'Daisy');
+      expect(StickerCatalog.byId('missing'), isNull);
     });
+
+    test(
+      'downscales images to the maximum side and preserves aspect ratio',
+      () {
+        final source = img.Image(width: 2000, height: 1000);
+        final bytes = Uint8List.fromList(img.encodePng(source));
+
+        final result = const ImageProcessor().process(bytes);
+        final decoded = img.decodeImage(result.bytes)!;
+
+        expect(result.mime, 'image/jpeg');
+        expect(result.width, 1600);
+        expect(result.height, 800);
+        expect(decoded.width, 1600);
+        expect(decoded.height, 800);
+      },
+    );
 
     test('rejects invalid image bytes', () {
       expect(
@@ -221,17 +249,15 @@ void main() {
         id: 'dynamic-map-entry',
         createdAt: DateTime.utc(2025),
         blocks: [
-          ContentBlock(
-            id: 'block',
-            type: BlockType.text,
-            text: 'Loaded',
-          ),
+          ContentBlock(id: 'block', type: BlockType.text, text: 'Loaded'),
         ],
         view: ViewState(zoom: 2, panX: 4, panY: 5),
       );
       await Hive.box('entries').put(entry.id, <String, dynamic>{
         ...entry.toJson(),
-        'blocks': [<dynamic, dynamic>{...entry.blocks.single.toJson()}],
+        'blocks': [
+          <dynamic, dynamic>{...entry.blocks.single.toJson()},
+        ],
         'view': <dynamic, dynamic>{...entry.view!.toJson()},
       });
       await Hive.box('meta').put('entryOrder', [entry.id]);

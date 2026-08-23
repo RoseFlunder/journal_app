@@ -1,11 +1,11 @@
 {
-    "name": "journal_app",
-    "short_name": "journal_app",
+    "name": "Cozy Bloom Journal",
+    "short_name": "Cozy Bloom",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FBF3E6",
+    "theme_color": "#B7C1A7",
+    "description": "A cozy scrapbook journal for thoughts and memories.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

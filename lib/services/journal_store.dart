@@ -23,20 +23,20 @@ class AssetRecord {
   final List<int> data;
 
   Map<String, dynamic> toJson() => {
-        'entryId': entryId,
-        'kind': kind.name,
-        'mime': mime,
-        'data': data,
-      };
+    'entryId': entryId,
+    'kind': kind.name,
+    'mime': mime,
+    'data': data,
+  };
 
   factory AssetRecord.fromJson(Map<String, dynamic> json) => AssetRecord(
-        entryId: json['entryId'] as String,
-        kind: AssetKind.values.byName(json['kind'] as String? ?? 'image'),
-        mime: json['mime'] as String? ?? '',
-        data: (json['data'] as List<dynamic>? ?? const [])
-            .map((e) => e is int ? e : (e as num).toInt())
-            .toList(),
-      );
+    entryId: json['entryId'] as String,
+    kind: AssetKind.values.byName(json['kind'] as String? ?? 'image'),
+    mime: json['mime'] as String? ?? '',
+    data: (json['data'] as List<dynamic>? ?? const [])
+        .map((e) => e is int ? e : (e as num).toInt())
+        .toList(),
+  );
 }
 
 /// Loads, owns and persists all journal data.
@@ -94,11 +94,12 @@ class JournalStore extends ChangeNotifier {
     }
 
     // Recover entries that survived while the order metadata did not.
-    final unorderedIds = _entriesBox.keys
-        .whereType<String>()
-        .where((id) => !loadedIds.contains(id))
-        .toList()
-      ..sort();
+    final unorderedIds =
+        _entriesBox.keys
+            .whereType<String>()
+            .where((id) => !loadedIds.contains(id))
+            .toList()
+          ..sort();
     for (final id in unorderedIds) {
       final entry = _readEntry(id);
       if (entry != null) _entries.add(entry);
@@ -121,8 +122,7 @@ class JournalStore extends ChangeNotifier {
     }
   }
 
-  int indexOfEntry(String id) =>
-      _entries.indexWhere((e) => e.id == id);
+  int indexOfEntry(String id) => _entries.indexWhere((e) => e.id == id);
 
   /// Creates a new (empty) page at the end and returns it.
   Future<Entry> addEntry() {
@@ -238,14 +238,11 @@ class JournalStore extends ChangeNotifier {
   }
 
   List<dynamic> _assetIdsForEntry(String entryId) {
-    return _assetsBox.keys
-        .where((k) {
-          final raw = _assetsBox.get(k);
-          return raw is Map &&
-              AssetRecord.fromJson(Map<String, dynamic>.from(raw))
-                      .entryId ==
-                  entryId;
-        })
-        .toList();
+    return _assetsBox.keys.where((k) {
+      final raw = _assetsBox.get(k);
+      return raw is Map &&
+          AssetRecord.fromJson(Map<String, dynamic>.from(raw)).entryId ==
+              entryId;
+    }).toList();
   }
 }

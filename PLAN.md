@@ -1,8 +1,8 @@
-# Journal App – Implementation Plan
+# Cozy Bloom Journal – Implementation Plan
 
-A paper-styled digital journal: explicitly navigated pages, each with a title,
+A botanical scrapbook journal: explicitly navigated pages, each with a title,
 creation date and freely positioned content (text boxes and pictures, drag & drop).
-Optional per-page background music with manual play/pause. The first page is
+Optional per-page background music with manual play/pause (deferred). The first page is
 a table of contents for jumping to any page. Everything is stored locally on
 device. Targets: **Android, Windows, Web**.
 
@@ -26,7 +26,7 @@ class ViewState {
 
 class ContentBlock {
   final String id;
-  BlockType type;           // text | image
+  BlockType type;           // text | image | sticker
   String text;              // text blocks (may be '')
   String? assetId;          // image blocks: key into the assets box
   Offset position;          // in *page units* (virtual page = 100 x 141.4)
@@ -136,6 +136,9 @@ lib/
     delete selection,
   - text blocks: tap in edit mode focuses a transparent `TextField`.
 - New blocks are appended at the end of `blocks` (topmost z-order).
+- Sticker blocks reference a bundled sticker catalog by id and support the
+  same selection, movement, proportional resizing, rotation, and layering as
+  image blocks.
 
 ### Page viewport (zoom & pan)
 
@@ -219,7 +222,11 @@ across the page:
   assets box; add image block, drag/resize/rotate like text, tap → full-screen
   viewer. Regression coverage includes image serialization, processing,
   rendering, and rotation-control exposure.
-- **M6 – Music:** pick audio file → assets box, `AudioService`
+- **[x] M5b – Stickers and branding:** bundled sticker catalog, scrapbook home,
+  framed page, startup artwork, and platform launcher assets.
+- **[x] M6 – Cozy Bloom redesign:** botanical home, framed page, branded
+  startup, launcher assets, bottom editor toolbar, and two bundled stickers.
+- **M7 – Music:** pick audio file → assets box, `AudioService`
   (loop), `MusicPlayerBar` with manual play/pause on the page, stop on
   page swap.
 - **M7 – Polish:** empty-state journal (a friendly "start writing" page),
@@ -252,4 +259,6 @@ across the page:
   dragging the selected border moves the block. The non-scrollable outer
   `PageView` is covered by widget regression tests because its physics are
   shared across Android, Windows, and Web.
-
+10. **Current scope:** calendar, search, drawing, photo adjustments, and music
+  are not exposed as working features; the editor More sheet labels them as
+  coming soon.

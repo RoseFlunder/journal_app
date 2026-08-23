@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../editor/editor_toolbar.dart';
 import '../editor/entry_canvas.dart';
 import '../models/entry.dart';
+import '../models/sticker.dart';
 import '../services/image_source.dart';
 import '../services/journal_store.dart';
 import '../widgets/page_viewport.dart';
@@ -12,8 +13,7 @@ import '../widgets/paper_page.dart';
 
 /// Shows one [Entry] as a journal page.
 ///
-/// M1: read-only placeholder page with title + date. Free-positioned
-/// content blocks arrive in later milestones (see PLAN.md).
+/// Renders one framed paper page and its freely positioned content blocks.
 class EntryPage extends StatefulWidget {
   const EntryPage({
     super.key,
@@ -57,6 +57,7 @@ class EntryPage extends StatefulWidget {
 class _EntryPageState extends State<EntryPage> {
   static const _uuid = Uuid();
   static const _workspaceSize = Size(10000, 10000);
+  static const _pageFramePosition = Offset(4000, 4500);
   static const _worldOrigin = Offset(450, 450);
   static const _headerPosition = Offset(4500, 4650);
   bool _editing = false;
@@ -70,6 +71,7 @@ class _EntryPageState extends State<EntryPage> {
       widget.imageSource ?? PlatformImageSource();
   bool _pickingImage = false;
   final Map<String, ImageProvider<Object>> _imageProviders = {};
+  final Map<String, ImageProvider<Object>> _stickerProviders = {};
 
   @override
   void dispose() {
@@ -130,14 +132,92 @@ class _EntryPageState extends State<EntryPage> {
     }
   }
 
+  Future<void> _addSticker() async {
+    final sticker = await showModalBottomSheet<StickerDefinition>(
+      context: context,
+      backgroundColor: PaperPage.paper,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Sticker pack',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 14),
+              GridView.builder(
+                shrinkWrap: true,
+                itemCount: StickerCatalog.definitions.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 1.25,
+                ),
+                itemBuilder: (context, index) {
+                  final definition = StickerCatalog.definitions[index];
+                  return Semantics(
+                    button: true,
+                    label: 'Add ${definition.label} sticker',
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => Navigator.pop(context, definition),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF7EFE6),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: PaperPage.ink.withValues(alpha: 0.12),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Image.asset(definition.assetPath),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || sticker == null) return;
+    final block = ContentBlock(
+      id: _uuid.v4(),
+      type: BlockType.sticker,
+      stickerId: sticker.id,
+      x: 8,
+      y: 40 + (widget.entry.blocks.length * 5) % 60,
+      w: sticker.defaultSize.width,
+      h: sticker.defaultSize.height,
+    );
+    widget.onBlocksChanged([...widget.entry.blocks, block]);
+    setState(() => _selectedId = block.id);
+  }
+
   ImageProvider<Object>? _imageProvider(String assetId) {
+    final sticker = StickerCatalog.byId(assetId);
+    if (sticker != null) {
+      return _stickerProviders.putIfAbsent(
+        assetId,
+        () => AssetImage(sticker.assetPath),
+      );
+    }
     final bytes = widget.store.getAsset(assetId);
     if (bytes == null) return null;
     return _imageProviders.putIfAbsent(assetId, () => MemoryImage(bytes));
   }
 
   void _showImageError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _openImage(ContentBlock block) async {
@@ -150,7 +230,50 @@ class _EntryPageState extends State<EntryPage> {
       builder: (context) => Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.all(16),
-        child: InteractiveViewer(child: Image.memory(bytes, fit: BoxFit.contain)),
+        child: InteractiveViewer(
+          child: Image.memory(bytes, fit: BoxFit.contain),
+        ),
+      ),
+    );
+  }
+
+  void _showMoreTools() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: PaperPage.paper,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              leading: Icon(Icons.brush_outlined),
+              title: Text('Draw & doodle'),
+              subtitle: Text('Coming soon'),
+              enabled: false,
+            ),
+            const ListTile(
+              leading: Icon(Icons.tune),
+              title: Text('Photo editing'),
+              subtitle: Text('Coming soon'),
+              enabled: false,
+            ),
+            const ListTile(
+              leading: Icon(Icons.music_note_outlined),
+              title: Text('Background music'),
+              subtitle: Text('Coming soon'),
+              enabled: false,
+            ),
+            ListTile(
+              leading: const Icon(Icons.title),
+              title: const Text('Edit page title'),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _editingTitle = true);
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -165,10 +288,7 @@ class _EntryPageState extends State<EntryPage> {
         .where((block) => block.id != selectedId)
         .toList();
     if (selected.type == BlockType.image && selected.assetId != null) {
-      widget.store.removeAssetIfUnreferenced(
-        selected.assetId!,
-        remaining,
-      );
+      widget.store.removeAssetIfUnreferenced(selected.assetId!, remaining);
     }
     widget.onBlocksChanged(remaining);
     setState(() => _selectedId = null);
@@ -194,7 +314,12 @@ class _EntryPageState extends State<EntryPage> {
           children: [
             PageViewport(
               canvasSize: _workspaceSize,
+              fitSize: PageViewport.pageSize,
               initialFocus: _headerPosition,
+              fitFocus: Offset(
+                _pageFramePosition.dx + PageViewport.pageSize.width / 2,
+                _pageFramePosition.dy + PageViewport.pageSize.height / 2,
+              ),
               initialView: widget.entry.view,
               onViewChanged: widget.onViewChanged,
               child: PaperPage(
@@ -202,6 +327,13 @@ class _EntryPageState extends State<EntryPage> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
+                    Positioned(
+                      left: _pageFramePosition.dx,
+                      top: _pageFramePosition.dy,
+                      width: PageViewport.pageSize.width,
+                      height: PageViewport.pageSize.height,
+                      child: const _PageFrame(),
+                    ),
                     Positioned.fill(
                       child: EntryCanvas(
                         workspaceSize: _workspaceSize,
@@ -326,35 +458,85 @@ class _EntryPageState extends State<EntryPage> {
                 icon: const Icon(Icons.menu),
               ),
             ),
-            Positioned(
-              right: 12,
-              top: 12,
-              child: EditorToolbar(
-                editing: _editing,
-                hasSelection: _selectedId != null,
-                textEditing: _textEditingId != null,
-                onToggleEditing: () => setState(() {
-                  _editing = !_editing;
-                  widget.onEditingChanged(_editing);
-                  if (!_editing) {
-                    _selectedId = null;
-                    _textEditingId = null;
-                    _editingTitle = false;
-                  }
-                }),
-                onAddText: _addText,
-                onAddImage: _addImage,
-                onEditTitle: () => setState(() => _editingTitle = true),
-                onEditText: () => setState(() {
-                  _textEditingId = _selectedId;
-                }),
-                onDelete: _deleteSelected,
-                onBringToFront: _bringToFront,
+            if (!_editing)
+              Positioned(
+                right: 12,
+                top: 12,
+                child: EditorToolbar(
+                  editing: false,
+                  hasSelection: false,
+                  textEditing: false,
+                  onToggleEditing: () => setState(() {
+                    _editing = true;
+                    widget.onEditingChanged(true);
+                  }),
+                  onAddText: _addText,
+                  onAddImage: _addImage,
+                  onAddSticker: _addSticker,
+                  onMore: _showMoreTools,
+                  onEditTitle: () => setState(() => _editingTitle = true),
+                  onEditText: () =>
+                      setState(() => _textEditingId = _selectedId),
+                  onDelete: _deleteSelected,
+                  onBringToFront: _bringToFront,
+                ),
               ),
-            ),
+            if (_editing)
+              Positioned(
+                left: 8,
+                right: 8,
+                bottom: 8,
+                child: Center(
+                  child: EditorToolbar(
+                    editing: true,
+                    hasSelection: _selectedId != null,
+                    textEditing: _textEditingId != null,
+                    onToggleEditing: () => setState(() {
+                      _editing = false;
+                      widget.onEditingChanged(false);
+                      _selectedId = null;
+                      _textEditingId = null;
+                      _editingTitle = false;
+                    }),
+                    onAddText: _addText,
+                    onAddImage: _addImage,
+                    onAddSticker: _addSticker,
+                    onMore: _showMoreTools,
+                    onEditTitle: () => setState(() => _editingTitle = true),
+                    onEditText: () =>
+                        setState(() => _textEditingId = _selectedId),
+                    onDelete: _deleteSelected,
+                    onBringToFront: _bringToFront,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
     );
   }
+}
+
+class _PageFrame extends StatelessWidget {
+  const _PageFrame();
+
+  @override
+  Widget build(BuildContext _) => DecoratedBox(
+    decoration: BoxDecoration(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFFFFBF4), Color(0xFFF2E9D5)],
+      ),
+      border: Border.all(color: PaperPage.ink.withValues(alpha: 0.18)),
+      borderRadius: BorderRadius.circular(3),
+      boxShadow: [
+        BoxShadow(
+          color: PaperPage.ink.withValues(alpha: 0.16),
+          blurRadius: 18,
+          offset: const Offset(0, 8),
+        ),
+      ],
+    ),
+  );
 }

@@ -1,8 +1,9 @@
-# Journal App
+# Cozy Bloom Journal
 
-A paper-styled digital journal for Android, Windows and Web. The journal uses
-swipeable pages, a table of contents, local persistence, and a virtual page
-coordinate system designed for freely positioned text and image content.
+A botanical scrapbook journal for Android, Windows and Web. Cozy Bloom Journal
+uses a framed paper page inside a Figma-like infinite workspace, local
+persistence, freely positioned text and photos, and a small bundled sticker
+pack.
 
 ## Status
 
@@ -10,9 +11,11 @@ coordinate system designed for freely positioned text and image content.
 - [x] M2: paper theme, bundled fonts, ruled pages and styled TOC
 - [x] M3: zoom and pan viewport with per-entry view persistence
 - [x] M4: PowerPoint-style text block editing, positioning, resizing and persistence
-- [ ] M5-M7: images, music and final polish
+- [x] M5: pictures, branding, scrapbook home, and bundled stickers
+- [ ] M6-M7: music, drawing, photo adjustments, and further polish
 
-The active implementation plan is in [PLAN.md](PLAN.md). M5 is planned next.
+The active implementation plan is in [PLAN.md](PLAN.md). Music, drawing, and
+photo adjustments are intentionally deferred.
 
 ## Run locally
 
@@ -66,6 +69,7 @@ filesystem access so the same path remains compatible with Web.
 ## Architecture
 
 - `lib/models/entry.dart`: entry, block and view-state serialization models
+- `lib/models/sticker.dart`: bundled sticker catalog and metadata
 - `lib/services/journal_store.dart`: Hive-backed journal and asset storage
 - `lib/screens/journal_screen.dart`: PageView over TOC and entries
 - `lib/screens/contents_page.dart`: table of contents
@@ -74,7 +78,7 @@ filesystem access so the same path remains compatible with Web.
 - `lib/widgets/page_viewport.dart`: M3 zoom and pan viewport
 - `lib/editor/entry_canvas.dart`: M4 free-positioned block canvas
 - `lib/editor/block_widget.dart`: selectable, movable and resizable text blocks
-- `lib/editor/editor_toolbar.dart`: edit-mode block actions
+- `lib/editor/editor_toolbar.dart`: scrapbook edit-mode creation/context bar
 - `test/journal_test.dart`: model and persistence tests
 - `test/page_viewport_test.dart`: viewport behavior tests
 - `test/widget_test.dart`: live-binding navigation, paper-theme and editor tests

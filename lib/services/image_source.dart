@@ -18,7 +18,8 @@ abstract class ImageSourceService {
 }
 
 class PlatformImageSource implements ImageSourceService {
-  PlatformImageSource({ImagePicker? picker}) : _picker = picker ?? ImagePicker();
+  PlatformImageSource({ImagePicker? picker})
+    : _picker = picker ?? ImagePicker();
 
   final ImagePicker _picker;
 
@@ -36,9 +37,7 @@ class PlatformImageSource implements ImageSourceService {
   }
 
   Future<PickedImage?> _pickFile() async {
-    final file = await FilePicker.pickFile(
-      type: FileType.image,
-    );
+    final file = await FilePicker.pickFile(type: FileType.image);
     if (file == null) return null;
     final bytes = await file.readAsBytes();
     if (bytes.isEmpty) return null;
@@ -110,7 +109,8 @@ class ImageProcessor {
       throw const FormatException('The selected file is not a valid image.');
     }
 
-    final scale = maxSide / decoded.width.clamp(decoded.height, double.infinity);
+    final scale =
+        maxSide / decoded.width.clamp(decoded.height, double.infinity);
     final resized = scale < 1
         ? img.copyResize(
             decoded,

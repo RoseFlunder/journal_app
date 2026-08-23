@@ -1,5 +1,5 @@
 name: journal_app
-description: "A new Flutter project."
+description: "Cozy Bloom Journal"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -64,6 +64,12 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/branding/cozy_bloom_wordmark.png
+    - assets/branding/cozy_bloom_icon.png
+    - assets/stickers/daisy.png
+    - assets/stickers/butterfly.png
 
   fonts:
     - family: Caveat

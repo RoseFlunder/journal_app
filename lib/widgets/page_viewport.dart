@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -17,7 +16,9 @@ class PageViewport extends StatefulWidget {
     this.minZoom = 0.5,
     this.maxZoom = 3.0,
     this.canvasSize = pageSize,
+    this.fitSize = pageSize,
     this.initialFocus,
+    this.fitFocus,
   });
 
   static const pageSize = Size(1000, 1414);
@@ -39,7 +40,14 @@ class PageViewport extends StatefulWidget {
   final double minZoom;
   final double maxZoom;
   final Size canvasSize;
+
+  /// The content region that should be fully visible at fit/reset scale.
+  final Size fitSize;
   final Offset? initialFocus;
+
+  /// Optional focus used by Fit/reset controls. This lets an entry open near
+  /// its header while Fit centers the complete framed page.
+  final Offset? fitFocus;
 
   @override
   State<PageViewport> createState() => _PageViewportState();
@@ -117,7 +125,9 @@ class _PageViewportState extends State<PageViewport> {
 
   void _setInitialTransform(Size size) {
     _viewportSize = size;
-    _fitScale = size.width / PageViewport.pageSize.width;
+    final widthScale = size.width / widget.fitSize.width;
+    final heightScale = size.height / widget.fitSize.height;
+    _fitScale = widthScale < heightScale ? widthScale : heightScale;
     if (!widget.interactive) {
       _zoom = 1;
       _controller.value = _resetTransform();
@@ -131,29 +141,45 @@ class _PageViewportState extends State<PageViewport> {
     );
     _zoom = view.zoom;
     _controller.value = widget.initialView == null
-        ? _resetTransform(view.zoom)
+        ? _resetTransform(zoom: view.zoom, focus: widget.initialFocus)
         : _fitTransform(view.zoom, view.panX, view.panY);
     _ready = true;
   }
 
-  Matrix4 _resetTransform([double zoom = 1]) {
+  Matrix4 _resetTransform({double zoom = 1, Offset? focus}) {
     final scale = _fitScale * zoom;
-    final focus = widget.initialFocus;
-    if (focus == null) return _fitTransform(zoom, 0, 0);
+    final target = focus ?? widget.initialFocus;
+    if (target == null) return _fitTransform(zoom, 0, 0);
+    if (focus == widget.fitFocus && widget.fitFocus != null) {
+      return Matrix4.identity()
+        ..translateByDouble(
+          _viewportSize.width / 2 - target.dx * scale,
+          _viewportSize.height / 2 - target.dy * scale,
+          0,
+          1,
+        )
+        ..scaleByDouble(scale, scale, scale, 1);
+    }
     return Matrix4.identity()
-      ..translateByDouble(-focus.dx * scale, 16 - focus.dy * scale, 0, 1)
+      ..translateByDouble(-target.dx * scale, 16 - target.dy * scale, 0, 1)
       ..scaleByDouble(scale, scale, scale, 1);
   }
 
   Matrix4 _fitTransform(double zoom, double panX, double panY) {
     final scale = _fitScale * zoom;
-    final focus = widget.initialFocus;
-    final baseX = focus == null
-        ? (_viewportSize.width - widget.canvasSize.width * scale) / 2
-        : -focus.dx * scale;
-    final baseY = focus == null
-        ? (_viewportSize.height - widget.canvasSize.height * scale) / 2
-        : 16 - focus.dy * scale;
+    final focus = widget.fitFocus ?? widget.initialFocus;
+    final double baseX;
+    final double baseY;
+    if (focus == null) {
+      baseX = (_viewportSize.width - widget.canvasSize.width * scale) / 2;
+      baseY = (_viewportSize.height - widget.canvasSize.height * scale) / 2;
+    } else if (widget.fitFocus == null) {
+      baseX = -focus.dx * scale;
+      baseY = 16 - focus.dy * scale;
+    } else {
+      baseX = _viewportSize.width / 2 - focus.dx * scale;
+      baseY = _viewportSize.height / 2 - focus.dy * scale;
+    }
     return Matrix4.identity()
       ..translateByDouble(baseX + panX * scale, baseY + panY * scale, 0, 1)
       ..scaleByDouble(scale, scale, scale, 1);
@@ -181,9 +207,10 @@ class _PageViewportState extends State<PageViewport> {
     _controller.value = matrix;
   }
 
-  void _fit() => _controller.value = _resetTransform();
+  void _fit() => _controller.value = _resetTransform(focus: widget.fitFocus);
 
-  void _resetView() => _controller.value = _resetTransform();
+  void _resetView() =>
+      _controller.value = _resetTransform(focus: widget.fitFocus);
 
   void _handlePointerSignal(PointerSignalEvent event) {
     if (!widget.interactive || event is! PointerScrollEvent) return;

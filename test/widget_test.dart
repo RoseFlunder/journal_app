@@ -7,6 +7,7 @@ import 'package:hive/hive.dart';
 import 'package:image/image.dart' as img;
 import 'package:journal_app/main.dart';
 import 'package:journal_app/models/entry.dart';
+import 'package:journal_app/models/sticker.dart';
 import 'package:journal_app/services/journal_store.dart';
 import 'package:journal_app/editor/block_widget.dart';
 import 'package:journal_app/editor/entry_canvas.dart';
@@ -206,7 +207,9 @@ void main() {
     expect(store.entries.single.blocks, isEmpty);
   });
 
-  testWidgets('image blocks render and expose rotation controls', (tester) async {
+  testWidgets('image blocks render and expose rotation controls', (
+    tester,
+  ) async {
     var rotation = 0.0;
     final block = ContentBlock(
       id: 'image-widget',
@@ -299,6 +302,47 @@ void main() {
     final after = tester.widget<Image>(find.byType(Image)).image;
 
     expect(identical(before, after), isTrue);
+  });
+
+  testWidgets('bundled sticker blocks render and expose transform controls', (
+    tester,
+  ) async {
+    final definition = StickerCatalog.byId('daisy')!;
+    final block = ContentBlock(
+      id: 'sticker-widget',
+      type: BlockType.sticker,
+      stickerId: definition.id,
+      w: definition.defaultSize.width,
+      h: definition.defaultSize.height,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 240,
+          height: 200,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 60),
+            child: BlockWidget(
+              block: block,
+              selected: true,
+              editing: true,
+              textEditing: false,
+              imageProvider: AssetImage(definition.assetPath),
+              onTap: () {},
+              onEditText: () {},
+              onMove: (_) {},
+              onResize: (_) {},
+              onRotate: (_) {},
+              onTextChanged: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(Image), findsOneWidget);
+    expect(find.byKey(const ValueKey('rotate-sticker-widget')), findsOneWidget);
   });
 
   testWidgets('entry title is editable and loads near the top left', (

@@ -1,7 +1,7 @@
 import 'package:uuid/uuid.dart';
 
 /// The kinds of content that can be freely placed on a journal page.
-enum BlockType { text, image }
+enum BlockType { text, image, sticker }
 
 /// A piece of freely positioned content on a journal page.
 ///
@@ -14,6 +14,7 @@ class ContentBlock {
     required this.type,
     this.text = '',
     this.assetId,
+    this.stickerId,
     this.x = 0,
     this.y = 0,
     this.w = 0,
@@ -30,6 +31,10 @@ class ContentBlock {
   /// Asset id (key in the assets box) for a [BlockType.image] block.
   String? assetId;
 
+  /// Bundled sticker id for a [BlockType.sticker] block. Sticker files live
+  /// in the Flutter asset bundle and are never copied into Hive.
+  String? stickerId;
+
   double x;
   double y;
   double w;
@@ -41,6 +46,7 @@ class ContentBlock {
     'type': type.name,
     'text': text,
     'assetId': assetId,
+    'stickerId': stickerId,
     'x': x,
     'y': y,
     'w': w,
@@ -53,6 +59,7 @@ class ContentBlock {
     type: BlockType.values.byName(json['type'] as String? ?? 'text'),
     text: json['text'] as String? ?? '',
     assetId: json['assetId'] as String?,
+    stickerId: json['stickerId'] as String?,
     x: (json['x'] as num?)?.toDouble() ?? 0,
     y: (json['y'] as num?)?.toDouble() ?? 0,
     w: (json['w'] as num?)?.toDouble() ?? 0,
@@ -141,6 +148,6 @@ class Entry {
     );
   }
 
-      static Map<String, dynamic> _stringMap(Object value) =>
-        Map<String, dynamic>.from(value as Map);
+  static Map<String, dynamic> _stringMap(Object value) =>
+      Map<String, dynamic>.from(value as Map);
 }

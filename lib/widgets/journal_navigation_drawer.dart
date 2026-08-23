@@ -36,7 +36,7 @@ class JournalNavigationDrawer extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      'Journal',
+                      'Cozy Bloom',
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
                   ),

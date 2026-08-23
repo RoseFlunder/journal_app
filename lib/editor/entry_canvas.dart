@@ -85,24 +85,26 @@ class EntryCanvas extends StatelessWidget {
                                   ..x = block.x + delta.dx / scale
                                   ..y = block.y + delta.dy / scale,
                               ),
-                              onResize: (delta) => onChanged(
-                                _resizedBlock(block, delta, scale),
-                              ),
+                              onResize: (delta) =>
+                                  onChanged(_resizedBlock(block, delta, scale)),
                               onRotate: (delta) =>
                                   onChanged(block..rotation += delta),
-                                imageBytes: block.assetId == null ||
-                                        imageProvider != null
-                                    ? null
-                                    : imageBytes(block.assetId!),
-                                imageProvider: block.assetId == null
+                              imageBytes:
+                                  _visualId(block) == null ||
+                                      imageProvider != null
                                   ? null
-                                  : imageProvider?.call(block.assetId!),
-                                onOpenImage: block.type == BlockType.image
+                                  : imageBytes(_visualId(block)!),
+                              imageProvider: _visualId(block) == null
+                                  ? null
+                                  : imageProvider?.call(_visualId(block)!),
+                              onOpenImage: block.type == BlockType.image
                                   ? () => onOpenImage(block)
                                   : null,
                               onTextChanged: (text) =>
                                   onChanged(block..text = text),
-                                preserveAspectRatio: block.type == BlockType.image,
+                              preserveAspectRatio:
+                                  block.type == BlockType.image ||
+                                  block.type == BlockType.sticker,
                             ),
                           ),
                         ),
@@ -117,13 +119,9 @@ class EntryCanvas extends StatelessWidget {
     );
   }
 
-  ContentBlock _resizedBlock(
-    ContentBlock block,
-    Offset delta,
-    double scale,
-  ) {
+  ContentBlock _resizedBlock(ContentBlock block, Offset delta, double scale) {
     final width = math.max(minWidth, block.w + delta.dx / scale);
-    if (block.type != BlockType.image) {
+    if (block.type != BlockType.image && block.type != BlockType.sticker) {
       return block
         ..w = width
         ..h = math.max(minHeight, block.h + delta.dy / scale);
@@ -150,4 +148,7 @@ class EntryCanvas extends StatelessWidget {
     );
     return local.dx.abs() <= width / 2 && local.dy.abs() <= height / 2;
   }
+
+  String? _visualId(ContentBlock block) =>
+      block.type == BlockType.sticker ? block.stickerId : block.assetId;
 }

@@ -22,7 +22,6 @@ class _JournalScreenState extends State<JournalScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final PageController _pageController = PageController();
   bool _animating = false;
-  bool _editingEntry = false;
 
   @override
   void dispose() {
@@ -86,19 +85,13 @@ class _JournalScreenState extends State<JournalScreen> {
       store: widget.store,
       index: index,
       total: total,
-      onViewChanged: (view) => widget.store.updateEntry(
-        entry.id,
-        (entry) => entry.view = view,
-      ),
-      onBlocksChanged: (blocks) => widget.store.updateEntry(
-        entry.id,
-        (entry) => entry.blocks = blocks,
-      ),
-      onTitleChanged: (title) => widget.store.updateEntry(
-        entry.id,
-        (entry) => entry.title = title,
-      ),
-      onEditingChanged: (editing) => setState(() => _editingEntry = editing),
+      onViewChanged: (view) =>
+          widget.store.updateEntry(entry.id, (entry) => entry.view = view),
+      onBlocksChanged: (blocks) =>
+          widget.store.updateEntry(entry.id, (entry) => entry.blocks = blocks),
+      onTitleChanged: (title) =>
+          widget.store.updateEntry(entry.id, (entry) => entry.title = title),
+      onEditingChanged: (_) {},
       onOpenNavigation: _openNavigation,
       onContents: _goToToc,
       onPrev: _goPrev,
