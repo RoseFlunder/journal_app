@@ -90,12 +90,13 @@ class _BlockWidgetState extends State<BlockWidget> {
                 ))
         : widget.editing && widget.selected && widget.textEditing
         ? TextField(
+            key: ValueKey('block-text-${widget.block.id}'),
             controller: _controller,
             autofocus: true,
             maxLines: null,
             expands: true,
             onChanged: widget.onTextChanged,
-            style: Theme.of(context).textTheme.bodyLarge,
+            style: _textStyle(context),
             decoration: const InputDecoration(
               border: InputBorder.none,
               contentPadding: EdgeInsets.all(8),
@@ -107,7 +108,7 @@ class _BlockWidgetState extends State<BlockWidget> {
               padding: const EdgeInsets.all(8),
               child: Text(
                 widget.block.text.isEmpty ? 'Write here...' : widget.block.text,
-                style: Theme.of(context).textTheme.bodyLarge,
+                style: _textStyle(context),
               ),
             ),
           );
@@ -270,6 +271,13 @@ class _BlockWidgetState extends State<BlockWidget> {
       ),
     );
   }
+
+  TextStyle _textStyle(BuildContext context) =>
+      (Theme.of(context).textTheme.bodyLarge ?? const TextStyle()).copyWith(
+        fontSize: widget.block.fontSize,
+        fontWeight: widget.block.bold ? FontWeight.bold : FontWeight.normal,
+        fontStyle: widget.block.italic ? FontStyle.italic : FontStyle.normal,
+      );
 
   void _handlePointerDown(PointerDownEvent event) {
     _pointers[event.pointer] = event.localPosition;

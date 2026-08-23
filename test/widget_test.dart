@@ -59,6 +59,15 @@ void main() {
       // Animated to the new entry page (no AppBar, placeholder title).
       expect(find.byType(AppBar), findsNothing);
       expect(find.text('Untitled page'), findsOneWidget);
+      expect(find.byTooltip('Edit title'), findsNothing);
+      expect(
+        find.byTooltip('Previous page (PageUp / ←)'),
+        findsNothing,
+      );
+      expect(
+        find.byTooltip('Next page (PageDown / →)'),
+        findsNothing,
+      );
 
       // Horizontal drags belong to the entry viewport and do not change pages.
       await tester.drag(find.byType(PageView), const Offset(800, 0));
@@ -144,6 +153,34 @@ void main() {
     );
   });
 
+  testWidgets('workspace paper is plain while finite pages are ruled', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: PaperPage(finite: false, child: SizedBox.expand()),
+      ),
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint && widget.painter is PaperLinesPainter,
+      ),
+      findsNothing,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(home: PaperPage(child: SizedBox.expand())),
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint && widget.painter is PaperLinesPainter,
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('M4 adds, edits, resizes and deletes text blocks', (
     tester,
   ) async {
@@ -163,18 +200,32 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(EntryCanvas), findsOneWidget);
     expect(find.byType(BlockWidget), findsOneWidget);
-    expect(find.byType(TextField), findsNothing);
+    expect(find.byKey(const ValueKey('entry-title')), findsOneWidget);
 
     await tester.tap(find.byTooltip('Edit text'));
     await tester.pump();
-    expect(find.byType(TextField), findsOneWidget);
-    await tester.enterText(find.byType(TextField), 'A first note');
+    expect(find.byType(TextField), findsNWidgets(2));
+    final blockId = store.entries.single.blocks.single.id;
+    await tester.enterText(
+      find.byKey(ValueKey('block-text-$blockId')),
+      'A first note',
+    );
     await tester.pump();
     expect(store.entries.single.blocks.single.text, 'A first note');
+    await tester.tap(find.byTooltip('Toggle bold'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Toggle italic'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Increase font size'));
+    await tester.pump();
+    expect(store.entries.single.blocks.single.bold, isTrue);
+    expect(store.entries.single.blocks.single.italic, isTrue);
+    expect(store.entries.single.blocks.single.fontSize, 23);
 
     await tester.tapAt(tester.getCenter(find.byType(EntryCanvas)));
     await tester.pump();
-    expect(find.byType(TextField), findsNothing);
+    expect(find.byKey(ValueKey('block-text-$blockId')), findsNothing);
+    expect(find.byKey(const ValueKey('entry-title')), findsOneWidget);
     expect(find.byType(BlockWidget), findsOneWidget);
 
     final canvasCenter = tester.getCenter(find.byType(EntryCanvas));
@@ -364,8 +415,7 @@ void main() {
 
     await tester.tap(find.byTooltip('Edit page'));
     await tester.pump();
-    await tester.tap(find.byTooltip('Edit title'));
-    await tester.pump();
+    expect(find.byTooltip('Edit title'), findsNothing);
     await tester.enterText(
       find.byKey(const ValueKey('entry-title')),
       'A new title',
@@ -374,6 +424,32 @@ void main() {
 
     expect(store.entries.single.title, 'A new title');
     expect(find.byKey(const ValueKey('entry-title')), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('entry-title'))).style
+          ?.fontSize,
+      28,
+    );
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('entry-title'))).style
+          ?.fontWeight,
+      FontWeight.bold,
+    );
+    await tester.tap(find.byTooltip('Toggle italic'));
+    await tester.pump();
+    expect(store.entries.single.titleItalic, isTrue);
+    await tester.tap(find.byTooltip('Decrease font size'));
+    await tester.pump();
+    expect(store.entries.single.titleFontSize, 26);
+    for (var i = 0; i < 20; i++) {
+      await tester.tap(find.byTooltip('Increase font size'));
+      await tester.pump();
+    }
+    expect(store.entries.single.titleFontSize, 48);
+    for (var i = 0; i < 30; i++) {
+      await tester.tap(find.byTooltip('Decrease font size'));
+      await tester.pump();
+    }
+    expect(store.entries.single.titleFontSize, 12);
   });
 
   testWidgets('entry viewport view state survives leaving and reopening', (

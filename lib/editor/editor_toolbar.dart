@@ -11,8 +11,13 @@ class EditorToolbar extends StatelessWidget {
     required this.onAddImage,
     required this.onAddSticker,
     required this.onMore,
-    required this.onEditTitle,
     required this.onEditText,
+    required this.onDecreaseFontSize,
+    required this.onIncreaseFontSize,
+    required this.onToggleBold,
+    required this.onToggleItalic,
+    required this.bold,
+    required this.italic,
     required this.onDelete,
     required this.onBringToFront,
   });
@@ -25,8 +30,13 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback onAddImage;
   final VoidCallback onAddSticker;
   final VoidCallback onMore;
-  final VoidCallback onEditTitle;
   final VoidCallback onEditText;
+  final VoidCallback? onDecreaseFontSize;
+  final VoidCallback? onIncreaseFontSize;
+  final VoidCallback onToggleBold;
+  final VoidCallback onToggleItalic;
+  final bool bold;
+  final bool italic;
   final VoidCallback onDelete;
   final VoidCallback onBringToFront;
 
@@ -47,68 +57,91 @@ class EditorToolbar extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = MediaQuery.sizeOf(context).width < 600;
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _Action(
-                tooltip: 'Finish editing',
-                icon: Icons.check,
-                label: compact ? null : 'Done',
-                onPressed: onToggleEditing,
-              ),
-              _divider(),
-              _Action(
-                tooltip: 'Add text',
-                icon: Icons.text_fields,
-                label: compact ? null : 'Text',
-                onPressed: onAddText,
-              ),
-              _Action(
-                tooltip: 'Add image',
-                icon: Icons.photo_outlined,
-                label: compact ? null : 'Photo',
-                onPressed: onAddImage,
-              ),
-              _Action(
-                tooltip: 'Add sticker',
-                icon: Icons.emoji_emotions_outlined,
-                label: compact ? null : 'Sticker',
-                onPressed: onAddSticker,
-              ),
-              _Action(
-                tooltip: 'More editing tools',
-                icon: Icons.more_horiz,
-                label: compact ? null : 'More',
-                onPressed: onMore,
-              ),
-              _Action(
-                tooltip: 'Edit title',
-                icon: Icons.title,
-                label: null,
-                onPressed: onEditTitle,
-              ),
-              if (hasSelection) ...[
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _Action(
+                  tooltip: 'Finish editing',
+                  icon: Icons.check,
+                  label: compact ? null : 'Done',
+                  onPressed: onToggleEditing,
+                ),
                 _divider(),
                 _Action(
-                  tooltip: 'Edit text',
-                  icon: textEditing ? Icons.keyboard_hide : Icons.edit_note,
-                  label: null,
-                  onPressed: onEditText,
+                  tooltip: 'Add text',
+                  icon: Icons.text_fields,
+                  label: compact ? null : 'Text',
+                  onPressed: onAddText,
                 ),
                 _Action(
-                  tooltip: 'Bring to front',
-                  icon: Icons.layers_outlined,
-                  label: null,
-                  onPressed: onBringToFront,
+                  tooltip: 'Add image',
+                  icon: Icons.photo_outlined,
+                  label: compact ? null : 'Photo',
+                  onPressed: onAddImage,
                 ),
                 _Action(
-                  tooltip: 'Delete block',
-                  icon: Icons.delete_outline,
-                  label: null,
-                  onPressed: onDelete,
+                  tooltip: 'Add sticker',
+                  icon: Icons.emoji_emotions_outlined,
+                  label: compact ? null : 'Sticker',
+                  onPressed: onAddSticker,
                 ),
+                _Action(
+                  tooltip: 'Decrease font size',
+                  icon: Icons.text_decrease,
+                  label: null,
+                  onPressed: onDecreaseFontSize,
+                ),
+                _Action(
+                  tooltip: 'Increase font size',
+                  icon: Icons.text_increase,
+                  label: null,
+                  onPressed: onIncreaseFontSize,
+                ),
+                _Action(
+                  tooltip: 'Toggle bold',
+                  icon: Icons.format_bold,
+                  label: null,
+                  onPressed: onToggleBold,
+                  selected: bold,
+                ),
+                _Action(
+                  tooltip: 'Toggle italic',
+                  icon: Icons.format_italic,
+                  label: null,
+                  onPressed: onToggleItalic,
+                  selected: italic,
+                ),
+                _Action(
+                  tooltip: 'More editing tools',
+                  icon: Icons.more_horiz,
+                  label: compact ? null : 'More',
+                  onPressed: onMore,
+                ),
+                if (hasSelection) ...[
+                  _divider(),
+                  _Action(
+                    tooltip: 'Edit text',
+                    icon: textEditing ? Icons.keyboard_hide : Icons.edit_note,
+                    label: null,
+                    onPressed: onEditText,
+                  ),
+                  _Action(
+                    tooltip: 'Bring to front',
+                    icon: Icons.layers_outlined,
+                    label: null,
+                    onPressed: onBringToFront,
+                  ),
+                  _Action(
+                    tooltip: 'Delete block',
+                    icon: Icons.delete_outline,
+                    label: null,
+                    onPressed: onDelete,
+                  ),
+                ],
               ],
-            ],
+            ),
           );
         },
       ),
@@ -150,12 +183,14 @@ class _Action extends StatelessWidget {
     required this.icon,
     required this.onPressed,
     this.label,
+    this.selected = false,
   });
 
   final String tooltip;
   final IconData icon;
   final VoidCallback? onPressed;
   final String? label;
+  final bool selected;
 
   @override
   Widget build(BuildContext _) {
@@ -163,7 +198,13 @@ class _Action extends StatelessWidget {
         ? IconButton(
             tooltip: tooltip,
             onPressed: onPressed,
-            icon: Icon(icon, color: const Color(0xFF3B3226)),
+            color: selected ? const Color(0xFFC97068) : null,
+            icon: Icon(
+              icon,
+              color: selected
+                  ? const Color(0xFFC97068)
+                  : const Color(0xFF3B3226),
+            ),
           )
         : InkWell(
             onTap: onPressed,

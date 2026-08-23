@@ -24,12 +24,8 @@ class PaperPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!finite) {
-      return CustomPaint(
-        painter: PaperLinesPainter(
-          showRules: showRules,
-          showMargin: showMargin,
-          workspace: true,
-        ),
+      return DecoratedBox(
+        decoration: const BoxDecoration(color: paper),
         child: child,
       );
     }
@@ -65,17 +61,14 @@ class PaperLinesPainter extends CustomPainter {
   const PaperLinesPainter({
     this.showRules = true,
     this.showMargin = true,
-    this.workspace = false,
   });
 
   final bool showRules;
   final bool showMargin;
-  final bool workspace;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final inset = workspace ? 0.0 : (size.width < 520 ? 22.0 : 34.0);
-    if (workspace) canvas.drawColor(PaperPage.paper, BlendMode.src);
+    final inset = size.width < 520 ? 22.0 : 34.0;
     final rulePaint = Paint()
       ..color = PaperPage.ink.withValues(alpha: 0.11)
       ..strokeWidth = 0.7;
@@ -84,15 +77,15 @@ class PaperLinesPainter extends CustomPainter {
       ..strokeWidth = 1.3;
 
     if (showRules) {
-      for (var y = 82.0; y < size.height - (workspace ? 0 : 20); y += 30) {
+      for (var y = 82.0; y < size.height - 20; y += 30) {
         canvas.drawLine(
           Offset(inset, y),
-          Offset(workspace ? size.width : size.width - 18, y),
+          Offset(size.width - 18, y),
           rulePaint,
         );
       }
     }
-    if (showMargin && !workspace && size.width > 100) {
+    if (showMargin && size.width > 100) {
       canvas.drawLine(
         Offset(inset - 10, 0),
         Offset(inset - 10, size.height),
@@ -104,6 +97,5 @@ class PaperLinesPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant PaperLinesPainter oldDelegate) =>
       showRules != oldDelegate.showRules ||
-      showMargin != oldDelegate.showMargin ||
-      workspace != oldDelegate.workspace;
+      showMargin != oldDelegate.showMargin;
 }

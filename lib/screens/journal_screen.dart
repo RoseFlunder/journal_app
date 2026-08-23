@@ -79,23 +79,24 @@ class _JournalScreenState extends State<JournalScreen> {
     });
   }
 
-  Widget _buildEntryPage(Entry entry, int index, int total) {
+  Widget _buildEntryPage(Entry entry) {
     return EntryPage(
       entry: entry,
       store: widget.store,
-      index: index,
-      total: total,
       onViewChanged: (view) =>
           widget.store.updateEntry(entry.id, (entry) => entry.view = view),
       onBlocksChanged: (blocks) =>
           widget.store.updateEntry(entry.id, (entry) => entry.blocks = blocks),
       onTitleChanged: (title) =>
           widget.store.updateEntry(entry.id, (entry) => entry.title = title),
+      onTitleStyleChanged: (fontSize, bold, italic) =>
+          widget.store.updateEntry(entry.id, (entry) {
+            entry.titleFontSize = fontSize;
+            entry.titleBold = bold;
+            entry.titleItalic = italic;
+          }),
       onEditingChanged: (_) {},
       onOpenNavigation: _openNavigation,
-      onContents: _goToToc,
-      onPrev: _goPrev,
-      onNext: _goNext,
     );
   }
 
@@ -135,8 +136,6 @@ class _JournalScreenState extends State<JournalScreen> {
                 for (var i = 0; i < widget.store.entries.length; i++)
                   _buildEntryPage(
                     widget.store.entries[i],
-                    i,
-                    widget.store.entries.length,
                   ),
               ],
             ),

@@ -19,34 +19,26 @@ class EntryPage extends StatefulWidget {
     super.key,
     required this.entry,
     required this.store,
-    required this.index,
-    required this.total,
     required this.onViewChanged,
     required this.onBlocksChanged,
     required this.onTitleChanged,
+    required this.onTitleStyleChanged,
     required this.onEditingChanged,
     required this.onOpenNavigation,
-    required this.onContents,
-    required this.onPrev,
-    required this.onNext,
     this.imageSource,
     this.imageProcessor = const ImageProcessor(),
   });
 
-  /// Index of this entry within the journal (0-based).
   final Entry entry;
   final JournalStore store;
-  final int index;
-  final int total;
   final ValueChanged<ViewState> onViewChanged;
   final ValueChanged<List<ContentBlock>> onBlocksChanged;
   final ValueChanged<String> onTitleChanged;
+  final void Function(double fontSize, bool bold, bool italic)
+  onTitleStyleChanged;
   final ValueChanged<bool> onEditingChanged;
 
   final VoidCallback onOpenNavigation;
-  final VoidCallback onContents;
-  final VoidCallback onPrev;
-  final VoidCallback onNext;
   final ImageSourceService? imageSource;
   final ImageProcessor imageProcessor;
 
@@ -59,11 +51,13 @@ class _EntryPageState extends State<EntryPage> {
   static const _workspaceSize = Size(10000, 10000);
   static const _pageFramePosition = Offset(4000, 4500);
   static const _worldOrigin = Offset(450, 450);
-  static const _headerPosition = Offset(4500, 4650);
+  static const _headerPosition = Offset(4000, 4500);
+  static const _fontSizeStep = 2.0;
+  static const _minFontSize = 12.0;
+  static const _maxFontSize = 48.0;
   bool _editing = false;
   String? _selectedId;
   String? _textEditingId;
-  bool _editingTitle = false;
   late final TextEditingController _titleController = TextEditingController(
     text: widget.entry.title,
   );
@@ -82,6 +76,82 @@ class _EntryPageState extends State<EntryPage> {
   void _changeBlock(ContentBlock block) {
     widget.onBlocksChanged(List<ContentBlock>.from(widget.entry.blocks));
   }
+
+  ContentBlock? get _editingTextBlock {
+    final id = _textEditingId;
+    if (id == null) return null;
+    for (final block in widget.entry.blocks) {
+      if (block.id == id && block.type == BlockType.text) return block;
+    }
+    return null;
+  }
+
+  double get _activeFontSize =>
+      _editingTextBlock?.fontSize ?? widget.entry.titleFontSize;
+
+  bool get _activeBold => _editingTextBlock?.bold ?? widget.entry.titleBold;
+
+  bool get _activeItalic =>
+      _editingTextBlock?.italic ?? widget.entry.titleItalic;
+
+  void _changeFontSize(double delta) {
+    final block = _editingTextBlock;
+    final size = (_activeFontSize + delta)
+        .clamp(_minFontSize, _maxFontSize)
+        .toDouble();
+    if (block != null) {
+      block.fontSize = size;
+      _changeBlock(block);
+    } else {
+      widget.onTitleStyleChanged(
+        size,
+        widget.entry.titleBold,
+        widget.entry.titleItalic,
+      );
+    }
+    setState(() {});
+  }
+
+  void _toggleBold() {
+    final block = _editingTextBlock;
+    if (block != null) {
+      block.bold = !block.bold;
+      _changeBlock(block);
+    } else {
+      widget.onTitleStyleChanged(
+        widget.entry.titleFontSize,
+        !widget.entry.titleBold,
+        widget.entry.titleItalic,
+      );
+    }
+    setState(() {});
+  }
+
+  void _toggleItalic() {
+    final block = _editingTextBlock;
+    if (block != null) {
+      block.italic = !block.italic;
+      _changeBlock(block);
+    } else {
+      widget.onTitleStyleChanged(
+        widget.entry.titleFontSize,
+        widget.entry.titleBold,
+        !widget.entry.titleItalic,
+      );
+    }
+    setState(() {});
+  }
+
+  TextStyle _titleStyle(BuildContext context) =>
+      (Theme.of(context).textTheme.headlineSmall ?? const TextStyle()).copyWith(
+        fontSize: widget.entry.titleFontSize,
+        fontWeight: widget.entry.titleBold
+            ? FontWeight.bold
+            : FontWeight.normal,
+        fontStyle: widget.entry.titleItalic
+            ? FontStyle.italic
+            : FontStyle.normal,
+      );
 
   void _addText() {
     final block = ContentBlock(
@@ -264,14 +334,6 @@ class _EntryPageState extends State<EntryPage> {
               subtitle: Text('Coming soon'),
               enabled: false,
             ),
-            ListTile(
-              leading: const Icon(Icons.title),
-              title: const Text('Edit page title'),
-              onTap: () {
-                Navigator.pop(context);
-                setState(() => _editingTitle = true);
-              },
-            ),
           ],
         ),
       ),
@@ -322,18 +384,16 @@ class _EntryPageState extends State<EntryPage> {
               ),
               initialView: widget.entry.view,
               onViewChanged: widget.onViewChanged,
-              child: PaperPage(
-                finite: false,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Positioned(
-                      left: _pageFramePosition.dx,
-                      top: _pageFramePosition.dy,
-                      width: PageViewport.pageSize.width,
-                      height: PageViewport.pageSize.height,
-                      child: const _PageFrame(),
-                    ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Positioned(
+                    left: _pageFramePosition.dx,
+                    top: _pageFramePosition.dy,
+                    width: PageViewport.pageSize.width,
+                    height: PageViewport.pageSize.height,
+                    child: const PaperPage(child: SizedBox.expand()),
+                  ),
                     Positioned.fill(
                       child: EntryCanvas(
                         workspaceSize: _workspaceSize,
@@ -373,61 +433,29 @@ class _EntryPageState extends State<EntryPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Navigation row (desktop/web affordance).
-                            Row(
-                              children: [
-                                TextButton.icon(
-                                  onPressed: widget.onContents,
-                                  icon: const Icon(Icons.menu_book_outlined),
-                                  label: const Text('Contents'),
-                                ),
-                                const Spacer(),
-                                IconButton(
-                                  tooltip: 'Previous page (PageUp / \u2190)',
-                                  onPressed: widget.index > 0
-                                      ? widget.onPrev
-                                      : null,
-                                  icon: const Icon(Icons.chevron_left),
-                                ),
-                                IconButton(
-                                  tooltip: 'Next page (PageDown / \u2192)',
-                                  onPressed: widget.index + 1 < widget.total
-                                      ? widget.onNext
-                                      : null,
-                                  icon: const Icon(Icons.chevron_right),
-                                ),
-                              ],
-                            ),
-                            _editingTitle
+                            _editing
                                 ? TextField(
                                     key: const ValueKey('entry-title'),
                                     controller: _titleController,
-                                    autofocus: true,
                                     maxLines: 1,
+                                    onTap: () {
+                                      if (_textEditingId != null) {
+                                        setState(() => _textEditingId = null);
+                                      }
+                                    },
                                     onChanged: widget.onTitleChanged,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .headlineSmall,
+                                    style: _titleStyle(context),
                                     decoration: const InputDecoration(
                                       hintText: 'Untitled page',
                                       border: InputBorder.none,
                                       isDense: true,
                                     ),
                                   )
-                                : GestureDetector(
-                                    onTap: _editing
-                                        ? () => setState(
-                                            () => _editingTitle = true,
-                                          )
-                                        : null,
-                                    child: Text(
-                                      widget.entry.title.isEmpty
-                                          ? 'Untitled page'
-                                          : widget.entry.title,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .headlineSmall,
-                                    ),
+                                : Text(
+                                    widget.entry.title.isEmpty
+                                        ? 'Untitled page'
+                                        : widget.entry.title,
+                                    style: _titleStyle(context),
                                   ),
                             const SizedBox(height: 4),
                             Text(
@@ -445,8 +473,7 @@ class _EntryPageState extends State<EntryPage> {
                         ),
                       ),
                     ),
-                  ],
-                ),
+                ],
               ),
             ),
             Positioned(
@@ -474,9 +501,18 @@ class _EntryPageState extends State<EntryPage> {
                   onAddImage: _addImage,
                   onAddSticker: _addSticker,
                   onMore: _showMoreTools,
-                  onEditTitle: () => setState(() => _editingTitle = true),
                   onEditText: () =>
                       setState(() => _textEditingId = _selectedId),
+                  onDecreaseFontSize: _activeFontSize > _minFontSize
+                      ? () => _changeFontSize(-_fontSizeStep)
+                      : null,
+                  onIncreaseFontSize: _activeFontSize < _maxFontSize
+                      ? () => _changeFontSize(_fontSizeStep)
+                      : null,
+                  onToggleBold: _toggleBold,
+                  onToggleItalic: _toggleItalic,
+                  bold: _activeBold,
+                  italic: _activeItalic,
                   onDelete: _deleteSelected,
                   onBringToFront: _bringToFront,
                 ),
@@ -496,15 +532,40 @@ class _EntryPageState extends State<EntryPage> {
                       widget.onEditingChanged(false);
                       _selectedId = null;
                       _textEditingId = null;
-                      _editingTitle = false;
                     }),
                     onAddText: _addText,
                     onAddImage: _addImage,
                     onAddSticker: _addSticker,
                     onMore: _showMoreTools,
-                    onEditTitle: () => setState(() => _editingTitle = true),
-                    onEditText: () =>
-                        setState(() => _textEditingId = _selectedId),
+                    onEditText: () {
+                      final block = _editingTextBlock;
+                      if (block != null) {
+                        setState(() => _textEditingId = block.id);
+                      } else {
+                        final selected = _selectedId == null
+                            ? null
+                            : widget.entry.blocks.firstWhere(
+                                (block) => block.id == _selectedId,
+                                orElse: () => ContentBlock(
+                                  id: '',
+                                  type: BlockType.image,
+                                ),
+                              );
+                        if (selected?.type == BlockType.text) {
+                          setState(() => _textEditingId = selected!.id);
+                        }
+                      }
+                    },
+                    onDecreaseFontSize: _activeFontSize > _minFontSize
+                        ? () => _changeFontSize(-_fontSizeStep)
+                        : null,
+                    onIncreaseFontSize: _activeFontSize < _maxFontSize
+                        ? () => _changeFontSize(_fontSizeStep)
+                        : null,
+                    onToggleBold: _toggleBold,
+                    onToggleItalic: _toggleItalic,
+                    bold: _activeBold,
+                    italic: _activeItalic,
                     onDelete: _deleteSelected,
                     onBringToFront: _bringToFront,
                   ),
@@ -515,28 +576,4 @@ class _EntryPageState extends State<EntryPage> {
       ),
     );
   }
-}
-
-class _PageFrame extends StatelessWidget {
-  const _PageFrame();
-
-  @override
-  Widget build(BuildContext _) => DecoratedBox(
-    decoration: BoxDecoration(
-      gradient: const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFFFFFBF4), Color(0xFFF2E9D5)],
-      ),
-      border: Border.all(color: PaperPage.ink.withValues(alpha: 0.18)),
-      borderRadius: BorderRadius.circular(3),
-      boxShadow: [
-        BoxShadow(
-          color: PaperPage.ink.withValues(alpha: 0.16),
-          blurRadius: 18,
-          offset: const Offset(0, 8),
-        ),
-      ],
-    ),
-  );
 }

@@ -20,6 +20,9 @@ class ContentBlock {
     this.w = 0,
     this.h = 0,
     this.rotation = 0,
+    this.fontSize = 21,
+    this.bold = false,
+    this.italic = false,
   });
 
   final String id;
@@ -41,6 +44,11 @@ class ContentBlock {
   double h;
   double rotation;
 
+  /// Text styling. These fields are ignored for image and sticker blocks.
+  double fontSize;
+  bool bold;
+  bool italic;
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'type': type.name,
@@ -52,6 +60,9 @@ class ContentBlock {
     'w': w,
     'h': h,
     'rotation': rotation,
+    'fontSize': fontSize,
+    'bold': bold,
+    'italic': italic,
   };
 
   factory ContentBlock.fromJson(Map<String, dynamic> json) => ContentBlock(
@@ -65,6 +76,9 @@ class ContentBlock {
     w: (json['w'] as num?)?.toDouble() ?? 0,
     h: (json['h'] as num?)?.toDouble() ?? 0,
     rotation: (json['rotation'] as num?)?.toDouble() ?? 0,
+    fontSize: (json['fontSize'] as num?)?.toDouble() ?? 21,
+    bold: json['bold'] as bool? ?? false,
+    italic: json['italic'] as bool? ?? false,
   );
 }
 
@@ -96,6 +110,9 @@ class Entry {
     List<ContentBlock>? blocks,
     this.music,
     this.view,
+    this.titleFontSize = 28,
+    this.titleBold = true,
+    this.titleItalic = false,
   }) : title = title ?? '',
        blocks = blocks ?? [],
        modifiedAt = modifiedAt ?? createdAt;
@@ -119,6 +136,11 @@ class Entry {
   /// The page's zoom/pan state, see milestone M3.
   ViewState? view;
 
+  /// Formatting for the page title. Older entries use the defaults here.
+  double titleFontSize;
+  bool titleBold;
+  bool titleItalic;
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
@@ -127,6 +149,9 @@ class Entry {
     'blocks': blocks.map((b) => b.toJson()).toList(),
     'music': music,
     'view': view?.toJson(),
+    'titleFontSize': titleFontSize,
+    'titleBold': titleBold,
+    'titleItalic': titleItalic,
   };
 
   factory Entry.fromJson(Map<String, dynamic> json) {
@@ -145,6 +170,9 @@ class Entry {
       view: json['view'] != null
           ? ViewState.fromJson(_stringMap(json['view']))
           : null,
+      titleFontSize: (json['titleFontSize'] as num?)?.toDouble() ?? 28,
+      titleBold: json['titleBold'] as bool? ?? true,
+      titleItalic: json['titleItalic'] as bool? ?? false,
     );
   }
 

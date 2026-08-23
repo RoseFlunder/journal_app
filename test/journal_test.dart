@@ -28,6 +28,9 @@ void main() {
       final block = ContentBlock.fromJson({'id': 'legacy', 'type': 'text'});
 
       expect(block.rotation, 0);
+      expect(block.fontSize, 21);
+      expect(block.bold, isFalse);
+      expect(block.italic, isFalse);
     });
 
     test('round-trips all fields', () {
@@ -45,10 +48,16 @@ void main() {
             w: 30,
             h: 10,
             rotation: 0.35,
+            fontSize: 26,
+            bold: true,
+            italic: true,
           ),
         ],
         music: 'asset1',
         view: ViewState(zoom: 1.5, panX: 2, panY: -3),
+        titleFontSize: 34,
+        titleBold: false,
+        titleItalic: true,
       );
       final decoded = Entry.fromJson(entry.toJson());
 
@@ -58,12 +67,18 @@ void main() {
       expect(decoded.music, 'asset1');
       expect(decoded.view?.zoom, 1.5);
       expect(decoded.view?.panY, -3);
+      expect(decoded.titleFontSize, 34);
+      expect(decoded.titleBold, isFalse);
+      expect(decoded.titleItalic, isTrue);
       final block = decoded.blocks.single;
       expect(block.id, 'b1');
       expect(block.type, BlockType.text);
       expect(block.text, 'hi');
       expect(block.w, 30);
       expect(block.rotation, closeTo(0.35, 0.0001));
+      expect(block.fontSize, 26);
+      expect(block.bold, isTrue);
+      expect(block.italic, isTrue);
     });
 
     test('round-trips image block fields', () {
@@ -148,6 +163,9 @@ void main() {
       expect(decoded.blocks, isEmpty);
       expect(decoded.music, isNull);
       expect(decoded.view, isNull);
+      expect(decoded.titleFontSize, 28);
+      expect(decoded.titleBold, isTrue);
+      expect(decoded.titleItalic, isFalse);
       expect(decoded.blocks, isEmpty);
     });
   });
