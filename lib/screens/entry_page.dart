@@ -68,6 +68,7 @@ class _EntryPageState extends State<EntryPage> {
   static const _maxFontSize = 48.0;
   bool _editing = false;
   bool _resizeActive = false;
+  bool _selectMode = false;
   bool _titleFocused = false;
   String? _selectedId;
   String? _textEditingId;
@@ -549,6 +550,31 @@ class _EntryPageState extends State<EntryPage> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.align_horizontal_center_outlined),
+              title: const Text('Align selection'),
+              subtitle: const Text(
+                'Align selected objects to their shared bounds',
+              ),
+              enabled: _editor.selection.length > 1,
+              onTap: _editor.selection.length > 1
+                  ? () {
+                      Navigator.pop(context);
+                      _showAlignment();
+                    }
+                  : null,
+            ),
+            ListTile(
+              leading: Icon(
+                _selectMode ? Icons.select_all : Icons.select_all_outlined,
+              ),
+              title: Text(_selectMode ? 'Exit select mode' : 'Select multiple'),
+              subtitle: const Text('Drag blank board space to lasso content'),
+              onTap: () {
+                setState(() => _selectMode = !_selectMode);
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.layers_outlined),
               title: const Text('Layers'),
               subtitle: const Text('Reorder, show, hide, and lock content'),
@@ -595,6 +621,66 @@ class _EntryPageState extends State<EntryPage> {
                 _editor.board.copyWith(gridVisible: value),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAlignment() {
+    const choices = <({String label, IconData icon, Alignment alignment})>[
+      (
+        label: 'Align left',
+        icon: Icons.format_align_left,
+        alignment: Alignment.centerLeft,
+      ),
+      (
+        label: 'Align center',
+        icon: Icons.format_align_center,
+        alignment: Alignment.center,
+      ),
+      (
+        label: 'Align right',
+        icon: Icons.format_align_right,
+        alignment: Alignment.centerRight,
+      ),
+      (
+        label: 'Align top',
+        icon: Icons.vertical_align_top,
+        alignment: Alignment.topCenter,
+      ),
+      (
+        label: 'Align middle',
+        icon: Icons.vertical_align_center,
+        alignment: Alignment.center,
+      ),
+      (
+        label: 'Align bottom',
+        icon: Icons.vertical_align_bottom,
+        alignment: Alignment.bottomCenter,
+      ),
+    ];
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: PaperPage.paper,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              leading: Icon(Icons.align_horizontal_center_outlined),
+              title: Text('Align selection'),
+            ),
+            for (final choice in choices)
+              ListTile(
+                leading: Icon(choice.icon),
+                title: Text(choice.label),
+                onTap: () {
+                  _editor.align(choice.alignment);
+                  Navigator.pop(context);
+                },
+              ),
           ],
         ),
       ),
@@ -1123,6 +1209,16 @@ class _EntryPageState extends State<EntryPage> {
                             _editor.beginTransaction('Transform'),
                         onInteractionEnd: () =>
                             unawaited(_editor.commitTransaction()),
+                        onMoveSelection: (delta) =>
+                            _editor.moveSelection(delta, snap: true),
+                        selectMode: _selectMode,
+                        onLassoSelected: (ids) {
+                          _editor.selectMany(ids);
+                          setState(() {
+                            _selectedId = ids.isEmpty ? null : ids.last;
+                            _textEditingId = null;
+                          });
+                        },
                         imageBytes: widget.store.getAsset,
                         imageProvider: _imageProvider,
                         onOpenImage: _openImage,

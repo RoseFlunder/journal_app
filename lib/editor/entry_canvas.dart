@@ -24,6 +24,9 @@ class EntryCanvas extends StatefulWidget {
     this.onResizeActiveChanged,
     this.onInteractionStart,
     this.onInteractionEnd,
+    this.onMoveSelection,
+    this.selectMode = false,
+    this.onLassoSelected,
     required this.imageBytes,
     this.imageProvider,
     required this.onOpenImage,
@@ -44,6 +47,9 @@ class EntryCanvas extends StatefulWidget {
   final ValueChanged<bool>? onResizeActiveChanged;
   final VoidCallback? onInteractionStart;
   final VoidCallback? onInteractionEnd;
+  final ValueChanged<Offset>? onMoveSelection;
+  final bool selectMode;
+  final ValueChanged<Set<String>>? onLassoSelected;
   final Uint8List? Function(String assetId) imageBytes;
   final ImageProvider<Object>? Function(String assetId)? imageProvider;
   final ValueChanged<ContentBlock> onOpenImage;
@@ -65,6 +71,9 @@ class _EntryCanvasState extends State<EntryCanvas> {
   int? _resizePointer;
   bool _resizeActiveNotified = false;
   int _interactionDepth = 0;
+  int? _lassoPointer;
+  Offset? _lassoStart;
+  Offset? _lassoEnd;
 
   @override
   void dispose() {
@@ -157,9 +166,26 @@ class _EntryCanvasState extends State<EntryCanvas> {
                                 !block.hidden &&
                                 _containsBlock(point, block, scale),
                           );
-                          if (!hitsBlock) widget.onSelect(null);
+                          if (!hitsBlock) {
+                            if (widget.selectMode) {
+                              _lassoPointer = event.pointer;
+                              _lassoStart = point;
+                              _lassoEnd = point;
+                              setState(() {});
+                            } else {
+                              widget.onSelect(null);
+                            }
+                          }
                         }
                       : null,
+                  onPointerMove: widget.editing
+                      ? (event) {
+                          if (_lassoPointer != event.pointer) return;
+                          setState(() => _lassoEnd = event.localPosition);
+                        }
+                      : null,
+                  onPointerUp: widget.editing ? _finishLasso : null,
+                  onPointerCancel: widget.editing ? _finishLasso : null,
                   child: Stack(
                     children: [
                       for (final block in widget.blocks.where(
@@ -229,6 +255,21 @@ class _EntryCanvasState extends State<EntryCanvas> {
                         ),
                       if (selectedBlock != null && !selectedBlock.locked)
                         ..._buildResizeHandles(context, selectedBlock, scale),
+                      if (_lassoStart != null && _lassoEnd != null)
+                        Positioned.fromRect(
+                          rect: Rect.fromPoints(_lassoStart!, _lassoEnd!),
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: const Color(0x33C97068),
+                                border: Border.all(
+                                  color: const Color(0xFFC97068),
+                                  width: 2,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -294,6 +335,11 @@ class _EntryCanvasState extends State<EntryCanvas> {
     _moveSession = _BlockMoveSession(
       blockId: block.id,
       grabOffset: pointer - Offset(block.x, block.y),
+      startPointer: pointer,
+      lastPointer: pointer,
+      multi:
+          widget.selectedIds.length > 1 &&
+          widget.selectedIds.contains(block.id),
     );
   }
 
@@ -307,6 +353,11 @@ class _EntryCanvasState extends State<EntryCanvas> {
     if (session == null || session.blockId != block.id) return;
     final pointer = _globalToModel(canvasContext, globalPosition);
     if (pointer == null) return;
+    if (session.multi) {
+      widget.onMoveSelection?.call(pointer - session.lastPointer);
+      session.lastPointer = pointer;
+      return;
+    }
     final position = pointer - session.grabOffset;
     final x = widget.board.snapToGrid ? _snap(position.dx) : position.dx;
     final y = widget.board.snapToGrid ? _snap(position.dy) : position.dy;
@@ -376,6 +427,36 @@ class _EntryCanvasState extends State<EntryCanvas> {
   void _endInteraction() {
     if (_interactionDepth == 0) return;
     if (--_interactionDepth == 0) widget.onInteractionEnd?.call();
+  }
+
+  void _finishLasso(PointerEvent event) {
+    if (_lassoPointer != event.pointer) return;
+    final start = _lassoStart;
+    final end = _lassoEnd;
+    _lassoPointer = null;
+    _lassoStart = null;
+    _lassoEnd = null;
+    if (start == null || end == null) return;
+    final selection = Rect.fromPoints(start, end);
+    if (selection.width > 8 || selection.height > 8) {
+      final ids = widget.blocks
+          .where((block) => !block.hidden)
+          .where((block) {
+            final rect = Rect.fromLTWH(
+              (block.x + widget.worldOrigin.dx) *
+                  PageViewport.modelToRenderScale,
+              (block.y + widget.worldOrigin.dy) *
+                  PageViewport.modelToRenderScale,
+              block.w * PageViewport.modelToRenderScale,
+              block.h * PageViewport.modelToRenderScale,
+            );
+            return selection.overlaps(rect);
+          })
+          .map((block) => block.id)
+          .toSet();
+      widget.onLassoSelected?.call(ids);
+    }
+    setState(() {});
   }
 
   List<Widget> _buildResizeHandles(
@@ -530,10 +611,19 @@ class _EntryCanvasState extends State<EntryCanvas> {
 }
 
 class _BlockMoveSession {
-  const _BlockMoveSession({required this.blockId, required this.grabOffset});
+  _BlockMoveSession({
+    required this.blockId,
+    required this.grabOffset,
+    required this.startPointer,
+    required this.lastPointer,
+    required this.multi,
+  });
 
   final String blockId;
   final Offset grabOffset;
+  final Offset startPointer;
+  Offset lastPointer;
+  final bool multi;
 }
 
 class _BlockResizeSession {

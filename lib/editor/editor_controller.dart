@@ -80,6 +80,15 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void selectMany(Iterable<String> ids) {
+    final next = ids.toSet();
+    if (setEquals(next, _selection)) return;
+    _selection
+      ..clear()
+      ..addAll(next);
+    notifyListeners();
+  }
+
   void beginTransaction(String label) {
     _textTimer?.cancel();
     if (_transactionStart != null) return;
