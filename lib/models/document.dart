@@ -87,6 +87,36 @@ class CanvasNode {
     accessibilityLabel: block.name,
   );
 
+  factory CanvasNode.fromJson(Map<String, dynamic> json) {
+    final transform = json['transform'] is Map
+        ? Transform2D.fromJson(
+            Map<String, dynamic>.from(json['transform'] as Map),
+          )
+        : Transform2D.fromJson(json);
+    final type = switch (json['type'] as String?) {
+      'image' => BlockType.image,
+      'sticker' => BlockType.sticker,
+      'ink' => BlockType.ink,
+      'shape' => BlockType.shape,
+      'group' => BlockType.group,
+      _ => BlockType.text,
+    };
+    return CanvasNode(
+      id: json['id'] as String,
+      type: type,
+      transform: transform,
+      payload: json['payload'] is Map
+          ? Map<String, dynamic>.from(json['payload'] as Map)
+          : const {},
+      opacity: ((json['opacity'] as num?)?.toDouble() ?? 1)
+          .clamp(0.0, 1.0)
+          .toDouble(),
+      locked: json['locked'] as bool? ?? false,
+      visible: json['visible'] as bool? ?? true,
+      accessibilityLabel: json['accessibilityLabel'] as String?,
+    );
+  }
+
   ContentBlock toBlock() {
     final json = Map<String, dynamic>.from(payload)
       ..['id'] = id
@@ -139,6 +169,29 @@ class EntryDocument {
     music: entry.music,
     revision: entry.revision,
     schemaVersion: entry.schemaVersion,
+  );
+
+  factory EntryDocument.fromJson(Map<String, dynamic> json) => EntryDocument(
+    id: json['id'] as String,
+    title: json['title'] as String? ?? '',
+    createdAt: DateTime.parse(json['createdAt'] as String),
+    modifiedAt: DateTime.parse(
+      json['modifiedAt'] as String? ?? json['createdAt'] as String,
+    ),
+    nodes: (json['nodes'] as List<dynamic>? ?? const []).whereType<Map>().map(
+      (node) => CanvasNode.fromJson(Map<String, dynamic>.from(node)),
+    ),
+    board: BoardSettings.fromJson(
+      json['board'] is Map
+          ? Map<String, dynamic>.from(json['board'] as Map)
+          : null,
+    ),
+    view: json['view'] is Map
+        ? ViewState.fromJson(Map<String, dynamic>.from(json['view'] as Map))
+        : null,
+    music: json['music'] as String?,
+    revision: (json['revision'] as num?)?.toInt() ?? 0,
+    schemaVersion: (json['schemaVersion'] as num?)?.toInt() ?? 1,
   );
 
   Entry toEntry() => Entry(

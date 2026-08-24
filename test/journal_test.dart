@@ -6,8 +6,11 @@ import 'package:hive/hive.dart';
 import 'package:image/image.dart' as img;
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/sticker.dart';
+import 'package:journal_app/models/document.dart';
+import 'package:journal_app/models/template.dart';
 import 'package:journal_app/services/image_source.dart';
 import 'package:journal_app/services/journal_store.dart';
+import 'package:journal_app/services/repositories.dart';
 
 void main() {
   group('Entry JSON', () {
@@ -210,8 +213,66 @@ void main() {
       await Hive.box('entries').clear();
       await Hive.box('assets').clear();
       await Hive.box('meta').clear();
+      await Hive.box('entryCheckpoints').clear();
+      await Hive.box('journalTemplates').clear();
       return store;
     }
+
+    test(
+      'repository facade round-trips documents, assets, and templates',
+      () async {
+        final store = await freshStore();
+        final repository = HiveJournalRepository(store);
+        final document = await repository.createDocument(
+          title: 'Repository page',
+        );
+        expect(repository.documents.single.title, 'Repository page');
+
+        final node = CanvasNode.fromBlock(
+          ContentBlock(
+            id: 'repo-text',
+            type: BlockType.text,
+            text: 'Saved through the repository',
+            x: -12,
+            y: 7,
+            w: 40,
+            h: 18,
+          ),
+        );
+        final updated = EntryDocument(
+          id: document.id,
+          title: document.title,
+          createdAt: document.createdAt,
+          modifiedAt: DateTime.now(),
+          nodes: [node],
+          board: const BoardSettings(gridVisible: true),
+        );
+        await repository.saveDocument(updated);
+        expect(repository.documents.single.nodes.single.transform.x, -12);
+        expect(repository.documents.single.board.gridVisible, isTrue);
+
+        final asset = await repository.putAsset(
+          document.id,
+          AssetKind.image,
+          'image/png',
+          [1, 2, 3],
+        );
+        expect(repository.readAsset(asset), [1, 2, 3]);
+
+        final template = JournalTemplate(
+          id: 'template-1',
+          name: 'Starter',
+          document: updated,
+          createdAt: DateTime.utc(2026),
+        );
+        await repository.saveTemplate(template);
+        expect(repository.templates.single.name, 'Starter');
+        await repository.deleteTemplate(template.id);
+        expect(repository.templates, isEmpty);
+        await repository.deleteDocument(document.id);
+        expect(repository.documents, isEmpty);
+      },
+    );
 
     test('add, update, delete and persistence', () async {
       var store = await freshStore();

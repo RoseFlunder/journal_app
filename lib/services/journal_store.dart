@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../models/document.dart';
 import '../models/entry.dart';
+import '../models/template.dart';
 
 /// Kinds of binary assets stored in the `assets` box.
 enum AssetKind { image, audio }
@@ -87,6 +89,7 @@ class JournalStore extends ChangeNotifier {
   static const _boxAssets = 'assets';
   static const _boxMeta = 'meta';
   static const _boxCheckpoints = 'entryCheckpoints';
+  static const _boxTemplates = 'journalTemplates';
 
   static const _uuid = Uuid();
 
@@ -94,6 +97,7 @@ class JournalStore extends ChangeNotifier {
   late Box _assetsBox;
   late Box _metaBox;
   late Box _checkpointsBox;
+  late Box _templatesBox;
 
   List<Entry> _entries = [];
   bool _loaded = false;
@@ -111,6 +115,7 @@ class JournalStore extends ChangeNotifier {
     _assetsBox = await Hive.openBox(_boxAssets);
     _metaBox = await Hive.openBox(_boxMeta);
     _checkpointsBox = await Hive.openBox(_boxCheckpoints);
+    _templatesBox = await Hive.openBox(_boxTemplates);
     _load();
   }
 
@@ -192,16 +197,12 @@ class JournalStore extends ChangeNotifier {
     final i = indexOfEntry(id);
     if (i < 0) return Future<void>.value();
     _entries.removeAt(i);
-    final assetIds = _assetIdsForEntry(id);
     final order = _entries.map((entry) => entry.id).toList();
     return _enqueue(() async {
       await _entriesBox.delete(id);
-      for (final assetId in assetIds) {
-        await _assetsBox.delete(assetId);
-      }
       await _metaBox.put(_kOrderKey, order);
       notifyListeners();
-    });
+    }).then((_) => collectUnreferencedAssets());
   }
 
   Future<void> _enqueue(Future<void> Function() operation) {
@@ -220,6 +221,7 @@ class JournalStore extends ChangeNotifier {
     await _assetsBox.flush();
     await _metaBox.flush();
     await _checkpointsBox.flush();
+    await _templatesBox.flush();
   }
 
   /// Schedules a five-minute dirty-session recovery point. The timer is
@@ -353,14 +355,70 @@ class JournalStore extends ChangeNotifier {
     if (!stillReferenced) removeAsset(assetId);
   }
 
-  List<dynamic> _assetIdsForEntry(String entryId) {
-    return _assetsBox.keys.where((k) {
-      final raw = _assetsBox.get(k);
-      return raw is Map &&
-          AssetRecord.fromJson(Map<String, dynamic>.from(raw)).entryId ==
-              entryId;
-    }).toList();
+  /// Removes only assets that are not referenced by a live document,
+  /// checkpoint, template, or retained clipboard payload. Asset bytes are
+  /// immutable, so this is safe to run after destructive document operations.
+  Future<void> collectUnreferencedAssets() async {
+    final referenced = <String>{};
+    void collectBlocks(Iterable<ContentBlock> blocks) {
+      for (final block in blocks) {
+        if (block.assetId != null) referenced.add(block.assetId!);
+        if (block.stickerId != null) referenced.add(block.stickerId!);
+      }
+    }
+
+    for (final entry in _entries) {
+      collectBlocks(entry.blocks);
+    }
+    for (final key in _checkpointsBox.keys) {
+      final raw = _checkpointsBox.get(key);
+      if (raw is! Map || raw['entry'] is! Map) continue;
+      try {
+        collectBlocks(
+          Entry.fromJson(Map<String, dynamic>.from(raw['entry'] as Map)).blocks,
+        );
+      } catch (_) {
+        // A corrupt checkpoint must not prevent cleanup of known-unused data.
+      }
+    }
+    for (final key in _templatesBox.keys) {
+      final raw = _templatesBox.get(key);
+      if (raw is! Map || raw['document'] is! Map) continue;
+      try {
+        collectBlocks(
+          EntryDocument.fromJson(
+            Map<String, dynamic>.from(raw['document'] as Map),
+          ).toEntry().blocks,
+        );
+      } catch (_) {
+        // Ignore a corrupt template record and leave its media in place.
+      }
+    }
+    for (final key in _assetsBox.keys.toList()) {
+      if (!referenced.contains(key)) await _assetsBox.delete(key);
+    }
   }
+
+  List<JournalTemplate> get templates {
+    final result = <JournalTemplate>[];
+    for (final key in _templatesBox.keys.whereType<String>()) {
+      final raw = _templatesBox.get(key);
+      if (raw is! Map) continue;
+      try {
+        result.add(JournalTemplate.fromJson(Map<String, dynamic>.from(raw)));
+      } catch (_) {
+        // Keep unrelated templates available if one record is malformed.
+      }
+    }
+    result.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return List.unmodifiable(result);
+  }
+
+  Future<void> saveTemplate(JournalTemplate template) =>
+      _enqueue(() => _templatesBox.put(template.id, template.toJson()));
+
+  Future<void> deleteTemplate(String id) =>
+      _enqueue(() => _templatesBox.delete(id));
 
   @override
   void dispose() {
