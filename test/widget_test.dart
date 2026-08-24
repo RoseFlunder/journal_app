@@ -255,20 +255,8 @@ void main() {
         (widget) =>
             widget is CustomPaint && widget.painter is PaperLinesPainter,
       ),
-      findsOneWidget,
+      findsNothing,
     );
-    final entryPainter =
-        tester
-                .widget<CustomPaint>(
-                  find.byWidgetPredicate(
-                    (widget) =>
-                        widget is CustomPaint &&
-                        widget.painter is PaperLinesPainter,
-                  ),
-                )
-                .painter!
-            as PaperLinesPainter;
-    expect(entryPainter.showRules, isTrue);
 
     expect(
       tester.widget<Text>(find.text('Untitled page')).style?.fontFamily,

@@ -25,6 +25,7 @@ class PageViewport extends StatefulWidget {
     this.contentRect,
     this.openingMaxZoom = 2.0,
     this.controlsBottomInset = 12,
+    this.boardMode = false,
     // Kept for source compatibility with callers that used the old focused
     // page API. New callers should provide pageRect/contentRect instead.
     this.initialFocus,
@@ -69,6 +70,10 @@ class PageViewport extends StatefulWidget {
   /// Extra space reserved below camera controls, for example for the editor
   /// toolbar.
   final double controlsBottomInset;
+
+  /// Presents the shared camera as a paperless infinite board. It keeps the
+  /// same persisted transform model while removing page-specific affordances.
+  final bool boardMode;
 
   @Deprecated('Use pageRect/contentRect')
   final Offset? initialFocus;
@@ -146,7 +151,8 @@ class _PageViewportState extends State<PageViewport> {
   bool _ready = false;
   double _zoom = 1;
 
-  Rect get _pageRect => widget.pageRect ??
+  Rect get _pageRect =>
+      widget.pageRect ??
       Rect.fromLTWH(0, 0, widget.fitSize.width, widget.fitSize.height);
 
   Rect get _contentRect => widget.contentRect ?? _pageRect;
@@ -183,8 +189,11 @@ class _PageViewportState extends State<PageViewport> {
     final scale = _controller.value.getMaxScaleOnAxis();
     final translation = _controller.value.getTranslation();
     final zoom = (scale / _fitScale).clamp(widget.minZoom, widget.maxZoom);
-    final baseTranslation = _fitTransform(zoom.toDouble(), 0, 0)
-        .getTranslation();
+    final baseTranslation = _fitTransform(
+      zoom.toDouble(),
+      0,
+      0,
+    ).getTranslation();
     widget.onViewChanged!(
       ViewState(
         zoom: zoom.toDouble(),
@@ -229,7 +238,8 @@ class _PageViewportState extends State<PageViewport> {
     return widthScale < heightScale ? widthScale : heightScale;
   }
 
-  Matrix4 _contentTransform(double zoom) => _centeredTransform(_contentRect, zoom);
+  Matrix4 _contentTransform(double zoom) =>
+      _centeredTransform(_contentRect, zoom);
 
   Matrix4 _centeredTransform(Rect rect, double zoom) {
     final scale = _fitScale * zoom;
@@ -274,8 +284,8 @@ class _PageViewportState extends State<PageViewport> {
     final currentScale = _controller.value.getMaxScaleOnAxis();
     if (currentScale == 0) return;
     final nextScale = _fitScale * nextZoom;
-    final focal = focalPoint ??
-        Offset(_viewportSize.width / 2, _viewportSize.height / 2);
+    final focal =
+        focalPoint ?? Offset(_viewportSize.width / 2, _viewportSize.height / 2);
     final matrix = _controller.value.clone();
     final before = matrix.clone()..invert();
     final contentPoint = MatrixUtils.transformPoint(before, focal);
@@ -386,7 +396,9 @@ class _PageViewportState extends State<PageViewport> {
                           Semantics(
                             label: 'Zoom ${(_zoom * 100).round()} percent',
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
                               child: Text(
                                 '${(_zoom * 100).round()}%',
                                 style: const TextStyle(color: Colors.white),
@@ -400,10 +412,16 @@ class _PageViewportState extends State<PageViewport> {
                             icon: const Icon(Icons.center_focus_strong),
                           ),
                           IconButton(
-                            tooltip: 'Fit page',
+                            tooltip: widget.boardMode
+                                ? 'Center board'
+                                : 'Fit page',
                             color: Colors.white,
                             onPressed: _fitPage,
-                            icon: const Icon(Icons.fit_screen_outlined),
+                            icon: Icon(
+                              widget.boardMode
+                                  ? Icons.filter_center_focus_outlined
+                                  : Icons.fit_screen_outlined,
+                            ),
                           ),
                           IconButton(
                             tooltip: 'Zoom in',

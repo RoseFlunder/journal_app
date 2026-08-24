@@ -1055,6 +1055,7 @@ class _EntryPageState extends State<EntryPage> {
           child: Stack(
             children: [
               PageViewport(
+                boardMode: true,
                 canvasSize: _workspaceSize,
                 pageRect: Rect.fromLTWH(
                   _pageFramePosition.dx,
@@ -1071,12 +1072,13 @@ class _EntryPageState extends State<EntryPage> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    Positioned(
-                      left: _pageFramePosition.dx,
-                      top: _pageFramePosition.dy,
-                      width: PageViewport.pageSize.width,
-                      height: PageViewport.pageSize.height,
-                      child: const PaperPage(child: SizedBox.expand()),
+                    Positioned.fill(
+                      child: PaperPage(
+                        finite: false,
+                        child: ColoredBox(
+                          color: Color(_editor.board.backgroundColorValue),
+                        ),
+                      ),
                     ),
                     Positioned.fill(
                       child: EntryCanvas(
