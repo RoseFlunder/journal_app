@@ -14,6 +14,7 @@ class PageViewport extends StatefulWidget {
     required this.child,
     this.initialView,
     this.onViewChanged,
+    this.onScaleChanged,
     this.interactive = true,
     this.gesturesEnabled = true,
     this.controlsVisible = true,
@@ -48,6 +49,9 @@ class PageViewport extends StatefulWidget {
   final Widget child;
   final ViewState? initialView;
   final ValueChanged<ViewState>? onViewChanged;
+
+  /// Reports the current canvas-to-screen scale for screen-space controls.
+  final ValueChanged<double>? onScaleChanged;
   final bool interactive;
   final bool gesturesEnabled;
   final bool controlsVisible;
@@ -181,6 +185,7 @@ class _PageViewportState extends State<PageViewport> {
     final scale = _controller.value.getMaxScaleOnAxis();
     if (_fitScale == 0) return;
     final nextZoom = (scale / _fitScale).clamp(widget.minZoom, widget.maxZoom);
+    widget.onScaleChanged?.call(scale);
     if ((nextZoom - _zoom).abs() > 0.001 && mounted) {
       setState(() => _zoom = nextZoom.toDouble());
     }
@@ -221,6 +226,7 @@ class _PageViewportState extends State<PageViewport> {
       _zoom = 1;
       _controller.value = _fitTransform(1, 0, 0);
       _ready = true;
+      widget.onScaleChanged?.call(_controller.value.getMaxScaleOnAxis());
       return;
     }
     final view = ViewportMath.normalize(
@@ -233,6 +239,7 @@ class _PageViewportState extends State<PageViewport> {
         ? _contentTransform(_openingZoom)
         : _fitTransform(view.zoom, view.panX, view.panY);
     _ready = true;
+    widget.onScaleChanged?.call(_controller.value.getMaxScaleOnAxis());
     if (mounted) setState(() {});
   }
 

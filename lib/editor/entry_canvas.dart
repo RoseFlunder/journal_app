@@ -32,6 +32,7 @@ class EntryCanvas extends StatefulWidget {
     required this.onOpenImage,
     this.workspaceSize = PageViewport.pageSize,
     this.worldOrigin = Offset.zero,
+    this.cameraScale = 1,
   });
 
   final List<ContentBlock> blocks;
@@ -55,6 +56,7 @@ class EntryCanvas extends StatefulWidget {
   final ValueChanged<ContentBlock> onOpenImage;
   final Size workspaceSize;
   final Offset worldOrigin;
+  final double cameraScale;
 
   static const minWidth = 16.0;
   static const minHeight = 10.0;
@@ -209,6 +211,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
                                     : widget.selectedIds.contains(block.id),
                                 editing: widget.editing,
                                 locked: block.locked,
+                                controlScale: widget.cameraScale,
                                 textEditing: widget.textEditingId == block.id,
                                 onTap: () => widget.onSelect(block.id),
                                 onEditText: () => widget.onEditText(block.id),
@@ -481,15 +484,19 @@ class _EntryCanvasState extends State<EntryCanvas> {
     );
     final point = center + _rotate(local, block.rotation);
     // Keep handles outside the object edge so they do not steal a move drag.
+    final handleSize = _screenHandleSize;
     final handleOffset =
         point * scale +
-        Offset(handle.horizontal * 28, handle.vertical * 28) -
-        const Offset(_resizeHandleSize / 2, _resizeHandleSize / 2);
+        Offset(
+          handle.horizontal * handleSize * 0.58,
+          handle.vertical * handleSize * 0.58,
+        ) -
+        Offset(handleSize / 2, handleSize / 2);
     return Positioned(
       left: handleOffset.dx,
       top: handleOffset.dy,
-      width: _resizeHandleSize,
-      height: _resizeHandleSize,
+      width: handleSize,
+      height: handleSize,
       child: RawGestureDetector(
         key: ValueKey(
           handle == _ResizeHandle.bottomRight
@@ -566,6 +573,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
       (block.y + widget.worldOrigin.dy) * scale + height * scale / 2,
     );
     return _ResizeHandle.values.any((handle) {
+      final handleSize = _screenHandleSize;
       final local = Offset(
         width * scale * handle.horizontal / 2,
         height * scale * handle.vertical / 2,
@@ -574,12 +582,18 @@ class _EntryCanvasState extends State<EntryCanvas> {
         center:
             center +
             _rotate(local, block.rotation) +
-            Offset(handle.horizontal * 28, handle.vertical * 28),
-        width: _resizeHandleSize,
-        height: _resizeHandleSize,
+            Offset(
+              handle.horizontal * handleSize * 0.58,
+              handle.vertical * handleSize * 0.58,
+            ),
+        width: handleSize,
+        height: handleSize,
       ).contains(point);
     });
   }
+
+  double get _screenHandleSize =>
+      _resizeHandleSize / math.max(widget.cameraScale, 0.01);
 
   Offset? _globalToModel(BuildContext context, Offset globalPosition) {
     final renderObject = context.findRenderObject();

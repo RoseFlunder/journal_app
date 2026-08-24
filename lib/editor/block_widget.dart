@@ -12,6 +12,7 @@ class BlockWidget extends StatefulWidget {
     required this.selected,
     required this.editing,
     this.locked = false,
+    this.controlScale = 1,
     required this.textEditing,
     required this.onTap,
     required this.onEditText,
@@ -32,6 +33,7 @@ class BlockWidget extends StatefulWidget {
   final bool selected;
   final bool editing;
   final bool locked;
+  final double controlScale;
   final bool textEditing;
   final VoidCallback onTap;
   final VoidCallback onEditText;
@@ -96,6 +98,8 @@ class _BlockWidgetState extends State<BlockWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final controlSize = 48 / math.max(widget.controlScale, 0.01);
+    final controlBorder = 2.5 / math.max(widget.controlScale, 0.01);
     final content = widget.block.type == BlockType.shape
         ? CustomPaint(
             painter: _ShapePainter(widget.block),
@@ -208,7 +212,10 @@ class _BlockWidgetState extends State<BlockWidget> {
         child: DecoratedBox(
           decoration: BoxDecoration(
             border: widget.selected
-                ? Border.all(color: const Color(0xFFC97068), width: 2.5)
+                ? Border.all(
+                    color: const Color(0xFFC97068),
+                    width: controlBorder,
+                  )
                 : null,
             boxShadow: widget.selected
                 ? [
@@ -269,8 +276,8 @@ class _BlockWidgetState extends State<BlockWidget> {
                   child: Center(
                     child: Container(
                       key: ValueKey('rotate-${widget.block.id}'),
-                      width: 48,
-                      height: 48,
+                      width: controlSize,
+                      height: controlSize,
                       decoration: BoxDecoration(
                         color: const Color(0xFF3B3226),
                         shape: BoxShape.circle,
@@ -283,9 +290,9 @@ class _BlockWidgetState extends State<BlockWidget> {
                             widget.onRotate(details.delta.dx / 100),
                         onPanEnd: (_) => widget.onTransformEnd?.call(),
                         onPanCancel: () => widget.onTransformEnd?.call(),
-                        child: const Icon(
+                        child: Icon(
                           Icons.rotate_right,
-                          size: 23,
+                          size: controlSize * 0.48,
                           color: Colors.white,
                         ),
                       ),

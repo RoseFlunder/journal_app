@@ -69,6 +69,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   bool _editing = false;
   bool _resizeActive = false;
   bool _selectMode = false;
+  double _cameraScale = 1;
   bool _titleFocused = false;
   String? _selectedId;
   String? _textEditingId;
@@ -1210,6 +1211,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
             children: [
               PageViewport(
                 boardMode: true,
+                onScaleChanged: (scale) {
+                  if (!mounted || (scale - _cameraScale).abs() < 0.001) {
+                    return;
+                  }
+                  setState(() => _cameraScale = scale);
+                },
                 canvasSize: _workspaceSize,
                 pageRect: Rect.fromLTWH(
                   _pageFramePosition.dx,
@@ -1242,6 +1249,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                         worldOrigin: _worldOrigin,
                         blocks: _blocks,
                         board: _editor.board,
+                        cameraScale: _cameraScale,
                         editing: _editing,
                         selectedId: _selectedId,
                         selectedIds: _editor.selection,
