@@ -145,13 +145,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   void _changeBlock(ContentBlock block) {
-    if (_editor.inTransaction) {
-      _editor.markChanged();
-      return;
-    }
-    _editor.beginTransaction('Edit ${block.type.name}');
-    _editor.markChanged();
-    unawaited(_editor.commitTransaction());
+    _editor.replaceBlockSnapshot(block, label: 'Edit ${block.type.name}');
   }
 
   void _beginTextEditing(String blockId) {
@@ -235,8 +229,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     final block = _activeTextBlock;
     if (block != null) {
       _editor.beginTransaction('Format text');
-      block.fontFamily = fontFamily;
-      _changeBlock(block);
+      _editor.updateBlock(block.id, (target) => target.fontFamily = fontFamily);
+      unawaited(_editor.commitTransaction());
     } else if (_titleFocused) {
       widget.onTitleFontFamilyChanged(fontFamily);
     }
@@ -259,8 +253,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         .toDouble();
     if (block != null) {
       _editor.beginTransaction('Format text');
-      block.fontSize = size;
-      _changeBlock(block);
+      _editor.updateBlock(block.id, (target) => target.fontSize = size);
+      unawaited(_editor.commitTransaction());
     } else {
       widget.onTitleStyleChanged(
         size,
@@ -276,8 +270,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     if (block == null && !_titleFocused) return;
     if (block != null) {
       _editor.beginTransaction('Format text');
-      block.bold = !block.bold;
-      _changeBlock(block);
+      _editor.updateBlock(block.id, (target) => target.bold = !target.bold);
+      unawaited(_editor.commitTransaction());
     } else {
       widget.onTitleStyleChanged(
         widget.entry.titleFontSize,
@@ -293,8 +287,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     if (block == null && !_titleFocused) return;
     if (block != null) {
       _editor.beginTransaction('Format text');
-      block.italic = !block.italic;
-      _changeBlock(block);
+      _editor.updateBlock(block.id, (target) => target.italic = !target.italic);
+      unawaited(_editor.commitTransaction());
     } else {
       widget.onTitleStyleChanged(
         widget.entry.titleFontSize,
@@ -309,8 +303,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     final block = _activeTextBlock;
     if (block != null) {
       _editor.beginTransaction('Format text');
-      block.textColorValue = value;
-      _changeBlock(block);
+      _editor.updateBlock(block.id, (target) => target.textColorValue = value);
+      unawaited(_editor.commitTransaction());
     } else if (_titleFocused) {
       widget.onTitleTextColorChanged(value);
     }
@@ -1247,7 +1241,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       child: EntryCanvas(
                         workspaceSize: _workspaceSize,
                         worldOrigin: _worldOrigin,
-                        blocks: _blocks,
+                        // Render from detached snapshots. EntryCanvas may
+                        // mutate a preview during pointer updates, but the
+                        // controller-owned document remains behind its
+                        // explicit snapshot command boundary.
+                        blocks: _blocks.map((block) => block.clone()).toList(),
                         board: _editor.board,
                         cameraScale: _cameraScale,
                         editing: _editing,

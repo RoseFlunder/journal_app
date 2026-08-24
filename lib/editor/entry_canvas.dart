@@ -83,13 +83,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
     _resizeSession = null;
     _resizeGlobalToCanvas = null;
     _resizePointer = null;
-    if (_resizeActiveNotified) {
-      _resizeActiveNotified = false;
-      final onResizeActiveChanged = widget.onResizeActiveChanged;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        onResizeActiveChanged?.call(false);
-      });
-    }
+    _resizeActiveNotified = false;
     super.dispose();
   }
 
@@ -222,7 +216,10 @@ class _EntryCanvasState extends State<EntryCanvas> {
                                 onMoveEnd: _endMove,
                                 onRotate: (delta) {
                                   if (!block.locked) {
-                                    widget.onChanged(block..rotation += delta);
+                                    final next = block.clone()
+                                      ..rotation += delta;
+                                    block.rotation = next.rotation;
+                                    widget.onChanged(next);
                                   }
                                 },
                                 onTransformStart: _beginInteraction,
@@ -246,7 +243,9 @@ class _EntryCanvasState extends State<EntryCanvas> {
                                   if (onTextChanged != null) {
                                     onTextChanged(block.id, text);
                                   } else {
-                                    widget.onChanged(block..text = text);
+                                    final next = block.clone()..text = text;
+                                    block.text = next.text;
+                                    widget.onChanged(next);
                                   }
                                 },
                                 preserveAspectRatio:
@@ -321,7 +320,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
     );
     final center =
         session.oppositeAnchor - _rotate(oppositeLocal, session.rotation);
-    return block
+    return block.clone()
       ..x = center.dx - width / 2
       ..y = center.dy - height / 2
       ..w = width
@@ -364,11 +363,13 @@ class _EntryCanvasState extends State<EntryCanvas> {
       return;
     }
     final position = pointer - session.grabOffset;
-    widget.onChanged(
-      block
-        ..x = position.dx
-        ..y = position.dy,
-    );
+    final next = block.clone()
+      ..x = position.dx
+      ..y = position.dy;
+    block
+      ..x = next.x
+      ..y = next.y;
+    widget.onChanged(next);
   }
 
   void _endMove() {
@@ -417,7 +418,13 @@ class _EntryCanvasState extends State<EntryCanvas> {
     if (session == null || session.blockId != block.id) return;
     final pointer = _resizePointerToModel(globalPosition);
     if (pointer == null) return;
-    widget.onChanged(_resizedBlock(block, session, pointer));
+    final next = _resizedBlock(block, session, pointer);
+    block
+      ..x = next.x
+      ..y = next.y
+      ..w = next.w
+      ..h = next.h;
+    widget.onChanged(next);
   }
 
   void _endResize() {

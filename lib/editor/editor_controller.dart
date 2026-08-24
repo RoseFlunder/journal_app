@@ -129,6 +129,29 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Applies a detached block snapshot at the command boundary.
+  ///
+  /// Widgets and overlays should use this method when they preview a
+  /// transform. The controller owns the stored instance and clones the
+  /// submitted value before it becomes part of the working document.
+  void replaceBlockSnapshot(ContentBlock next, {String label = 'Edit block'}) {
+    final index = _blocks.indexWhere((block) => block.id == next.id);
+    if (index < 0 || _blocks[index].locked) return;
+    if (_transactionStart == null) beginTransaction(label);
+    _blocks[index] = next.clone();
+    _blocks[index].opacity = _blocks[index].opacity.clamp(0.0, 1.0).toDouble();
+    notifyListeners();
+  }
+
+  /// Replaces a block and commits it as one command for non-gesture edits.
+  Future<void> replaceBlockAndCommit(
+    ContentBlock next, {
+    String label = 'Edit block',
+  }) async {
+    replaceBlockSnapshot(next, label: label);
+    await commitTransaction();
+  }
+
   /// Records a visual update made by a legacy canvas callback during an active
   /// transaction. New tools should prefer [updateBlock].
   void markChanged() => notifyListeners();
