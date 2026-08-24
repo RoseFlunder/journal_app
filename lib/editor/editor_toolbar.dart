@@ -28,6 +28,15 @@ class EditorToolbar extends StatelessWidget {
     required this.italic,
     required this.onDelete,
     required this.onBringToFront,
+    this.canUndo = false,
+    this.canRedo = false,
+    this.onUndo,
+    this.onRedo,
+    this.onDuplicate,
+    this.onSendToBack,
+    this.onToggleLock,
+    this.locked = false,
+    this.onLayers,
   });
 
   final bool editing;
@@ -53,6 +62,15 @@ class EditorToolbar extends StatelessWidget {
   final bool italic;
   final VoidCallback onDelete;
   final VoidCallback onBringToFront;
+  final bool canUndo;
+  final bool canRedo;
+  final VoidCallback? onUndo;
+  final VoidCallback? onRedo;
+  final VoidCallback? onDuplicate;
+  final VoidCallback? onSendToBack;
+  final VoidCallback? onToggleLock;
+  final bool locked;
+  final VoidCallback? onLayers;
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +88,10 @@ class EditorToolbar extends StatelessWidget {
     return _Shell(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = MediaQuery.sizeOf(context).width < 600;
+          // At tablet widths the contextual text controls already occupy the
+          // available bottom bar. Keep power actions in More/Layers there so
+          // the essential Edit/Delete actions remain reachable.
+          final compact = MediaQuery.sizeOf(context).width < 900;
           return SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -82,6 +103,20 @@ class EditorToolbar extends StatelessWidget {
                   label: compact ? null : 'Done',
                   onPressed: onToggleEditing,
                 ),
+                if (!compact) ...[
+                  _Action(
+                    tooltip: 'Undo',
+                    icon: Icons.undo,
+                    label: null,
+                    onPressed: canUndo ? onUndo : null,
+                  ),
+                  _Action(
+                    tooltip: 'Redo',
+                    icon: Icons.redo,
+                    label: null,
+                    onPressed: canRedo ? onRedo : null,
+                  ),
+                ],
                 _divider(),
                 _Action(
                   tooltip: 'Add text',
@@ -145,14 +180,19 @@ class EditorToolbar extends StatelessWidget {
                   label: compact ? null : 'More',
                   onPressed: onMore,
                 ),
+                if (!compact && onLayers != null)
+                  _Action(
+                    tooltip: 'Layers',
+                    icon: Icons.layers,
+                    label: null,
+                    onPressed: onLayers,
+                  ),
                 if (hasSelection) ...[
                   _divider(),
                   if (textSelection)
                     _Action(
                       tooltip: 'Edit text',
-                      icon: textEditing
-                          ? Icons.keyboard_hide
-                          : Icons.edit_note,
+                      icon: textEditing ? Icons.keyboard_hide : Icons.edit_note,
                       label: null,
                       onPressed: onEditText,
                     ),
@@ -162,6 +202,28 @@ class EditorToolbar extends StatelessWidget {
                     label: null,
                     onPressed: onBringToFront,
                   ),
+                  if (!compact && onSendToBack != null)
+                    _Action(
+                      tooltip: 'Send to back',
+                      icon: Icons.flip_to_back_outlined,
+                      label: null,
+                      onPressed: onSendToBack,
+                    ),
+                  if (!compact && onDuplicate != null)
+                    _Action(
+                      tooltip: 'Duplicate block',
+                      icon: Icons.copy_outlined,
+                      label: null,
+                      onPressed: onDuplicate,
+                    ),
+                  if (!compact && onToggleLock != null)
+                    _Action(
+                      tooltip: locked ? 'Unlock block' : 'Lock block',
+                      icon: locked ? Icons.lock : Icons.lock_open_outlined,
+                      label: null,
+                      selected: locked,
+                      onPressed: onToggleLock,
+                    ),
                   _Action(
                     tooltip: 'Delete block',
                     icon: Icons.delete_outline,
@@ -266,9 +328,8 @@ class _TextColorPicker extends StatelessWidget {
   final int? colorValue;
   final ValueChanged<int?> onChanged;
 
-  Color get _color => colorValue == null
-      ? const Color(0xFF3B3226)
-      : Color(colorValue!);
+  Color get _color =>
+      colorValue == null ? const Color(0xFF3B3226) : Color(colorValue!);
 
   Future<void> _open(BuildContext context) async {
     final choice = await showDialog<_ColorChoice>(
@@ -364,7 +425,8 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
     super.dispose();
   }
 
-  String _hex(Color color) => color.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase();
+  String _hex(Color color) =>
+      color.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase();
 
   void _setColor(Color color) {
     final hsv = HSVColor.fromColor(color);
@@ -378,9 +440,8 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
     });
   }
 
-  void _setHsv() => _setColor(
-        HSVColor.fromAHSV(1, _hue, _saturation, _value).toColor(),
-      );
+  void _setHsv() =>
+      _setColor(HSVColor.fromAHSV(1, _hue, _saturation, _value).toColor());
 
   void _parseHex(String value) {
     final normalized = value.trim().replaceFirst('#', '');
@@ -411,136 +472,134 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
       content: SingleChildScrollView(
         child: SizedBox(
           width: width,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                _Preview(label: 'Current', color: _initial),
-                const SizedBox(width: 16),
-                _Preview(label: 'New', color: _selected),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const Text('Presets'),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final preset in _presets)
-                  Semantics(
-                    button: true,
-                    label: preset.label,
-                    child: Tooltip(
-                      message: preset.label,
-                      child: InkWell(
-                        onTap: () => _setColor(preset.color),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: preset.color,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: _selected.toARGB32() ==
-                                      preset.color.toARGB32()
-                                  ? Colors.white
-                                  : Colors.black26,
-                              width: 2,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  _Preview(label: 'Current', color: _initial),
+                  const SizedBox(width: 16),
+                  _Preview(label: 'New', color: _selected),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Text('Presets'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final preset in _presets)
+                    Semantics(
+                      button: true,
+                      label: preset.label,
+                      child: Tooltip(
+                        message: preset.label,
+                        child: InkWell(
+                          onTap: () => _setColor(preset.color),
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: preset.color,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color:
+                                    _selected.toARGB32() ==
+                                        preset.color.toARGB32()
+                                    ? Colors.white
+                                    : Colors.black26,
+                                width: 2,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text('Hue ${_hue.round()}°'),
-            Semantics(
-              label: 'Hue',
-              child: Slider(
-                value: _hue,
-                min: 0,
-                max: 360,
-                onChanged: (value) {
-                  _hue = value;
-                  _setHsv();
-                },
+                ],
               ),
-            ),
-            Text('Saturation ${(_saturation * 100).round()}%'),
-            Semantics(
-              label: 'Saturation',
-              child: Slider(
-                value: _saturation,
-                onChanged: (value) {
-                  _saturation = value;
-                  _setHsv();
-                },
-              ),
-            ),
-            Text('Brightness ${(_value * 100).round()}%'),
-            Semantics(
-              label: 'Brightness',
-              child: Slider(
-                value: _value,
-                onChanged: (value) {
-                  _value = value;
-                  _setHsv();
-                },
-              ),
-            ),
-            TextField(
-              controller: _hexController,
-              textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(
-                labelText: 'Hex color',
-                prefixText: '#',
-                errorText: _hexError,
-              ),
-              onChanged: (value) {
-                final normalized = value.replaceFirst('#', '');
-                if (normalized.isEmpty) {
-                  setState(() => _hexError = null);
-                } else {
-                  _parseHex(normalized);
-                }
-              },
-            ),
-            if (_lowContrast)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: Text(
-                  'This color may be difficult to read on paper.',
-                  style: TextStyle(color: Colors.deepOrange),
+              const SizedBox(height: 16),
+              Text('Hue ${_hue.round()}°'),
+              Semantics(
+                label: 'Hue',
+                child: Slider(
+                  value: _hue,
+                  min: 0,
+                  max: 360,
+                  onChanged: (value) {
+                    _hue = value;
+                    _setHsv();
+                  },
                 ),
               ),
-          ],
+              Text('Saturation ${(_saturation * 100).round()}%'),
+              Semantics(
+                label: 'Saturation',
+                child: Slider(
+                  value: _saturation,
+                  onChanged: (value) {
+                    _saturation = value;
+                    _setHsv();
+                  },
+                ),
+              ),
+              Text('Brightness ${(_value * 100).round()}%'),
+              Semantics(
+                label: 'Brightness',
+                child: Slider(
+                  value: _value,
+                  onChanged: (value) {
+                    _value = value;
+                    _setHsv();
+                  },
+                ),
+              ),
+              TextField(
+                controller: _hexController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  labelText: 'Hex color',
+                  prefixText: '#',
+                  errorText: _hexError,
+                ),
+                onChanged: (value) {
+                  final normalized = value.replaceFirst('#', '');
+                  if (normalized.isEmpty) {
+                    setState(() => _hexError = null);
+                  } else {
+                    _parseHex(normalized);
+                  }
+                },
+              ),
+              if (_lowContrast)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'This color may be difficult to read on paper.',
+                    style: TextStyle(color: Colors.deepOrange),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
-      ),
       actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context, const _ColorChoice(null)),
-        child: const Text('Default ink'),
-      ),
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('Cancel'),
-      ),
-      FilledButton(
-        onPressed: _hexError == null
-            ? () => Navigator.pop(
-                  context,
-                  _ColorChoice(_selected.toARGB32()),
-                )
-            : null,
-        child: const Text('Apply'),
-      ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, const _ColorChoice(null)),
+          child: const Text('Default ink'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _hexError == null
+              ? () => Navigator.pop(context, _ColorChoice(_selected.toARGB32()))
+              : null,
+          child: const Text('Apply'),
+        ),
       ],
     );
   }
@@ -567,7 +626,9 @@ class _Preview extends StatelessWidget {
             color: const Color(0xFFF2E9D5),
             border: Border.all(color: color),
           ),
-          child: Center(child: Text('Aa', style: TextStyle(color: color))),
+          child: Center(
+            child: Text('Aa', style: TextStyle(color: color)),
+          ),
         ),
       ],
     ),

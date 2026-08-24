@@ -149,8 +149,11 @@ class _JournalScreenState extends State<JournalScreen> {
       controlsVisible: _entryChromeVisible,
       onViewChanged: (view) =>
           widget.store.updateEntry(entry.id, (entry) => entry.view = view),
-      onBlocksChanged: (blocks) =>
-          widget.store.updateEntry(entry.id, (entry) => entry.blocks = blocks),
+      onDocumentChanged: (blocks, board) =>
+          widget.store.updateEntry(entry.id, (entry) {
+            entry.blocks = blocks;
+            entry.board = board;
+          }),
       onTitleChanged: (title) =>
           widget.store.updateEntry(entry.id, (entry) => entry.title = title),
       onTitleStyleChanged: (fontSize, bold, italic) =>

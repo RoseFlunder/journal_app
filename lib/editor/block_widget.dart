@@ -11,6 +11,7 @@ class BlockWidget extends StatefulWidget {
     required this.block,
     required this.selected,
     required this.editing,
+    this.locked = false,
     required this.textEditing,
     required this.onTap,
     required this.onEditText,
@@ -18,6 +19,8 @@ class BlockWidget extends StatefulWidget {
     required this.onMoveUpdate,
     required this.onMoveEnd,
     required this.onRotate,
+    this.onTransformStart,
+    this.onTransformEnd,
     required this.onTextChanged,
     this.preserveAspectRatio = false,
     this.imageBytes,
@@ -28,6 +31,7 @@ class BlockWidget extends StatefulWidget {
   final ContentBlock block;
   final bool selected;
   final bool editing;
+  final bool locked;
   final bool textEditing;
   final VoidCallback onTap;
   final VoidCallback onEditText;
@@ -35,6 +39,8 @@ class BlockWidget extends StatefulWidget {
   final ValueChanged<Offset> onMoveUpdate;
   final VoidCallback onMoveEnd;
   final ValueChanged<double> onRotate;
+  final VoidCallback? onTransformStart;
+  final VoidCallback? onTransformEnd;
   final ValueChanged<String> onTextChanged;
   final bool preserveAspectRatio;
   final Uint8List? imageBytes;
@@ -90,7 +96,17 @@ class _BlockWidgetState extends State<BlockWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final content = _isVisualBlock
+    final content = widget.block.type == BlockType.shape
+        ? CustomPaint(
+            painter: _ShapePainter(widget.block),
+            child: const SizedBox.expand(),
+          )
+        : widget.block.type == BlockType.ink
+        ? CustomPaint(
+            painter: _InkPainter(widget.block),
+            child: const SizedBox.expand(),
+          )
+        : _isVisualBlock
         ? (widget.imageProvider == null && widget.imageBytes == null
               ? const Center(child: Icon(Icons.broken_image_outlined))
               : Image(
@@ -101,7 +117,10 @@ class _BlockWidgetState extends State<BlockWidget> {
                   errorBuilder: (context, error, stackTrace) =>
                       const Center(child: Icon(Icons.broken_image_outlined)),
                 ))
-        : widget.editing && widget.selected && widget.textEditing
+        : widget.editing &&
+              !widget.locked &&
+              widget.selected &&
+              widget.textEditing
         ? TextField(
             key: ValueKey('block-text-${widget.block.id}'),
             controller: _controller,
@@ -130,24 +149,30 @@ class _BlockWidgetState extends State<BlockWidget> {
 
     return Listener(
       behavior: HitTestBehavior.opaque,
-      onPointerDown: widget.editing ? _handlePointerDown : null,
-      onPointerMove: widget.editing ? _handlePointerMove : null,
-      onPointerUp: widget.editing ? _handlePointerUp : null,
-      onPointerCancel: widget.editing ? _handlePointerUp : null,
+      onPointerDown: widget.editing && !widget.locked
+          ? _handlePointerDown
+          : null,
+      onPointerMove: widget.editing && !widget.locked
+          ? _handlePointerMove
+          : null,
+      onPointerUp: widget.editing && !widget.locked ? _handlePointerUp : null,
+      onPointerCancel: widget.editing && !widget.locked
+          ? _handlePointerUp
+          : null,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: widget.editing
             ? () {
                 widget.onTap();
-                if (widget.block.type == BlockType.text) {
+                if (widget.block.type == BlockType.text && !widget.locked) {
                   widget.onEditText();
                 }
               }
             : widget.onOpenImage,
-        onPanDown: widget.editing
+        onPanDown: widget.editing && !widget.locked
             ? (details) => _panDownGlobalPosition = details.globalPosition
             : null,
-        onPanStart: widget.editing
+        onPanStart: widget.editing && !widget.locked
             ? (details) {
                 final size = context.size ?? Size.zero;
                 _movingEdge =
@@ -166,7 +191,7 @@ class _BlockWidgetState extends State<BlockWidget> {
                 }
               }
             : null,
-        onPanUpdate: widget.editing
+        onPanUpdate: widget.editing && !widget.locked
             ? (details) {
                 if (_rotating) return;
                 if (_movingBody) {
@@ -174,8 +199,12 @@ class _BlockWidgetState extends State<BlockWidget> {
                 }
               }
             : null,
-        onPanEnd: widget.editing ? (_) => _finishBodyGesture() : null,
-        onPanCancel: widget.editing ? _finishBodyGesture : null,
+        onPanEnd: widget.editing && !widget.locked
+            ? (_) => _finishBodyGesture()
+            : null,
+        onPanCancel: widget.editing && !widget.locked
+            ? _finishBodyGesture
+            : null,
         child: DecoratedBox(
           decoration: BoxDecoration(
             border: widget.selected
@@ -195,7 +224,7 @@ class _BlockWidgetState extends State<BlockWidget> {
             fit: StackFit.expand,
             children: [
               content,
-              if (widget.editing && widget.selected)
+              if (widget.editing && !widget.locked && widget.selected)
                 Positioned(
                   left: 0,
                   top: 0,
@@ -205,7 +234,7 @@ class _BlockWidgetState extends State<BlockWidget> {
                     key: ValueKey('move-${widget.block.id}'),
                   ),
                 ),
-              if (widget.editing && widget.selected)
+              if (widget.editing && !widget.locked && widget.selected)
                 Positioned(
                   left: 0,
                   top: 0,
@@ -213,7 +242,7 @@ class _BlockWidgetState extends State<BlockWidget> {
                   width: 20,
                   child: _buildMoveEdge(),
                 ),
-              if (widget.editing && widget.selected)
+              if (widget.editing && !widget.locked && widget.selected)
                 Positioned(
                   right: 0,
                   top: 0,
@@ -221,7 +250,7 @@ class _BlockWidgetState extends State<BlockWidget> {
                   width: 20,
                   child: _buildMoveEdge(),
                 ),
-              if (widget.editing && widget.selected)
+              if (widget.editing && !widget.locked && widget.selected)
                 Positioned(
                   left: 0,
                   right: 0,
@@ -230,8 +259,9 @@ class _BlockWidgetState extends State<BlockWidget> {
                   child: _buildMoveEdge(),
                 ),
               if (widget.editing &&
+                  !widget.locked &&
                   widget.selected &&
-                  (widget.block.type == BlockType.text || _isVisualBlock))
+                  _isTransformable)
                 Positioned(
                   top: -48,
                   left: 0,
@@ -248,8 +278,11 @@ class _BlockWidgetState extends State<BlockWidget> {
                       ),
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
+                        onPanStart: (_) => widget.onTransformStart?.call(),
                         onPanUpdate: (details) =>
                             widget.onRotate(details.delta.dx / 100),
+                        onPanEnd: (_) => widget.onTransformEnd?.call(),
+                        onPanCancel: () => widget.onTransformEnd?.call(),
                         child: const Icon(
                           Icons.rotate_right,
                           size: 23,
@@ -287,13 +320,12 @@ class _BlockWidgetState extends State<BlockWidget> {
 
   void _handlePointerDown(PointerDownEvent event) {
     _pointers[event.pointer] = event.localPosition;
-    if (_pointers.length == 2 &&
-        widget.selected &&
-        (widget.block.type == BlockType.text || _isVisualBlock)) {
+    if (_pointers.length == 2 && widget.selected && _isTransformable) {
       if (_movingBody || _moveEdgePointer != null) {
         widget.onMoveEnd();
       }
       _rotating = true;
+      widget.onTransformStart?.call();
       _lastPointerAngle = _pointerAngle;
       _movingEdge = false;
       _movingBody = false;
@@ -318,6 +350,7 @@ class _BlockWidgetState extends State<BlockWidget> {
   void _handlePointerUp(PointerEvent event) {
     _pointers.remove(event.pointer);
     if (_pointers.length < 2) {
+      if (_rotating) widget.onTransformEnd?.call();
       _rotating = false;
       _lastPointerAngle = null;
     }
@@ -366,4 +399,108 @@ class _BlockWidgetState extends State<BlockWidget> {
   bool get _isVisualBlock =>
       widget.block.type == BlockType.image ||
       widget.block.type == BlockType.sticker;
+
+  bool get _isTransformable => widget.block.type != BlockType.group;
+}
+
+class _ShapePainter extends CustomPainter {
+  const _ShapePainter(this.block);
+
+  final ContentBlock block;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = block.strokeWidth.clamp(0.5, 20).toDouble()
+      ..color = Color(block.strokeColorValue ?? 0xFF3B3226);
+    final fill = Paint()
+      ..style = PaintingStyle.fill
+      ..color = Color(block.fillColorValue ?? 0x00000000);
+    final rect = Offset.zero & size;
+    switch (block.shape) {
+      case 'ellipse':
+        canvas.drawOval(rect, fill);
+        canvas.drawOval(rect.deflate(stroke.strokeWidth / 2), stroke);
+      case 'line':
+        canvas.drawLine(Offset.zero, Offset(size.width, size.height), stroke);
+      case 'arrow':
+        final end = Offset(size.width, size.height);
+        canvas.drawLine(Offset.zero, end, stroke);
+        final angle = math.atan2(size.height, size.width);
+        const head = 12.0;
+        canvas.drawLine(
+          end,
+          end -
+              Offset(
+                math.cos(angle - 0.55) * head,
+                math.sin(angle - 0.55) * head,
+              ),
+          stroke,
+        );
+        canvas.drawLine(
+          end,
+          end -
+              Offset(
+                math.cos(angle + 0.55) * head,
+                math.sin(angle + 0.55) * head,
+              ),
+          stroke,
+        );
+      default:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect, const Radius.circular(8)),
+          fill,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            rect.deflate(stroke.strokeWidth / 2),
+            const Radius.circular(8),
+          ),
+          stroke,
+        );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ShapePainter oldDelegate) =>
+      oldDelegate.block.toJson().toString() != block.toJson().toString();
+}
+
+class _InkPainter extends CustomPainter {
+  const _InkPainter(this.block);
+
+  final ContentBlock block;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final points = block.inkPoints ?? const <Map<String, dynamic>>[];
+    if (points.length < 2 || block.w <= 0 || block.h <= 0) return;
+    final path = Path();
+    for (var index = 0; index < points.length; index++) {
+      final point = points[index];
+      final offset = Offset(
+        ((point['x'] as num?)?.toDouble() ?? 0) * size.width / block.w,
+        ((point['y'] as num?)?.toDouble() ?? 0) * size.height / block.h,
+      );
+      if (index == 0) {
+        path.moveTo(offset.dx, offset.dy);
+      } else {
+        path.lineTo(offset.dx, offset.dy);
+      }
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..strokeWidth = block.strokeWidth.clamp(0.5, 20).toDouble()
+        ..color = Color(block.strokeColorValue ?? 0xFF3B3226),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _InkPainter oldDelegate) =>
+      oldDelegate.block.toJson().toString() != block.toJson().toString();
 }

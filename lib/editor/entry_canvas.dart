@@ -12,13 +12,17 @@ class EntryCanvas extends StatefulWidget {
   const EntryCanvas({
     super.key,
     required this.blocks,
+    this.board = const BoardSettings(),
     required this.editing,
     required this.selectedId,
     required this.textEditingId,
     required this.onSelect,
     required this.onEditText,
     required this.onChanged,
+    this.onTextChanged,
     this.onResizeActiveChanged,
+    this.onInteractionStart,
+    this.onInteractionEnd,
     required this.imageBytes,
     this.imageProvider,
     required this.onOpenImage,
@@ -27,13 +31,17 @@ class EntryCanvas extends StatefulWidget {
   });
 
   final List<ContentBlock> blocks;
+  final BoardSettings board;
   final bool editing;
   final String? selectedId;
   final String? textEditingId;
   final ValueChanged<String?> onSelect;
   final ValueChanged<String> onEditText;
   final ValueChanged<ContentBlock> onChanged;
+  final void Function(String blockId, String text)? onTextChanged;
   final ValueChanged<bool>? onResizeActiveChanged;
+  final VoidCallback? onInteractionStart;
+  final VoidCallback? onInteractionEnd;
   final Uint8List? Function(String assetId) imageBytes;
   final ImageProvider<Object>? Function(String assetId)? imageProvider;
   final ValueChanged<ContentBlock> onOpenImage;
@@ -54,6 +62,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
   Matrix4? _resizeGlobalToCanvas;
   int? _resizePointer;
   bool _resizeActiveNotified = false;
+  int _interactionDepth = 0;
 
   @override
   void dispose() {
@@ -117,6 +126,16 @@ class _EntryCanvasState extends State<EntryCanvas> {
           height: widget.workspaceSize.height,
           child: Stack(
             children: [
+              if (widget.board.gridVisible)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _GridPainter(
+                        spacing: math.max(2, widget.board.gridSize) * scale,
+                      ),
+                    ),
+                  ),
+                ),
               Positioned.fill(
                 child: Listener(
                   behavior: HitTestBehavior.translucent,
@@ -132,14 +151,18 @@ class _EntryCanvasState extends State<EntryCanvas> {
                             return;
                           }
                           final hitsBlock = widget.blocks.any(
-                            (block) => _containsBlock(point, block, scale),
+                            (block) =>
+                                !block.hidden &&
+                                _containsBlock(point, block, scale),
                           );
                           if (!hitsBlock) widget.onSelect(null);
                         }
                       : null,
                   child: Stack(
                     children: [
-                      for (final block in widget.blocks)
+                      for (final block in widget.blocks.where(
+                        (block) => !block.hidden,
+                      ))
                         Positioned(
                           left: (block.x + widget.worldOrigin.dx) * scale,
                           top: (block.y + widget.worldOrigin.dy) * scale,
@@ -149,42 +172,58 @@ class _EntryCanvasState extends State<EntryCanvas> {
                               math.max(EntryCanvas.minHeight, block.h) * scale,
                           child: Transform.rotate(
                             angle: block.rotation,
-                            child: BlockWidget(
-                              block: block,
-                              selected: widget.selectedId == block.id,
-                              editing: widget.editing,
-                              textEditing: widget.textEditingId == block.id,
-                              onTap: () => widget.onSelect(block.id),
-                              onEditText: () => widget.onEditText(block.id),
-                              onMoveStart: (globalPosition) =>
-                                  _startMove(context, block, globalPosition),
-                              onMoveUpdate: (globalPosition) =>
-                                  _updateMove(context, block, globalPosition),
-                              onMoveEnd: _endMove,
-                              onRotate: (delta) =>
-                                  widget.onChanged(block..rotation += delta),
-                              imageBytes:
-                                  _visualId(block) == null ||
-                                      widget.imageProvider != null
-                                  ? null
-                                  : widget.imageBytes(_visualId(block)!),
-                              imageProvider: _visualId(block) == null
-                                  ? null
-                                  : widget.imageProvider?.call(
-                                      _visualId(block)!,
-                                    ),
-                              onOpenImage: block.type == BlockType.image
-                                  ? () => widget.onOpenImage(block)
-                                  : null,
-                              onTextChanged: (text) =>
-                                  widget.onChanged(block..text = text),
-                              preserveAspectRatio:
-                                  block.type == BlockType.image ||
-                                  block.type == BlockType.sticker,
+                            child: Opacity(
+                              opacity: block.opacity,
+                              child: BlockWidget(
+                                block: block,
+                                selected: widget.selectedId == block.id,
+                                editing: widget.editing,
+                                locked: block.locked,
+                                textEditing: widget.textEditingId == block.id,
+                                onTap: () => widget.onSelect(block.id),
+                                onEditText: () => widget.onEditText(block.id),
+                                onMoveStart: (globalPosition) =>
+                                    _startMove(context, block, globalPosition),
+                                onMoveUpdate: (globalPosition) =>
+                                    _updateMove(context, block, globalPosition),
+                                onMoveEnd: _endMove,
+                                onRotate: (delta) {
+                                  if (!block.locked) {
+                                    widget.onChanged(block..rotation += delta);
+                                  }
+                                },
+                                onTransformStart: _beginInteraction,
+                                onTransformEnd: _endInteraction,
+                                imageBytes:
+                                    _visualId(block) == null ||
+                                        widget.imageProvider != null
+                                    ? null
+                                    : widget.imageBytes(_visualId(block)!),
+                                imageProvider: _visualId(block) == null
+                                    ? null
+                                    : widget.imageProvider?.call(
+                                        _visualId(block)!,
+                                      ),
+                                onOpenImage: block.type == BlockType.image
+                                    ? () => widget.onOpenImage(block)
+                                    : null,
+                                onTextChanged: (text) {
+                                  if (block.locked) return;
+                                  final onTextChanged = widget.onTextChanged;
+                                  if (onTextChanged != null) {
+                                    onTextChanged(block.id, text);
+                                  } else {
+                                    widget.onChanged(block..text = text);
+                                  }
+                                },
+                                preserveAspectRatio:
+                                    block.type == BlockType.image ||
+                                    block.type == BlockType.sticker,
+                              ),
                             ),
                           ),
                         ),
-                      if (selectedBlock != null)
+                      if (selectedBlock != null && !selectedBlock.locked)
                         _buildResizeHandle(context, selectedBlock, scale),
                     ],
                   ),
@@ -202,6 +241,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
     _BlockResizeSession session,
     Offset pointer,
   ) {
+    if (block.locked) return block;
     final localDelta = _rotate(
       pointer - session.startPointer,
       -session.rotation,
@@ -246,8 +286,10 @@ class _EntryCanvasState extends State<EntryCanvas> {
     ContentBlock block,
     Offset globalPosition,
   ) {
+    if (block.locked) return;
     final pointer = _globalToModel(canvasContext, globalPosition);
     if (pointer == null) return;
+    _beginInteraction();
     _moveSession = _BlockMoveSession(
       blockId: block.id,
       grabOffset: pointer - Offset(block.x, block.y),
@@ -259,30 +301,38 @@ class _EntryCanvasState extends State<EntryCanvas> {
     ContentBlock block,
     Offset globalPosition,
   ) {
+    if (block.locked) return;
     final session = _moveSession;
     if (session == null || session.blockId != block.id) return;
     final pointer = _globalToModel(canvasContext, globalPosition);
     if (pointer == null) return;
     final position = pointer - session.grabOffset;
+    final x = widget.board.snapToGrid ? _snap(position.dx) : position.dx;
+    final y = widget.board.snapToGrid ? _snap(position.dy) : position.dy;
     widget.onChanged(
       block
-        ..x = position.dx
-        ..y = position.dy,
+        ..x = x
+        ..y = y,
     );
   }
 
-  void _endMove() => _moveSession = null;
+  void _endMove() {
+    _moveSession = null;
+    _endInteraction();
+  }
 
   void _startResize(
     BuildContext canvasContext,
     ContentBlock block,
     Offset globalPosition,
   ) {
+    if (block.locked) return;
     final renderObject = canvasContext.findRenderObject();
     if (renderObject is! RenderBox) return;
     _resizeGlobalToCanvas = Matrix4.inverted(renderObject.getTransformTo(null));
     final pointer = _resizePointerToModel(globalPosition);
     if (pointer == null) return;
+    _beginInteraction();
     final width = math.max(EntryCanvas.minWidth, block.w);
     final height = math.max(EntryCanvas.minHeight, block.h);
     final center = Offset(block.x + width / 2, block.y + height / 2);
@@ -315,6 +365,16 @@ class _EntryCanvasState extends State<EntryCanvas> {
     _resizeGlobalToCanvas = null;
     _resizePointer = null;
     _setResizeActive(false);
+    _endInteraction();
+  }
+
+  void _beginInteraction() {
+    if (_interactionDepth++ == 0) widget.onInteractionStart?.call();
+  }
+
+  void _endInteraction() {
+    if (_interactionDepth == 0) return;
+    if (--_interactionDepth == 0) widget.onInteractionEnd?.call();
   }
 
   Widget _buildResizeHandle(
@@ -406,6 +466,11 @@ class _EntryCanvasState extends State<EntryCanvas> {
     );
   }
 
+  double _snap(double value) {
+    final size = math.max(1, widget.board.gridSize);
+    return (value / size).roundToDouble() * size;
+  }
+
   bool _containsResizeHandle(Offset point, ContentBlock block, double scale) {
     final width = math.max(EntryCanvas.minWidth, block.w);
     final height = math.max(EntryCanvas.minHeight, block.h);
@@ -475,4 +540,27 @@ class _BlockResizeSession {
   final double aspectRatio;
   final double rotation;
   final Offset oppositeCorner;
+}
+
+class _GridPainter extends CustomPainter {
+  const _GridPainter({required this.spacing});
+
+  final double spacing;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF3B3226).withValues(alpha: 0.09)
+      ..strokeWidth = 1;
+    for (var x = 0.0; x <= size.width; x += spacing) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (var y = 0.0; y <= size.height; y += spacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GridPainter oldDelegate) =>
+      oldDelegate.spacing != spacing;
 }

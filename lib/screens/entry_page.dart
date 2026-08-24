@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../editor/editor_toolbar.dart';
+import '../editor/editor_controller.dart';
 import '../editor/entry_canvas.dart';
 import '../models/entry.dart';
 import '../models/sticker.dart';
@@ -23,7 +26,7 @@ class EntryPage extends StatefulWidget {
     required this.entry,
     required this.store,
     required this.onViewChanged,
-    required this.onBlocksChanged,
+    required this.onDocumentChanged,
     required this.onTitleChanged,
     required this.onTitleStyleChanged,
     required this.onTitleFontFamilyChanged,
@@ -37,7 +40,8 @@ class EntryPage extends StatefulWidget {
   final Entry entry;
   final JournalStore store;
   final ValueChanged<ViewState> onViewChanged;
-  final ValueChanged<List<ContentBlock>> onBlocksChanged;
+  final Future<void> Function(List<ContentBlock>, BoardSettings)
+  onDocumentChanged;
   final ValueChanged<String> onTitleChanged;
   final void Function(double fontSize, bool bold, bool italic)
   onTitleStyleChanged;
@@ -77,9 +81,40 @@ class _EntryPageState extends State<EntryPage> {
   bool _pickingImage = false;
   final Map<String, ImageProvider<Object>> _imageProviders = {};
   final Map<String, ImageProvider<Object>> _stickerProviders = {};
+  late final EditorController _editor;
+
+  List<ContentBlock> get _blocks => _editor.blocks;
+
+  @override
+  void initState() {
+    super.initState();
+    _editor = EditorController(
+      blocks: widget.entry.blocks,
+      initialBoard: widget.entry.board,
+      persistDocument: (blocks, board) async {
+        widget.entry
+          ..blocks = blocks
+          ..board = board;
+        await widget.onDocumentChanged(blocks, board);
+        widget.store.scheduleCheckpoint(widget.entry.id);
+      },
+    )..addListener(_handleEditorChanged);
+  }
+
+  void _handleEditorChanged() {
+    // Keep the app's in-memory entry current for immediate previews and UI
+    // consumers, while the controller still batches the Hive write itself.
+    widget.entry
+      ..blocks = _editor.snapshotBlocks()
+      ..board = _editor.board;
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
+    _editor
+      ..removeListener(_handleEditorChanged)
+      ..dispose();
     _titleController.dispose();
     _titleFocusNode
       ..removeListener(_handleTitleFocusChanged)
@@ -96,10 +131,17 @@ class _EntryPageState extends State<EntryPage> {
   }
 
   void _changeBlock(ContentBlock block) {
-    widget.onBlocksChanged(List<ContentBlock>.from(widget.entry.blocks));
+    if (_editor.inTransaction) {
+      _editor.markChanged();
+      return;
+    }
+    _editor.beginTransaction('Edit ${block.type.name}');
+    _editor.markChanged();
+    unawaited(_editor.commitTransaction());
   }
 
   void _beginTextEditing(String blockId) {
+    _editor.select(blockId);
     setState(() {
       _titleFocused = false;
       _selectedId = blockId;
@@ -108,6 +150,7 @@ class _EntryPageState extends State<EntryPage> {
   }
 
   void _stopTextEditing() {
+    unawaited(_editor.flushText());
     FocusScope.of(context).unfocus();
     setState(() {
       _titleFocused = false;
@@ -118,7 +161,7 @@ class _EntryPageState extends State<EntryPage> {
   ContentBlock? get _editingTextBlock {
     final id = _textEditingId;
     if (id == null) return null;
-    for (final block in widget.entry.blocks) {
+    for (final block in _blocks) {
       if (block.id == id && block.type == BlockType.text) return block;
     }
     return null;
@@ -130,7 +173,7 @@ class _EntryPageState extends State<EntryPage> {
     if (editing != null) return editing;
     final selectedId = _selectedId;
     if (selectedId == null) return null;
-    for (final block in widget.entry.blocks) {
+    for (final block in _blocks) {
       if (block.id == selectedId && block.type == BlockType.text) return block;
     }
     return null;
@@ -154,6 +197,7 @@ class _EntryPageState extends State<EntryPage> {
   void _changeFontFamily(String? fontFamily) {
     final block = _activeTextBlock;
     if (block != null) {
+      _editor.beginTransaction('Format text');
       block.fontFamily = fontFamily;
       _changeBlock(block);
     } else if (_titleFocused) {
@@ -177,6 +221,7 @@ class _EntryPageState extends State<EntryPage> {
         .clamp(_minFontSize, _maxFontSize)
         .toDouble();
     if (block != null) {
+      _editor.beginTransaction('Format text');
       block.fontSize = size;
       _changeBlock(block);
     } else {
@@ -193,6 +238,7 @@ class _EntryPageState extends State<EntryPage> {
     final block = _activeTextBlock;
     if (block == null && !_titleFocused) return;
     if (block != null) {
+      _editor.beginTransaction('Format text');
       block.bold = !block.bold;
       _changeBlock(block);
     } else {
@@ -209,6 +255,7 @@ class _EntryPageState extends State<EntryPage> {
     final block = _activeTextBlock;
     if (block == null && !_titleFocused) return;
     if (block != null) {
+      _editor.beginTransaction('Format text');
       block.italic = !block.italic;
       _changeBlock(block);
     } else {
@@ -224,6 +271,7 @@ class _EntryPageState extends State<EntryPage> {
   void _changeTextColor(int? value) {
     final block = _activeTextBlock;
     if (block != null) {
+      _editor.beginTransaction('Format text');
       block.textColorValue = value;
       _changeBlock(block);
     } else if (_titleFocused) {
@@ -253,17 +301,66 @@ class _EntryPageState extends State<EntryPage> {
       type: BlockType.text,
       text: '',
       x: -20,
-      y: 12 + (widget.entry.blocks.length * 8) % 80,
+      y: 12 + (_blocks.length * 8) % 80,
       w: 30,
       h: 11,
       fontSize: 26,
     );
-    widget.onBlocksChanged([...widget.entry.blocks, block]);
+    _editor.add(block);
     setState(() {
       _titleFocused = false;
       _selectedId = block.id;
       _textEditingId = block.id;
     });
+  }
+
+  Future<void> _addShape() async {
+    const shapes = <({String value, String label, IconData icon})>[
+      (value: 'rectangle', label: 'Rectangle', icon: Icons.rectangle_outlined),
+      (value: 'ellipse', label: 'Ellipse', icon: Icons.circle_outlined),
+      (value: 'line', label: 'Line', icon: Icons.horizontal_rule),
+      (value: 'arrow', label: 'Arrow', icon: Icons.arrow_right_alt),
+    ];
+    final shape = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: PaperPage.paper,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              leading: Icon(Icons.category_outlined),
+              title: Text('Add shape'),
+            ),
+            for (final option in shapes)
+              ListTile(
+                leading: Icon(option.icon),
+                title: Text(option.label),
+                onTap: () => Navigator.pop(context, option.value),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || shape == null) return;
+    final block = ContentBlock(
+      id: _uuid.v4(),
+      type: BlockType.shape,
+      name: shape[0].toUpperCase() + shape.substring(1),
+      shape: shape,
+      x: -10,
+      y: 28 + (_blocks.length * 7) % 70,
+      w: shape == 'line' || shape == 'arrow' ? 42 : 32,
+      h: shape == 'line' || shape == 'arrow' ? 18 : 24,
+      strokeColorValue: PaperPage.ink.toARGB32(),
+      fillColorValue: shape == 'rectangle' || shape == 'ellipse'
+          ? const Color(0x33C97068).toARGB32()
+          : null,
+      strokeWidth: 1.5,
+    );
+    _editor.add(block);
+    setState(() => _selectedId = block.id);
   }
 
   Future<void> _addImage() async {
@@ -286,11 +383,11 @@ class _EntryPageState extends State<EntryPage> {
         type: BlockType.image,
         assetId: assetId,
         x: -20,
-        y: 12 + (widget.entry.blocks.length * 8) % 80,
+        y: 12 + (_blocks.length * 8) % 80,
         w: size.width,
         h: size.height,
       );
-      widget.onBlocksChanged([...widget.entry.blocks, block]);
+      _editor.add(block);
       setState(() => _selectedId = block.id);
     } on FormatException catch (error) {
       if (mounted) _showImageError(error.message);
@@ -368,11 +465,11 @@ class _EntryPageState extends State<EntryPage> {
       type: BlockType.sticker,
       stickerId: sticker.id,
       x: 8,
-      y: 40 + (widget.entry.blocks.length * 5) % 60,
+      y: 40 + (_blocks.length * 5) % 60,
       w: sticker.defaultSize.width,
       h: sticker.defaultSize.height,
     );
-    widget.onBlocksChanged([...widget.entry.blocks, block]);
+    _editor.add(block);
     setState(() => _selectedId = block.id);
   }
 
@@ -420,23 +517,83 @@ class _EntryPageState extends State<EntryPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const ListTile(
-              leading: Icon(Icons.brush_outlined),
-              title: Text('Draw & doodle'),
-              subtitle: Text('Coming soon'),
-              enabled: false,
+            ListTile(
+              leading: const Icon(Icons.undo),
+              title: const Text('Undo'),
+              enabled: _editor.canUndo,
+              onTap: _editor.canUndo
+                  ? () {
+                      Navigator.pop(context);
+                      _undo();
+                    }
+                  : null,
             ),
-            const ListTile(
-              leading: Icon(Icons.tune),
-              title: Text('Photo editing'),
-              subtitle: Text('Coming soon'),
-              enabled: false,
+            ListTile(
+              leading: const Icon(Icons.redo),
+              title: const Text('Redo'),
+              enabled: _editor.canRedo,
+              onTap: _editor.canRedo
+                  ? () {
+                      Navigator.pop(context);
+                      _redo();
+                    }
+                  : null,
             ),
-            const ListTile(
-              leading: Icon(Icons.music_note_outlined),
-              title: Text('Background music'),
-              subtitle: Text('Coming soon'),
-              enabled: false,
+            ListTile(
+              leading: const Icon(Icons.category_outlined),
+              title: const Text('Add shape'),
+              subtitle: const Text('Rectangle, ellipse, line, or arrow'),
+              onTap: () {
+                Navigator.pop(context);
+                _addShape();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.layers_outlined),
+              title: const Text('Layers'),
+              subtitle: const Text('Reorder, show, hide, and lock content'),
+              onTap: () {
+                Navigator.pop(context);
+                _showLayers();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text('Precise transform'),
+              subtitle: const Text(
+                'Move, resize, rotate, and nudge without dragging',
+              ),
+              enabled: _editor.primarySelection != null,
+              onTap: _editor.primarySelection == null
+                  ? null
+                  : () {
+                      Navigator.pop(context);
+                      _showTransformInspector();
+                    },
+            ),
+            ListTile(
+              leading: const Icon(Icons.history),
+              title: const Text('History & recovery'),
+              onTap: () {
+                Navigator.pop(context);
+                _showHistory();
+              },
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.grid_4x4_outlined),
+              title: const Text('Snap to grid'),
+              value: _editor.board.snapToGrid,
+              onChanged: (value) => _editor.updateBoard(
+                _editor.board.copyWith(snapToGrid: value),
+              ),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.grid_on_outlined),
+              title: const Text('Show grid'),
+              value: _editor.board.gridVisible,
+              onChanged: (value) => _editor.updateBoard(
+                _editor.board.copyWith(gridVisible: value),
+              ),
             ),
           ],
         ),
@@ -447,28 +604,412 @@ class _EntryPageState extends State<EntryPage> {
   void _deleteSelected() {
     final selectedId = _selectedId;
     if (selectedId == null) return;
-    final selected = widget.entry.blocks.firstWhere(
-      (block) => block.id == selectedId,
-    );
-    final remaining = widget.entry.blocks
-        .where((block) => block.id != selectedId)
-        .toList();
-    if (selected.type == BlockType.image && selected.assetId != null) {
-      widget.store.removeAssetIfUnreferenced(selected.assetId!, remaining);
-    }
-    widget.onBlocksChanged(remaining);
+    _editor.deleteSelection();
     setState(() => _selectedId = null);
   }
 
   void _bringToFront() {
     final selectedId = _selectedId;
     if (selectedId == null) return;
-    final blocks = List<ContentBlock>.from(widget.entry.blocks);
-    final index = blocks.indexWhere((block) => block.id == selectedId);
-    if (index < 0 || index == blocks.length - 1) return;
-    final block = blocks.removeAt(index);
-    blocks.add(block);
-    widget.onBlocksChanged(blocks);
+    _editor.bringToFront();
+  }
+
+  void _undo() => unawaited(_editor.undo());
+
+  void _redo() => unawaited(_editor.redo());
+
+  void _duplicateSelected() => _editor.duplicateSelection();
+
+  void _sendToBack() => _editor.sendToBack();
+
+  void _toggleSelectedLock() {
+    final block = _editor.primarySelection;
+    if (block != null) _editor.setLocked(!block.locked);
+  }
+
+  void _showTransformInspector() {
+    final block = _editor.primarySelection;
+    if (block == null) return;
+    final x = TextEditingController(text: block.x.toStringAsFixed(1));
+    final y = TextEditingController(text: block.y.toStringAsFixed(1));
+    final width = TextEditingController(text: block.w.toStringAsFixed(1));
+    final height = TextEditingController(text: block.h.toStringAsFixed(1));
+    final rotation = TextEditingController(
+      text: (block.rotation * 180 / math.pi).toStringAsFixed(1),
+    );
+    final opacity = TextEditingController(
+      text: (block.opacity * 100).round().toString(),
+    );
+    Future<void> apply() async {
+      final nextX = double.tryParse(x.text);
+      final nextY = double.tryParse(y.text);
+      final nextWidth = double.tryParse(width.text);
+      final nextHeight = double.tryParse(height.text);
+      final degrees = double.tryParse(rotation.text);
+      final nextOpacity = double.tryParse(opacity.text);
+      if ([
+        nextX,
+        nextY,
+        nextWidth,
+        nextHeight,
+        degrees,
+        nextOpacity,
+      ].any((value) => value == null)) {
+        return;
+      }
+      _editor.beginTransaction('Precise transform');
+      _editor.updateBlock(block.id, (target) {
+        target
+          ..x = nextX!
+          ..y = nextY!
+          ..w = math.max(EntryCanvas.minWidth, nextWidth!)
+          ..h = math.max(EntryCanvas.minHeight, nextHeight!)
+          ..rotation = degrees! * math.pi / 180
+          ..opacity = (nextOpacity! / 100).clamp(0.0, 1.0).toDouble();
+      });
+      await _editor.commitTransaction();
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: PaperPage.paper,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            0,
+            20,
+            MediaQuery.viewInsetsOf(context).bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Precise transform', style: TextStyle(fontSize: 22)),
+              if (block.locked)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Unlock this block before editing its transform.',
+                  ),
+                ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: _numberField('X', x)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _numberField('Y', y)),
+                ],
+              ),
+              Row(
+                children: [
+                  Expanded(child: _numberField('Width', width)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _numberField('Height', height)),
+                ],
+              ),
+              Row(
+                children: [
+                  Expanded(child: _numberField('Rotation °', rotation)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _numberField('Opacity %', opacity)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 4,
+                children: [
+                  _nudgeButton('←', const Offset(-1, 0)),
+                  _nudgeButton('↑', const Offset(0, -1)),
+                  _nudgeButton('↓', const Offset(0, 1)),
+                  _nudgeButton('→', const Offset(1, 0)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: block.locked
+                      ? null
+                      : () async {
+                          await apply();
+                          if (context.mounted) Navigator.pop(context);
+                        },
+                  child: const Text('Apply'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).whenComplete(() {
+      x.dispose();
+      y.dispose();
+      width.dispose();
+      height.dispose();
+      rotation.dispose();
+      opacity.dispose();
+    });
+  }
+
+  Widget _numberField(String label, TextEditingController controller) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(
+            decimal: true,
+            signed: true,
+          ),
+          decoration: InputDecoration(labelText: label),
+        ),
+      );
+
+  Widget _nudgeButton(String label, Offset delta) => Semantics(
+    button: true,
+    label: 'Nudge $label',
+    child: OutlinedButton(
+      onPressed: () => _editor.nudge(delta),
+      child: Text(label),
+    ),
+  );
+
+  void _showHistory() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: PaperPage.paper,
+      showDragHandle: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final checkpoints = widget.store.checkpointsFor(widget.entry.id);
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.62,
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.add_task_outlined),
+                    title: const Text('Create recovery checkpoint'),
+                    onTap: () async {
+                      await widget.store.createCheckpoint(widget.entry.id);
+                      setModalState(() {});
+                    },
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: checkpoints.isEmpty
+                        ? const Center(
+                            child: Text('No recovery checkpoints yet'),
+                          )
+                        : ListView.builder(
+                            itemCount: checkpoints.length,
+                            itemBuilder: (context, index) {
+                              final checkpoint = checkpoints[index];
+                              return ListTile(
+                                leading: const Icon(Icons.restore),
+                                title: Text(
+                                  DateFormat.yMMMd().add_jm().format(
+                                    checkpoint.createdAt,
+                                  ),
+                                ),
+                                subtitle: const Text(
+                                  'Restore this local version',
+                                ),
+                                onTap: () async {
+                                  await widget.store.restoreCheckpoint(
+                                    checkpoint.id,
+                                  );
+                                  final restored = widget.store.entries
+                                      .firstWhere(
+                                        (entry) => entry.id == widget.entry.id,
+                                      );
+                                  _editor.replaceDocument(
+                                    restored.blocks,
+                                    restored.board,
+                                  );
+                                  if (context.mounted) Navigator.pop(context);
+                                },
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  KeyEventResult _handleEditorKey(FocusNode _, KeyEvent event) {
+    if (event is! KeyDownEvent || _textEditingId != null || _titleFocused) {
+      return KeyEventResult.ignored;
+    }
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    final command =
+        pressed.contains(LogicalKeyboardKey.controlLeft) ||
+        pressed.contains(LogicalKeyboardKey.controlRight) ||
+        pressed.contains(LogicalKeyboardKey.metaLeft) ||
+        pressed.contains(LogicalKeyboardKey.metaRight);
+    final shift =
+        pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight);
+    final nudge = shift ? 10.0 : 1.0;
+    if (command) {
+      switch (event.logicalKey) {
+        case LogicalKeyboardKey.keyZ:
+          if (shift) {
+            _redo();
+          } else {
+            _undo();
+          }
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.keyY:
+          _redo();
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.keyC:
+          _editor.copySelection();
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.keyX:
+          _editor.cutSelection();
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.keyV:
+          _editor.paste();
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.keyD:
+          _duplicateSelected();
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.keyA:
+          _editor.selectAll();
+          return KeyEventResult.handled;
+      }
+    }
+    switch (event.logicalKey) {
+      case LogicalKeyboardKey.delete:
+      case LogicalKeyboardKey.backspace:
+        _deleteSelected();
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.arrowLeft:
+        _editor.nudge(Offset(-nudge, 0));
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.arrowRight:
+        _editor.nudge(Offset(nudge, 0));
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.arrowUp:
+        _editor.nudge(Offset(0, -nudge));
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.arrowDown:
+        _editor.nudge(Offset(0, nudge));
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.escape:
+        _editor.select(null);
+        setState(() {
+          _selectedId = null;
+          _textEditingId = null;
+        });
+        return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  void _showLayers() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: PaperPage.paper,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * 0.62,
+          child: Column(
+            children: [
+              const ListTile(
+                leading: Icon(Icons.layers_outlined),
+                title: Text('Layers'),
+                subtitle: Text('Top layers appear first'),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _blocks.length,
+                  itemBuilder: (context, index) {
+                    final block = _blocks[_blocks.length - index - 1];
+                    final selected = _selectedId == block.id;
+                    final label =
+                        block.name ??
+                        switch (block.type) {
+                          BlockType.text =>
+                            block.text.isEmpty
+                                ? 'Text'
+                                : block.text.split('\n').first,
+                          BlockType.image => 'Photo',
+                          BlockType.sticker => 'Sticker',
+                          BlockType.ink => 'Drawing',
+                          BlockType.shape => 'Shape',
+                          BlockType.group => 'Group',
+                        };
+                    return ListTile(
+                      selected: selected,
+                      leading: Icon(switch (block.type) {
+                        BlockType.text => Icons.text_fields,
+                        BlockType.image => Icons.photo_outlined,
+                        BlockType.sticker => Icons.emoji_emotions_outlined,
+                        BlockType.ink => Icons.draw_outlined,
+                        BlockType.shape => Icons.category_outlined,
+                        BlockType.group => Icons.folder_copy_outlined,
+                      }),
+                      title: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: block.hidden ? 'Show layer' : 'Hide layer',
+                            onPressed: () {
+                              _editor.select(block.id);
+                              _editor.setHidden(!block.hidden);
+                            },
+                            icon: Icon(
+                              block.hidden
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: block.locked
+                                ? 'Unlock layer'
+                                : 'Lock layer',
+                            onPressed: () {
+                              _editor.select(block.id);
+                              _editor.setLocked(!block.locked);
+                            },
+                            icon: Icon(
+                              block.locked
+                                  ? Icons.lock
+                                  : Icons.lock_open_outlined,
+                            ),
+                          ),
+                        ],
+                      ),
+                      onTap: () {
+                        _editor.select(block.id);
+                        setState(() => _selectedId = block.id);
+                        Navigator.pop(context);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Rect _contentBounds() {
@@ -480,10 +1021,12 @@ class _EntryPageState extends State<EntryPage> {
       752,
       92,
     );
-    for (final block in widget.entry.blocks) {
-      final width = math.max(EntryCanvas.minWidth, block.w) *
+    for (final block in _blocks) {
+      final width =
+          math.max(EntryCanvas.minWidth, block.w) *
           PageViewport.modelToRenderScale;
-      final height = math.max(EntryCanvas.minHeight, block.h) *
+      final height =
+          math.max(EntryCanvas.minHeight, block.h) *
           PageViewport.modelToRenderScale;
       final center = Offset(
         (block.x + _worldOrigin.dx) * PageViewport.modelToRenderScale +
@@ -503,226 +1046,260 @@ class _EntryPageState extends State<EntryPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            PageViewport(
-              canvasSize: _workspaceSize,
-              pageRect: Rect.fromLTWH(
-                _pageFramePosition.dx,
-                _pageFramePosition.dy,
-                PageViewport.pageSize.width,
-                PageViewport.pageSize.height,
-              ),
-              contentRect: _contentBounds(),
-              controlsBottomInset: _editing ? 88 : 12,
-              controlsVisible: widget.controlsVisible,
-              gesturesEnabled: !_resizeActive,
-              initialView: widget.entry.view,
-              onViewChanged: widget.onViewChanged,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Positioned(
-                    left: _pageFramePosition.dx,
-                    top: _pageFramePosition.dy,
-                    width: PageViewport.pageSize.width,
-                    height: PageViewport.pageSize.height,
-                    child: const PaperPage(child: SizedBox.expand()),
-                  ),
-                  Positioned.fill(
-                    child: EntryCanvas(
-                      workspaceSize: _workspaceSize,
-                      worldOrigin: _worldOrigin,
-                      blocks: widget.entry.blocks,
-                      editing: _editing,
-                      selectedId: _selectedId,
-                      textEditingId: _textEditingId,
-                      onResizeActiveChanged: (active) {
-                        if (_resizeActive == active || !mounted) return;
-                        setState(() => _resizeActive = active);
-                      },
-                      onSelect: (id) {
-                        if (id == null) {
-                          FocusScope.of(context).unfocus();
+    return Focus(
+      canRequestFocus: false,
+      onKeyEvent: _handleEditorKey,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: Stack(
+            children: [
+              PageViewport(
+                canvasSize: _workspaceSize,
+                pageRect: Rect.fromLTWH(
+                  _pageFramePosition.dx,
+                  _pageFramePosition.dy,
+                  PageViewport.pageSize.width,
+                  PageViewport.pageSize.height,
+                ),
+                contentRect: _contentBounds(),
+                controlsBottomInset: _editing ? 88 : 12,
+                controlsVisible: widget.controlsVisible,
+                gesturesEnabled: !_resizeActive,
+                initialView: widget.entry.view,
+                onViewChanged: widget.onViewChanged,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Positioned(
+                      left: _pageFramePosition.dx,
+                      top: _pageFramePosition.dy,
+                      width: PageViewport.pageSize.width,
+                      height: PageViewport.pageSize.height,
+                      child: const PaperPage(child: SizedBox.expand()),
+                    ),
+                    Positioned.fill(
+                      child: EntryCanvas(
+                        workspaceSize: _workspaceSize,
+                        worldOrigin: _worldOrigin,
+                        blocks: _blocks,
+                        board: _editor.board,
+                        editing: _editing,
+                        selectedId: _selectedId,
+                        textEditingId: _textEditingId,
+                        onResizeActiveChanged: (active) {
+                          if (_resizeActive == active || !mounted) return;
+                          setState(() => _resizeActive = active);
+                        },
+                        onSelect: (id) {
+                          if (id == null) {
+                            FocusScope.of(context).unfocus();
+                            _editor.select(null);
+                            setState(() {
+                              _titleFocused = false;
+                              _textEditingId = null;
+                            });
+                            return;
+                          }
+                          _editor.select(id);
                           setState(() {
                             _titleFocused = false;
+                            _selectedId = id;
                             _textEditingId = null;
                           });
-                          return;
-                        }
+                        },
+                        onEditText: _beginTextEditing,
+                        onChanged: _changeBlock,
+                        onTextChanged: _editor.replaceText,
+                        onInteractionStart: () =>
+                            _editor.beginTransaction('Transform'),
+                        onInteractionEnd: () =>
+                            unawaited(_editor.commitTransaction()),
+                        imageBytes: widget.store.getAsset,
+                        imageProvider: _imageProvider,
+                        onOpenImage: _openImage,
+                      ),
+                    ),
+                    Positioned(
+                      left: _headerPosition.dx,
+                      top: _headerPosition.dy,
+                      width: 1000,
+                      child: Padding(
+                        // Leave room for the page-level Home control in the
+                        // upper-left corner of the viewport.
+                        padding: const EdgeInsets.fromLTRB(220, 18, 28, 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _editing
+                                ? TextField(
+                                    key: const ValueKey('entry-title'),
+                                    controller: _titleController,
+                                    focusNode: _titleFocusNode,
+                                    maxLines: 1,
+                                    onTap: () {
+                                      setState(() {
+                                        _titleFocused = true;
+                                        _textEditingId = null;
+                                      });
+                                    },
+                                    onChanged: widget.onTitleChanged,
+                                    style: _titleStyle(context),
+                                    decoration: const InputDecoration(
+                                      hintText: 'Untitled page',
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                    ),
+                                  )
+                                : Text(
+                                    widget.entry.title.isEmpty
+                                        ? 'Untitled page'
+                                        : widget.entry.title,
+                                    style: _titleStyle(context),
+                                  ),
+                            const SizedBox(height: 4),
+                            Text(
+                              DateFormat.yMMMMd().format(
+                                widget.entry.createdAt,
+                              ),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: Colors.black54),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (!_editing)
+                Positioned(
+                  right: 12,
+                  top: 12,
+                  child: EntryChrome(
+                    visible: widget.controlsVisible,
+                    child: EditorToolbar(
+                      editing: false,
+                      hasSelection: false,
+                      textEditing: false,
+                      textFormattingAvailable: false,
+                      textSelection: false,
+                      onToggleEditing: () => setState(() {
+                        _editing = true;
+                        _titleFocused = false;
+                        widget.onEditingChanged(true);
+                      }),
+                      onAddText: _addText,
+                      onAddImage: _addImage,
+                      onAddSticker: _addSticker,
+                      onMore: _showMoreTools,
+                      onEditText: () =>
+                          setState(() => _textEditingId = _selectedId),
+                      onDecreaseFontSize: _activeFontSize > _minFontSize
+                          ? () => _changeFontSize(-_fontSizeStep)
+                          : null,
+                      onIncreaseFontSize: _activeFontSize < _maxFontSize
+                          ? () => _changeFontSize(_fontSizeStep)
+                          : null,
+                      fontFamily: _activeFontFamily,
+                      onFontFamilyChanged: _changeFontFamily,
+                      textColorValue: _activeTextColor,
+                      onTextColorChanged: _changeTextColor,
+                      onToggleBold: _toggleBold,
+                      onToggleItalic: _toggleItalic,
+                      bold: _activeBold,
+                      italic: _activeItalic,
+                      onDelete: _deleteSelected,
+                      onBringToFront: _bringToFront,
+                      canUndo: _editor.canUndo,
+                      canRedo: _editor.canRedo,
+                      onUndo: _undo,
+                      onRedo: _redo,
+                      onDuplicate: _duplicateSelected,
+                      onSendToBack: _sendToBack,
+                      onToggleLock: _toggleSelectedLock,
+                      locked: _editor.primarySelection?.locked ?? false,
+                      onLayers: _showLayers,
+                    ),
+                  ),
+                ),
+              if (_editing)
+                Positioned(
+                  left: 8,
+                  right: 8,
+                  bottom: 8,
+                  child: Center(
+                    child: EditorToolbar(
+                      editing: true,
+                      hasSelection: _selectedId != null,
+                      textEditing: _textEditingId != null,
+                      textFormattingAvailable: _textFormattingAvailable,
+                      textSelection: _activeTextBlock != null,
+                      onToggleEditing: () {
+                        FocusScope.of(context).unfocus();
                         setState(() {
+                          _editing = false;
+                          _resizeActive = false;
                           _titleFocused = false;
-                          _selectedId = id;
+                          widget.onEditingChanged(false);
+                          _selectedId = null;
                           _textEditingId = null;
                         });
                       },
-                      onEditText: _beginTextEditing,
-                      onChanged: _changeBlock,
-                      imageBytes: widget.store.getAsset,
-                      imageProvider: _imageProvider,
-                      onOpenImage: _openImage,
-                    ),
-                  ),
-                  Positioned(
-                    left: _headerPosition.dx,
-                    top: _headerPosition.dy,
-                    width: 1000,
-                    child: Padding(
-                      // Leave room for the page-level Home control in the
-                      // upper-left corner of the viewport.
-                      padding: const EdgeInsets.fromLTRB(220, 18, 28, 24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _editing
-                              ? TextField(
-                                  key: const ValueKey('entry-title'),
-                                  controller: _titleController,
-                                  focusNode: _titleFocusNode,
-                                  maxLines: 1,
-                                  onTap: () {
-                                    setState(() {
-                                      _titleFocused = true;
-                                      _textEditingId = null;
-                                    });
-                                  },
-                                  onChanged: widget.onTitleChanged,
-                                  style: _titleStyle(context),
-                                  decoration: const InputDecoration(
-                                    hintText: 'Untitled page',
-                                    border: InputBorder.none,
-                                    isDense: true,
+                      onAddText: _addText,
+                      onAddImage: _addImage,
+                      onAddSticker: _addSticker,
+                      onMore: _showMoreTools,
+                      onEditText: () {
+                        final block = _editingTextBlock;
+                        if (block != null) {
+                          _stopTextEditing();
+                        } else {
+                          final selected = _selectedId == null
+                              ? null
+                              : _blocks.firstWhere(
+                                  (block) => block.id == _selectedId,
+                                  orElse: () => ContentBlock(
+                                    id: '',
+                                    type: BlockType.image,
                                   ),
-                                )
-                              : Text(
-                                  widget.entry.title.isEmpty
-                                      ? 'Untitled page'
-                                      : widget.entry.title,
-                                  style: _titleStyle(context),
-                                ),
-                          const SizedBox(height: 4),
-                          Text(
-                            DateFormat.yMMMMd().format(widget.entry.createdAt),
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: Colors.black54),
-                          ),
-                        ],
-                      ),
+                                );
+                          if (selected?.type == BlockType.text) {
+                            _beginTextEditing(selected!.id);
+                          }
+                        }
+                      },
+                      onDecreaseFontSize: _activeFontSize > _minFontSize
+                          ? () => _changeFontSize(-_fontSizeStep)
+                          : null,
+                      onIncreaseFontSize: _activeFontSize < _maxFontSize
+                          ? () => _changeFontSize(_fontSizeStep)
+                          : null,
+                      fontFamily: _activeFontFamily,
+                      onFontFamilyChanged: _changeFontFamily,
+                      textColorValue: _activeTextColor,
+                      onTextColorChanged: _changeTextColor,
+                      onToggleBold: _toggleBold,
+                      onToggleItalic: _toggleItalic,
+                      bold: _activeBold,
+                      italic: _activeItalic,
+                      onDelete: _deleteSelected,
+                      onBringToFront: _bringToFront,
+                      canUndo: _editor.canUndo,
+                      canRedo: _editor.canRedo,
+                      onUndo: _undo,
+                      onRedo: _redo,
+                      onDuplicate: _duplicateSelected,
+                      onSendToBack: _sendToBack,
+                      onToggleLock: _toggleSelectedLock,
+                      locked: _editor.primarySelection?.locked ?? false,
+                      onLayers: _showLayers,
                     ),
                   ),
-                ],
-              ),
-            ),
-            if (!_editing)
-              Positioned(
-                right: 12,
-                top: 12,
-                child: EntryChrome(
-                  visible: widget.controlsVisible,
-                  child: EditorToolbar(
-                    editing: false,
-                    hasSelection: false,
-                    textEditing: false,
-                    textFormattingAvailable: false,
-                    textSelection: false,
-                    onToggleEditing: () => setState(() {
-                      _editing = true;
-                      _titleFocused = false;
-                      widget.onEditingChanged(true);
-                    }),
-                    onAddText: _addText,
-                    onAddImage: _addImage,
-                    onAddSticker: _addSticker,
-                    onMore: _showMoreTools,
-                    onEditText: () =>
-                        setState(() => _textEditingId = _selectedId),
-                    onDecreaseFontSize: _activeFontSize > _minFontSize
-                        ? () => _changeFontSize(-_fontSizeStep)
-                        : null,
-                    onIncreaseFontSize: _activeFontSize < _maxFontSize
-                        ? () => _changeFontSize(_fontSizeStep)
-                        : null,
-                    fontFamily: _activeFontFamily,
-                    onFontFamilyChanged: _changeFontFamily,
-                    textColorValue: _activeTextColor,
-                    onTextColorChanged: _changeTextColor,
-                    onToggleBold: _toggleBold,
-                    onToggleItalic: _toggleItalic,
-                    bold: _activeBold,
-                    italic: _activeItalic,
-                    onDelete: _deleteSelected,
-                    onBringToFront: _bringToFront,
-                  ),
                 ),
-              ),
-            if (_editing)
-              Positioned(
-                left: 8,
-                right: 8,
-                bottom: 8,
-                child: Center(
-                  child: EditorToolbar(
-                    editing: true,
-                    hasSelection: _selectedId != null,
-                    textEditing: _textEditingId != null,
-                    textFormattingAvailable: _textFormattingAvailable,
-                    textSelection: _activeTextBlock != null,
-                    onToggleEditing: () {
-                      FocusScope.of(context).unfocus();
-                      setState(() {
-                        _editing = false;
-                        _resizeActive = false;
-                        _titleFocused = false;
-                        widget.onEditingChanged(false);
-                        _selectedId = null;
-                        _textEditingId = null;
-                      });
-                    },
-                    onAddText: _addText,
-                    onAddImage: _addImage,
-                    onAddSticker: _addSticker,
-                    onMore: _showMoreTools,
-                    onEditText: () {
-                      final block = _editingTextBlock;
-                      if (block != null) {
-                        _stopTextEditing();
-                      } else {
-                        final selected = _selectedId == null
-                            ? null
-                            : widget.entry.blocks.firstWhere(
-                                (block) => block.id == _selectedId,
-                                orElse: () =>
-                                    ContentBlock(id: '', type: BlockType.image),
-                              );
-                        if (selected?.type == BlockType.text) {
-                          _beginTextEditing(selected!.id);
-                        }
-                      }
-                    },
-                    onDecreaseFontSize: _activeFontSize > _minFontSize
-                        ? () => _changeFontSize(-_fontSizeStep)
-                        : null,
-                    onIncreaseFontSize: _activeFontSize < _maxFontSize
-                        ? () => _changeFontSize(_fontSizeStep)
-                        : null,
-                    fontFamily: _activeFontFamily,
-                    onFontFamilyChanged: _changeFontFamily,
-                    textColorValue: _activeTextColor,
-                    onTextColorChanged: _changeTextColor,
-                    onToggleBold: _toggleBold,
-                    onToggleItalic: _toggleItalic,
-                    bold: _activeBold,
-                    italic: _activeItalic,
-                    onDelete: _deleteSelected,
-                    onBringToFront: _bringToFront,
-                  ),
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

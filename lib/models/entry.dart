@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:uuid/uuid.dart';
 
 /// Font families that can be selected in the editor.
@@ -17,7 +19,52 @@ abstract final class JournalFonts {
 }
 
 /// The kinds of content that can be freely placed on a journal page.
-enum BlockType { text, image, sticker }
+/// The block kinds understood by the creative board. The first three values
+/// are the original persisted journal formats; the others are additive.
+enum BlockType { text, image, sticker, ink, shape, group }
+
+/// Presentation and snapping settings for a paperless board. World-space
+/// coordinates are intentionally unrestricted.
+class BoardSettings {
+  const BoardSettings({
+    this.backgroundColorValue = 0xFFF4EDDC,
+    this.gridVisible = false,
+    this.snapToGrid = true,
+    this.gridSize = 8,
+  });
+
+  final int backgroundColorValue;
+  final bool gridVisible;
+  final bool snapToGrid;
+  final double gridSize;
+
+  BoardSettings copyWith({
+    int? backgroundColorValue,
+    bool? gridVisible,
+    bool? snapToGrid,
+    double? gridSize,
+  }) => BoardSettings(
+    backgroundColorValue: backgroundColorValue ?? this.backgroundColorValue,
+    gridVisible: gridVisible ?? this.gridVisible,
+    snapToGrid: snapToGrid ?? this.snapToGrid,
+    gridSize: gridSize ?? this.gridSize,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'backgroundColorValue': backgroundColorValue,
+    'gridVisible': gridVisible,
+    'snapToGrid': snapToGrid,
+    'gridSize': gridSize,
+  };
+
+  factory BoardSettings.fromJson(Map<String, dynamic>? json) => BoardSettings(
+    backgroundColorValue:
+        (json?['backgroundColorValue'] as num?)?.toInt() ?? 0xFFF4EDDC,
+    gridVisible: json?['gridVisible'] as bool? ?? false,
+    snapToGrid: json?['snapToGrid'] as bool? ?? true,
+    gridSize: (json?['gridSize'] as num?)?.toDouble() ?? 8,
+  );
+}
 
 /// A piece of freely positioned content on a journal page.
 ///
@@ -41,6 +88,20 @@ class ContentBlock {
     this.textColorValue,
     this.bold = false,
     this.italic = false,
+    this.locked = false,
+    this.hidden = false,
+    this.opacity = 1,
+    this.name,
+    this.richTextDelta,
+    this.crop,
+    this.flipX = false,
+    this.flipY = false,
+    this.shape = 'rectangle',
+    this.strokeColorValue,
+    this.fillColorValue,
+    this.strokeWidth = 1,
+    this.inkPoints,
+    this.childIds,
   });
 
   final String id;
@@ -69,6 +130,31 @@ class ContentBlock {
   bool bold;
   bool italic;
 
+  /// Board-level metadata. The legacy renderer ignores these until the new
+  /// controller consumes them, preserving older journals unchanged.
+  bool locked;
+  bool hidden;
+  double opacity;
+  String? name;
+
+  /// Quill-compatible Delta JSON. [text] remains the legacy/search fallback.
+  List<dynamic>? richTextDelta;
+
+  /// Normalized crop coordinates for image and sticker nodes.
+  Rect? crop;
+  bool flipX;
+  bool flipY;
+
+  /// Forward-compatible shape, ink, and group payloads.
+  String shape;
+  int? strokeColorValue;
+  int? fillColorValue;
+  double strokeWidth;
+  List<Map<String, dynamic>>? inkPoints;
+  List<String>? childIds;
+
+  ContentBlock clone() => ContentBlock.fromJson(toJson());
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'type': type.name,
@@ -85,11 +171,32 @@ class ContentBlock {
     'textColorValue': textColorValue,
     'bold': bold,
     'italic': italic,
+    'locked': locked,
+    'hidden': hidden,
+    'opacity': opacity,
+    'name': name,
+    'richTextDelta': richTextDelta,
+    'crop': crop == null
+        ? null
+        : {
+            'left': crop!.left,
+            'top': crop!.top,
+            'right': crop!.right,
+            'bottom': crop!.bottom,
+          },
+    'flipX': flipX,
+    'flipY': flipY,
+    'shape': shape,
+    'strokeColorValue': strokeColorValue,
+    'fillColorValue': fillColorValue,
+    'strokeWidth': strokeWidth,
+    'inkPoints': inkPoints,
+    'childIds': childIds,
   };
 
   factory ContentBlock.fromJson(Map<String, dynamic> json) => ContentBlock(
     id: json['id'] as String,
-    type: BlockType.values.byName(json['type'] as String? ?? 'text'),
+    type: _blockType(json['type'] as String?),
     text: json['text'] as String? ?? '',
     assetId: json['assetId'] as String?,
     stickerId: json['stickerId'] as String?,
@@ -103,7 +210,50 @@ class ContentBlock {
     textColorValue: (json['textColorValue'] as num?)?.toInt(),
     bold: json['bold'] as bool? ?? false,
     italic: json['italic'] as bool? ?? false,
+    locked: json['locked'] as bool? ?? false,
+    hidden: json['hidden'] as bool? ?? false,
+    opacity: ((json['opacity'] as num?)?.toDouble() ?? 1)
+        .clamp(0.0, 1.0)
+        .toDouble(),
+    name: json['name'] as String?,
+    richTextDelta: json['richTextDelta'] is List
+        ? List<dynamic>.from(json['richTextDelta'] as List)
+        : null,
+    crop: _crop(json['crop']),
+    flipX: json['flipX'] as bool? ?? false,
+    flipY: json['flipY'] as bool? ?? false,
+    shape: json['shape'] as String? ?? 'rectangle',
+    strokeColorValue: (json['strokeColorValue'] as num?)?.toInt(),
+    fillColorValue: (json['fillColorValue'] as num?)?.toInt(),
+    strokeWidth: (json['strokeWidth'] as num?)?.toDouble() ?? 1,
+    inkPoints: (json['inkPoints'] as List<dynamic>?)
+        ?.whereType<Map>()
+        .map((point) => Map<String, dynamic>.from(point))
+        .toList(),
+    childIds: (json['childIds'] as List<dynamic>?)
+        ?.whereType<String>()
+        .toList(),
   );
+
+  static BlockType _blockType(String? value) => switch (value) {
+    'image' => BlockType.image,
+    'sticker' => BlockType.sticker,
+    'ink' => BlockType.ink,
+    'shape' => BlockType.shape,
+    'group' => BlockType.group,
+    _ => BlockType.text,
+  };
+
+  static Rect? _crop(Object? raw) {
+    if (raw is! Map) return null;
+    final json = Map<String, dynamic>.from(raw);
+    return Rect.fromLTRB(
+      (json['left'] as num?)?.toDouble() ?? 0,
+      (json['top'] as num?)?.toDouble() ?? 0,
+      (json['right'] as num?)?.toDouble() ?? 1,
+      (json['bottom'] as num?)?.toDouble() ?? 1,
+    );
+  }
 }
 
 /// Per-page camera state. `zoom == 1` means the default readable scale.
@@ -139,11 +289,16 @@ class Entry {
     this.titleTextColorValue,
     this.titleBold = true,
     this.titleItalic = false,
-  }) : title = title ?? '',
+    this.schemaVersion = currentSchemaVersion,
+    this.revision = 0,
+    BoardSettings? board,
+  }) : board = board ?? const BoardSettings(),
+       title = title ?? '',
        blocks = blocks ?? [],
        modifiedAt = modifiedAt ?? createdAt;
 
   static const _uuid = Uuid();
+  static const currentSchemaVersion = 2;
 
   factory Entry.newPage() {
     final now = DateTime.now();
@@ -169,6 +324,12 @@ class Entry {
   bool titleBold;
   bool titleItalic;
 
+  /// Versioned board metadata. Blocks remain the compatibility node list so
+  /// existing journals can migrate in-place without a destructive rewrite.
+  int schemaVersion;
+  int revision;
+  BoardSettings board;
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
@@ -182,6 +343,9 @@ class Entry {
     'titleTextColorValue': titleTextColorValue,
     'titleBold': titleBold,
     'titleItalic': titleItalic,
+    'schemaVersion': currentSchemaVersion,
+    'revision': revision,
+    'board': board.toJson(),
   };
 
   factory Entry.fromJson(Map<String, dynamic> json) {
@@ -207,6 +371,11 @@ class Entry {
       titleTextColorValue: (json['titleTextColorValue'] as num?)?.toInt(),
       titleBold: json['titleBold'] as bool? ?? true,
       titleItalic: json['titleItalic'] as bool? ?? false,
+      schemaVersion: (json['schemaVersion'] as num?)?.toInt() ?? 1,
+      revision: (json['revision'] as num?)?.toInt() ?? 0,
+      board: BoardSettings.fromJson(
+        json['board'] is Map ? _stringMap(json['board']) : null,
+      ),
     );
   }
 
