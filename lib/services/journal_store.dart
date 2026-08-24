@@ -226,7 +226,7 @@ class JournalStore extends ChangeNotifier {
   /// deliberately independent from normal saves so rapid transforms do not
   /// generate many snapshots.
   void scheduleCheckpoint(String entryId) {
-    _checkpointTimers.remove(entryId)?.cancel();
+    if (_checkpointTimers.containsKey(entryId)) return;
     _checkpointTimers[entryId] = Timer(const Duration(minutes: 5), () {
       _checkpointTimers.remove(entryId);
       unawaited(createCheckpoint(entryId));

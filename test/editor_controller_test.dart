@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/editor/editor_controller.dart';
 import 'package:journal_app/models/entry.dart';
+import 'package:journal_app/models/document.dart';
 
 ContentBlock _text({String id = 'text', double x = 0, double y = 0}) =>
     ContentBlock(
@@ -156,4 +157,29 @@ void main() {
     expect(restored.blocks.single.shape, 'ellipse');
     expect(restored.blocks.single.x, -12);
   });
+
+  test(
+    'immutable document boundary preserves node transforms and payloads',
+    () {
+      final entry = Entry(
+        id: 'document-entry',
+        title: 'Sketches',
+        createdAt: DateTime.utc(2026),
+        blocks: [_text(x: -8, y: 14)..opacity = 0.7],
+      );
+      final document = EntryDocument.fromEntry(entry);
+      expect(document.nodes, hasLength(1));
+      expect(document.nodes.single.transform.x, -8);
+      expect(document.nodes.single.opacity, 0.7);
+      expect(
+        () => document.nodes.add(document.nodes.single),
+        throwsUnsupportedError,
+      );
+
+      final restored = document.toEntry();
+      expect(restored.title, 'Sketches');
+      expect(restored.blocks.single.x, -8);
+      expect(restored.blocks.single.opacity, 0.7);
+    },
+  );
 }

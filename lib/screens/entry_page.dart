@@ -57,7 +57,7 @@ class EntryPage extends StatefulWidget {
   State<EntryPage> createState() => _EntryPageState();
 }
 
-class _EntryPageState extends State<EntryPage> {
+class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   static const _uuid = Uuid();
   static const _workspaceSize = Size(10000, 10000);
   static const _pageFramePosition = Offset(4000, 4500);
@@ -89,6 +89,7 @@ class _EntryPageState extends State<EntryPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _editor = EditorController(
       blocks: widget.entry.blocks,
       initialBoard: widget.entry.board,
@@ -113,6 +114,7 @@ class _EntryPageState extends State<EntryPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _editor
       ..removeListener(_handleEditorChanged)
       ..dispose();
@@ -121,6 +123,16 @@ class _EntryPageState extends State<EntryPage> {
       ..removeListener(_handleTitleFocusChanged)
       ..dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_editor.flushText());
+      unawaited(widget.store.flush());
+    }
   }
 
   void _handleTitleFocusChanged() {
@@ -1265,8 +1277,10 @@ class _EntryPageState extends State<EntryPage> {
                         onTextChanged: _editor.replaceText,
                         onInteractionStart: () =>
                             _editor.beginTransaction('Transform'),
-                        onInteractionEnd: () =>
-                            unawaited(_editor.commitTransaction()),
+                        onInteractionEnd: () {
+                          _editor.snapSelection();
+                          unawaited(_editor.commitTransaction());
+                        },
                         onMoveSelection: (delta) =>
                             _editor.moveSelection(delta, snap: true),
                         selectMode: _selectMode,
@@ -1448,6 +1462,27 @@ class _EntryPageState extends State<EntryPage> {
                       locked: _editor.primarySelection?.locked ?? false,
                       onLayers: _showLayers,
                     ),
+                  ),
+                ),
+              if (_editor.saveState != EditorSaveState.saved)
+                Positioned(
+                  top: MediaQuery.paddingOf(context).top + 12,
+                  right: 12,
+                  child: ActionChip(
+                    avatar: Icon(
+                      _editor.saveState == EditorSaveState.failed
+                          ? Icons.error_outline
+                          : Icons.sync,
+                      size: 18,
+                    ),
+                    label: Text(
+                      _editor.saveState == EditorSaveState.failed
+                          ? 'Save failed · Retry'
+                          : 'Saving…',
+                    ),
+                    onPressed: _editor.saveState == EditorSaveState.failed
+                        ? () => unawaited(_editor.retrySave())
+                        : null,
                   ),
                 ),
             ],

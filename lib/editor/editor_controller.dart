@@ -146,6 +146,19 @@ class EditorController extends ChangeNotifier {
     }
   }
 
+  /// Snaps the current selection once at the end of a gesture. Keeping raw
+  /// pointer deltas during the gesture prevents small movements from being
+  /// rounded away on every pointer event.
+  void snapSelection() {
+    if (!_board.snapToGrid || _selection.isEmpty) return;
+    for (final block in _expandedSelectedBlocks) {
+      if (block.locked) continue;
+      block.x = _snap(block.x);
+      block.y = _snap(block.y);
+    }
+    notifyListeners();
+  }
+
   void nudge(Offset delta) {
     beginTransaction('Nudge');
     moveSelection(delta, snap: false);
@@ -174,8 +187,17 @@ class EditorController extends ChangeNotifier {
   void deleteSelection() {
     if (_selection.isEmpty) return;
     beginTransaction('Delete');
+    final selected = _expandedSelectedBlocks.map((block) => block.id).toSet();
     _blocks.removeWhere(
-      (block) => _selection.contains(block.id) && !block.locked,
+      (block) => selected.contains(block.id) && !block.locked,
+    );
+    final childGroupIds = _blocks
+        .where((block) => block.groupId != null)
+        .map((block) => block.groupId!)
+        .toSet();
+    _blocks.removeWhere(
+      (block) =>
+          block.type == BlockType.group && !childGroupIds.contains(block.id),
     );
     _selection.removeWhere((id) => _byId(id) == null);
     notifyListeners();
@@ -247,10 +269,9 @@ class EditorController extends ChangeNotifier {
   void bringToFront() {
     if (_selection.isEmpty) return;
     beginTransaction('Bring to front');
-    final selected = _blocks
-        .where((block) => _selection.contains(block.id))
-        .toList();
-    _blocks.removeWhere((block) => _selection.contains(block.id));
+    final ids = _expandedSelectedBlocks.map((block) => block.id).toSet();
+    final selected = _blocks.where((block) => ids.contains(block.id)).toList();
+    _blocks.removeWhere((block) => ids.contains(block.id));
     _blocks.addAll(selected);
     notifyListeners();
     unawaited(commitTransaction());
@@ -259,10 +280,9 @@ class EditorController extends ChangeNotifier {
   void sendToBack() {
     if (_selection.isEmpty) return;
     beginTransaction('Send to back');
-    final selected = _blocks
-        .where((block) => _selection.contains(block.id))
-        .toList();
-    _blocks.removeWhere((block) => _selection.contains(block.id));
+    final ids = _expandedSelectedBlocks.map((block) => block.id).toSet();
+    final selected = _blocks.where((block) => ids.contains(block.id)).toList();
+    _blocks.removeWhere((block) => ids.contains(block.id));
     _blocks.insertAll(0, selected);
     notifyListeners();
     unawaited(commitTransaction());
@@ -371,6 +391,8 @@ class EditorController extends ChangeNotifier {
   }
 
   Future<void> flushText() => commitTransaction();
+
+  Future<void> retrySave() => _persist();
 
   Future<void> undo() async {
     await commitTransaction();

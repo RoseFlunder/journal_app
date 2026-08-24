@@ -149,49 +149,10 @@ class _JournalScreenState extends State<JournalScreen> {
   }
 
   Future<String?> _promptForTitle() async {
-    final controller = TextEditingController();
-    var canCreate = false;
-    final title = await showDialog<String>(
+    return showDialog<String>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Name your journal page'),
-          content: TextField(
-            key: const ValueKey('new-page-title'),
-            controller: controller,
-            autofocus: true,
-            textCapitalization: TextCapitalization.sentences,
-            textInputAction: TextInputAction.done,
-            onChanged: (value) =>
-                setDialogState(() => canCreate = value.trim().isNotEmpty),
-            onSubmitted: (value) {
-              final trimmed = value.trim();
-              if (trimmed.isNotEmpty) Navigator.pop(context, trimmed);
-            },
-            decoration: const InputDecoration(
-              labelText: 'Page title',
-              hintText: 'e.g. Sunday reflections',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: canCreate
-                  ? () => Navigator.pop(context, controller.text.trim())
-                  : null,
-              child: const Text('Create page'),
-            ),
-          ],
-        ),
-      ),
+      builder: (context) => const _NewPageTitleDialog(),
     );
-    // The dialog route can rebuild once during its exit animation after the
-    // future completes, so it must release its TextField before this local
-    // controller is disposed. It is short-lived and will be collected.
-    return title;
   }
 
   Widget _buildEntryPage(Entry entry) {
@@ -340,6 +301,59 @@ class _JournalScreenState extends State<JournalScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+class _NewPageTitleDialog extends StatefulWidget {
+  const _NewPageTitleDialog();
+
+  @override
+  State<_NewPageTitleDialog> createState() => _NewPageTitleDialogState();
+}
+
+class _NewPageTitleDialogState extends State<_NewPageTitleDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final title = _controller.text.trim();
+    if (title.isNotEmpty) Navigator.pop(context, title);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canCreate = _controller.text.trim().isNotEmpty;
+    return AlertDialog(
+      title: const Text('Name your journal page'),
+      content: TextField(
+        key: const ValueKey('new-page-title'),
+        controller: _controller,
+        autofocus: true,
+        textCapitalization: TextCapitalization.sentences,
+        textInputAction: TextInputAction.done,
+        onChanged: (_) => setState(() {}),
+        onSubmitted: (_) => _submit(),
+        decoration: const InputDecoration(
+          labelText: 'Page title',
+          hintText: 'e.g. Sunday reflections',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: canCreate ? _submit : null,
+          child: const Text('Create page'),
+        ),
+      ],
     );
   }
 }

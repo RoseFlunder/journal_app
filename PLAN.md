@@ -1,263 +1,110 @@
-# Cozy Bloom Journal – Implementation Plan
+# Creative Journal Editor Roadmap
 
-A botanical scrapbook journal: explicitly navigated pages, each with a title,
-creation date and freely positioned content (text boxes and pictures, drag & drop).
-Optional per-page background music with manual play/pause (deferred). The first page is
-a table of contents for jumping to any page. Everything is stored locally on
-device. Targets: **Android, Windows, Web**.
+Source of truth for the mobile-first, local-first, paperless creative board.
+Existing saved pages may be discarded while the document architecture changes.
 
-## 1. Data model
+Legend: `[x]` done, `[~]` partial, `[ ]` missing, `[!]` fix required.
 
-```dart
-class Entry {
-  final String id;          // uuid
-  String title;
-  final DateTime createdAt; // shown on the page header
-  DateTime modifiedAt;
-  List<ContentBlock> blocks;  // freely positioned content, z-ordered by list order
-  String? music;            // asset id (key into the assets box), nullable
-  ViewState? view;          // per-page zoom & pan (null = fit-to-screen)
-}
+## Status
 
-class ViewState {
-  double zoom;   // 1.0 == fit-to-screen, clamped ~0.5-3.0
-  Offset pan;    // in page units
-}
+### Foundation and persistence
 
-class ContentBlock {
-  final String id;
-  BlockType type;           // text | image | sticker
-  String text;              // text blocks (may be '')
-  String? assetId;          // image blocks: key into the assets box
-  Offset position;          // in *page units* (virtual page = 100 x 141.4)
-  Size size;                // in page units
-  double rotation;          // radians around the block center
-}
-```
+- [~] Mutable `Entry` adapter plus immutable `EntryDocument`, `CanvasNode`,
+  and `Transform2D` boundary.
+- [x] Fresh-data startup; no legacy migration required.
+- [~] Text, image, sticker, ink, shape, and group payload fields.
+- [x] `EditorController` selection, transactions, clipboard, undo/redo, and
+  save state.
+- [~] Snapshot commands and text coalescing; typed immutable commands remain.
+- [~] Checkpoints and restore UI.
+- [!] Checkpoint cadence must measure five minutes from the first dirty edit,
+  not reset on every save.
+- [~] Internal save states and visible retry chip; repository error reporting
+  and integration coverage remain.
+- [ ] `JournalRepository` and asset/checkpoint/template interfaces.
+- [ ] Asset garbage collection aware of checkpoints, undo history, clipboard,
+  and templates.
 
-- Order of `pages` == order of entries in the list; TOC is always page index 0.
-- Deleting a page re-orders the PageView indices (TOC must account for that).
-- **Coordinate system:** positions/sizes are stored in *page units* on a
-  virtual page of fixed aspect (A4-ish, 100 x 141.4 units). At render time
-  the page is scaled to fit the screen (`LayoutBuilder` + scale factor), so
-  layouts stay consistent across phones, desktop and browsers.
-- A page can hold **multiple text blocks** and multiple image blocks, in any
-  arrangement. The title stays page chrome (header), not a block.
+### Infinite board and camera
 
-## 2. Local storage (cross-platform, incl. Web)
+- [~] Continuous ruled board, persisted camera, and centered first-open header.
+- [!] Replace the fixed 10,000×10,000 workspace with genuine world coordinates
+  and a camera service without artificial bounds.
+- [!] Move selection borders and handles to a screen-space overlay so targets
+  remain at least 48 logical pixels at every zoom.
+- [ ] Visible-node culling, overscan, image thumbnail sizing, repaint
+  boundaries, world hit-testing, transform, bounds, and snapping services.
 
-Files on disk don't work on the Web, so persistence goes through
-**Hive** (`hive`, `hive_flutter`): file-based on Android/Windows, IndexedDB
-on Web, one code path everywhere.
+### Direct manipulation and selection
 
-```
-Hive boxes:
-  entries   -> key = entry id, value = Entry JSON (metadata + blocks)
-  assets    -> key = asset id (uuid), value = AssetRecord:
-               { entryId, kind: image|audio, mime, data: Uint8List }
-```
+- [x] Selection, movement, rotation, eight resize handles, keyboard nudging,
+  numeric inspector, Shift-click, lasso mode, and multi-object movement.
+- [x] Grid visibility and snap-at-gesture-end behavior.
+- [!] Complete rotated handle resizing around the true opposite anchor and add
+  rotated-bounds tests.
+- [~] Two-finger rotation; simultaneous group scale/rotation is missing.
+- [ ] Smart guides, equal spacing, rotation snaps, haptics, long-press menu,
+  double-tap edit/crop, desktop Space/middle-button pan, distribution, and
+  size matching.
 
-- `JournalStore` is the single writer: load all entries at startup, rewrite
-  the affected box entry on every change.
-- Picked images are **downscaled** (max side 1600 px, JPEG quality ~80) before being
-  stored — keeps IndexedDB quota usage sane on Web and makes the app feel
-  faster.
-- Deleting an entry also deletes its `assets` records.
-- Web note: persistence lives in the browser profile (IndexedDB, typically
-  ~50–500 MB). Fine for a personal journal; mention in README.
+### Groups and layers
 
-## 3. Dependencies (pubspec)
+- [~] Persisted group membership with shared move/align/lock/hide behavior.
+- [!] Groups are hidden structural blocks rather than nested local-coordinate
+  nodes; delete/reorder/duplicate/resize/rotate/clipboard semantics are
+  incomplete.
+- [ ] Nested group transforms, group bounding-box operations, hierarchy layers,
+  rename, drag reorder, front/back, and accessibility ordering.
 
-| Package            | Purpose                                    |
-|--------------------|--------------------------------------------|
-| `hive` + `hive_flutter` | all persistence (files on mobile/desktop, IndexedDB on Web) |
-| `image`            | validate, resize and encode picked images  |
-| `image_picker`     | pick/take pictures (gallery + camera)      |
-| `file_picker`      | pick a local audio file as background music|
-| `just_audio`       | play/pause/loop the music                  |
-| `intl`             | date formatting for headers                |
-| `uuid`             | entry & asset ids                          |
+### Creative tools
 
-Web compatibility notes (all three pickers/players work on Web):
-- `image_picker`: file/gallery picking works; **camera capture is not
-  available** on Web (hide the camera option there).
-- `file_picker`: opens the browser file dialog.
-- `just_audio`: uses `MediaElement` on Web; no background playback (browser
-  limitation, acceptable for a journal).
+- [~] Block-level text styling and basic vector shapes.
+- [ ] Quill Delta rich text, selection/paragraph formatting, and links.
+- [x] Image insertion, downscaling, persistence, transforms, and viewer.
+- [ ] Non-destructive crop, focal position, replace, flip, masks, frames,
+  opacity, adjustments, and filters.
+- [~] Ink serialization/rendering; [ ] drawing input, pressure, pens,
+  highlighters, erasers, and ink lasso.
+- [ ] Shape style editor, polygons, optional shape text, templates, thumbnails,
+  starter library, and reusable favorites.
 
-No state-management package needed: one `JournalStore extends ChangeNotifier`
-(entries list + persistence) at the root, consumed with `ListenableBuilder`.
-One app-level `AudioService` (single `just_audio` `AudioPlayer`, loop mode)
-shared by all pages.
+### Recovery, accessibility, and portability
 
-## 4. Architecture / file layout
+- [~] Checkpoint history/restore and numeric transform inspector.
+- [ ] Command history sheet, `.cozyjournal` archive, PNG/JPEG/PDF export.
+- [~] Tooltips, keyboard shortcuts, and partial semantics.
+- [ ] Full node/handle semantics, custom actions, announcements, focus states,
+  keyboard-open layout, and platform parity.
+- [x] Lifecycle flush hooks and title-dialog ownership.
+- [ ] Archive recovery and save-failure integration tests.
 
-```
-lib/
-  main.dart
-  models/
-    entry.dart                  // Entry, ContentBlock + (de)serialization
-  services/
-    journal_store.dart          // ChangeNotifier: CRUD + Hive persistence
-    audio_service.dart          // single AudioPlayer wrapper, loop mode
-    image_source.dart           // pick, validate, downscale image bytes
-  screens/
-    journal_screen.dart         // non-scrollable PageView + home/edge navigation over [TOC, ...pages]
-    contents_page.dart          // paper-styled TOC: title + date, tap -> jump
-    entry_page.dart             // renders one Entry as a paper page
-  editor/
-    entry_canvas.dart           // Stack of blocks scaled to page size;
-                                // handles selection, drag, resize in edit mode
-    block_widget.dart           // one text/image block: selection frame,
-                                // drag handle, resize handles
-    editor_toolbar.dart         // add text, add image, bring to front,
-                                // delete selection, edit title, pick music
-  widgets/
-    page_viewport.dart          // zoom/pan wrapper: pinch, wheel, toolbar
-    paper_page.dart             // paper look: color, shadow, rules, margin line
-    paper_textfield.dart        // transparent input styled like handwriting
-    music_player_bar.dart       // play/pause button (+ position), bottom corner
-```
+## Implementation order
 
-### Entry page rendering
+1. Correctness: immutable commands, rotated resize, group semantics,
+   checkpoint cadence, save retry, lifecycle flush, and regression tests.
+2. True board: world camera services, screen-space overlay, culling, and
+   camera/content-fit tests.
+3. Groups/layout: nested groups, hierarchy layers, distribution, smart guides,
+   rotation snaps, and haptics.
+4. Rich text/images: Quill Delta, crop, replace, masks, adjustments, filters.
+5. Drawing/export/accessibility: ink/shapes, templates, archive/export,
+   semantics, golden tests, and platform integration tests.
 
-- `EntryPage` = `PaperPage` chrome (title + date header, music bar, edit
-  affordance) + `EntryCanvas` filling the page body.
-- `EntryCanvas` is a `Stack` of `Positioned` blocks using fractional
-  offsets/sizes derived from page units. Read mode: inert. Edit mode:
-  - tap block → select (dashed selection frame),
-  - drag block body → move,
-  - drag corner handles → resize (min size clamps); for images this scales
-    the **display only** — the stored asset keeps its downscaled original
-    quality (no re-encoding),
-    while preserving the image aspect ratio,
-  - rotate handle → rotate text and image blocks around their center,
-  - toolbar: add text box, add image, bring-to-front (re-order list),
-    delete selection,
-  - text blocks: tap in edit mode focuses a transparent `TextField`.
-- New blocks are appended at the end of `blocks` (topmost z-order).
-- Sticker blocks reference a bundled sticker catalog by id and support the
-  same selection, movement, proportional resizing, rotation, and layering as
-  image blocks.
+## Interfaces and acceptance
 
-### Page viewport (zoom & pan)
+- Keep `EntryDocument`, `CanvasNode`, and `Transform2D` immutable at repository
+  and command boundaries; widgets must not mutate persisted snapshots directly.
+- Add `JournalRepository`, typed `EditorCommand`, `CameraController`,
+  `TransformService`, and `SnappingService` before removing the adapter.
+- Every completed gesture creates exactly one undo command and one save.
+- No supported action is drag-only; every transform has inspector, keyboard, or
+  menu alternatives.
+- Add unit, widget, semantics, Android-oriented integration, Chrome, and
+  Windows coverage before declaring the roadmap complete.
 
-On desktop/Web there is much more screen space than on mobile, so pages are
-viewed through a `PageViewport` wrapper that supports zoom in/out and panning
-across the page:
+## Assumptions
 
-- Built on `InteractiveViewer` (pinch/drag) plus a `Listener` for wheel
-  events so every input mode works:
-  - touch: pinch = zoom, one-finger drag = pan (read mode); in edit mode a
-    one-finger drag on a block moves the block, on empty paper it pans,
-  - desktop/Web: scroll wheel / trackpad = pan (when zoomed in),
-    ctrl+wheel or trackpad pinch = zoom,
-  - small on-screen toolbar when zoomed: − / + / "fit" buttons;
-    double-click (double-tap on empty paper) toggles fit ↔ 2×.
-- Entering a page defaults to fit-to-screen; the user's zoom/pan is stored in
-  `Entry.view` and restored when they return to the page.
-- All block coordinates are in page units, so drag/resize hit-testing goes
-  through the same transform as rendering (one `Matrix4` shared by the
-  viewport and the canvas — implement the viewport **before** the block
-  editor so the editor is built on it from day one).
-- TOC page stays fixed fit-to-screen (no zoom) — it is a list, not a page.
-
-### Editing interaction refinement
-
-- In edit mode, tapping blank canvas exits text editing and unfocuses the
-  text field while preserving the selected block.
-- A selected block's border is a move target above the text field, so the
-  block can be dragged after text editing without sacrificing interior text
-  entry.
-
-### Navigation flow
-
-1. Root is `JournalScreen`: a non-scrollable `PageView` with
-  `children = [ContentsPage(), ...entries.map(EntryPage)]`; the
-  `PageController` remains the single path for animated page changes.
-2. `ContentsPage` lists entries (title + `createdAt`), tap →
-   `pageController.animateToPage(index + 1)`.
-3. Entry pages expose a Home button that returns to Contents. Journal-level
-  Previous and Next controls sit at the page edges and are disabled at the
-  corresponding boundaries.
-4. Each `EntryPage` has an edit affordance (pencil) toggling edit mode.
-5. "New page" (FAB or TOC button) appends an entry, saves,
-  and navigates there.
-6. Keyboard PageUp/PageDown, Left/Right, and Home remain available for fast
-  navigation. Previous/Next controls are explicit and disabled at boundaries.
-7. Music (confirmed behavior): **never autoplays.** Each page's music bar has
-   a manual play/pause button. When the page is swapped away (PageView page
-   changes), `AudioService.stop()` — music is per-page ambience.
-
-## 5. Paper design
-
-- Palette: paper `#F4EDDC`–`#EFE6D0`, ink `#3B3226`, accent red margin `#C97068`.
-- `PaperPage` widget:
-  - warm paper background + soft outer shadow + hairline border,
-  - subtle texture (either a bundled noise PNG or a light `LinearGradient`
-    — start with gradient, texture later),
-  - optional horizontal rules + red margin line drawn by a `CustomPainter`
-    (looks great, cheap to implement),
-  - slight corner rounding (2–3 px), not "card"-like.
-- Fonts (bundle in `pubspec` `fonts:` section):
-  - body/handwriting: *Caveat* or *Kalam*,
-  - headings/dates: *Lora* or *EB Garamond*.
-- Date format: "Tuesday, 12 August 2025" style, small caps-ish.
-- Page transition: the existing animated `PageController` transition remains;
-  outer page swiping is disabled so page viewport panning is unambiguous.
-
-## 6. Milestones
-
-- **[x] M1 – Skeleton & persistence:** pubspec deps, `Entry`/`ContentBlock`
-  models, Hive boxes, `JournalStore` (load/save), `JournalScreen` PageView
-  with a TOC page + entry pages, create/jump/delete working.
-- **[x] M2 – Paper theme:** `PaperPage`, palette, fonts, rules, shadows, TOC
-  styling.
-- **[x] M3 – Page viewport:** `PageViewport` with zoom/pan (pinch, wheel,
-  ctrl+wheel, toolbar, fit/2× double-click), per-entry view persistence.
-- **[x] M4 – Free-positioned text blocks:** `EntryCanvas` + `BlockWidget` with
-  select/drag/resize, add/delete text boxes, in-place text editing — built
-  on the viewport's transform from M3.
-- **[x] M5 – Pictures as blocks:** pick image → validate/downscale → store in
-  assets box; add image block, drag/resize/rotate like text, tap → full-screen
-  viewer. Regression coverage includes image serialization, processing,
-  rendering, and rotation-control exposure.
-- **[x] M5b – Stickers and branding:** bundled sticker catalog, scrapbook home,
-  framed page, startup artwork, and platform launcher assets.
-- **[x] M6 – Cozy Bloom redesign:** botanical home, framed page, branded
-  startup, launcher assets, bottom editor toolbar, and two bundled stickers.
-- **M7 – Music:** pick audio file → assets box, `AudioService`
-  (loop), `MusicPlayerBar` with manual play/pause on the page, stop on
-  page swap.
-- **M7 – Polish:** empty-state journal (a friendly "start writing" page),
-  confirm dialogs for delete, error toasts, app icon/README, Web release
-  pass (no-cam image source, audio focus quirks), optional page-turn
-  animation.
-
-## 7. Decisions (confirmed)
-
-1. **Audio:** no autoplay; manual play/pause button on the page; music
-   stops when the page is swapped.
-2. **Page layout:** no fixed layout — text boxes and pictures are freely
-   positioned (drag & drop / touch), stored in page units, z-ordered.
-3. **Platforms:** Android, Windows, Web.
-4. **Multiple text blocks** per page: yes.
-5. **Images:** downscaled on save (max side 1600 px, JPEG q ~80) to keep
-   storage small; resizable on the page via handles (display scaling only,
-   stored original untouched).
-6. **Block rotation:** supported for text and image blocks around the block
-  center.
-7. **Zoom & pan:** required — desktop/Web have far more screen space than
-   mobile. Pinch/touch drag, scroll-wheel pan, ctrl+wheel zoom, on-screen
-   −/+/fit toolbar; default fit-to-screen; per-page zoom/pan persisted in
-   `Entry.view`. TOC stays fixed.
-8. **Page navigation:** outer page swiping is disabled on Android, Windows,
-  and Web. Entry pages expose a Home button; edge and keyboard/previous/next
-  navigation remain available.
-9. **Editing gestures:** tapping outside a text block exits its text field;
-  dragging the selected border moves the block. The non-scrollable outer
-  `PageView` is covered by widget regression tests because its physics are
-  shared across Android, Windows, and Web.
-10. **Current scope:** calendar, search, drawing, photo adjustments, and music
-  are not exposed as working features; the editor More sheet labels them as
-  coming soon.
+- Android is first mobile target; Web and Windows remain first-class.
+- Board is local-first, ruled, paperless, and effectively unbounded.
+- Existing saved-data compatibility is intentionally out of scope.
+- Music remains separate page ambience and is deferred.

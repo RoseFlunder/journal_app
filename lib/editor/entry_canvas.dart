@@ -291,18 +291,14 @@ class _EntryCanvasState extends State<EntryCanvas> {
       pointer - session.startPointer,
       -session.rotation,
     );
-    var x = session.startPosition.dx;
-    var y = session.startPosition.dy;
     var width = session.startSize.width;
     var height = session.startSize.height;
     if (session.horizontal < 0) {
-      x += localDelta.dx;
       width -= localDelta.dx;
     } else if (session.horizontal > 0) {
       width += localDelta.dx;
     }
     if (session.vertical < 0) {
-      y += localDelta.dy;
       height -= localDelta.dy;
     } else if (session.vertical > 0) {
       height += localDelta.dy;
@@ -316,9 +312,15 @@ class _EntryCanvasState extends State<EntryCanvas> {
       width = math.max(EntryCanvas.minWidth, proposed);
       height = math.max(EntryCanvas.minHeight, width * ratio);
     }
+    final oppositeLocal = Offset(
+      -session.horizontal * width / 2,
+      -session.vertical * height / 2,
+    );
+    final center =
+        session.oppositeAnchor - _rotate(oppositeLocal, session.rotation);
     return block
-      ..x = x
-      ..y = y
+      ..x = center.dx - width / 2
+      ..y = center.dy - height / 2
       ..w = width
       ..h = height;
   }
@@ -359,12 +361,10 @@ class _EntryCanvasState extends State<EntryCanvas> {
       return;
     }
     final position = pointer - session.grabOffset;
-    final x = widget.board.snapToGrid ? _snap(position.dx) : position.dx;
-    final y = widget.board.snapToGrid ? _snap(position.dy) : position.dy;
     widget.onChanged(
       block
-        ..x = x
-        ..y = y,
+        ..x = position.dx
+        ..y = position.dy,
     );
   }
 
@@ -388,13 +388,18 @@ class _EntryCanvasState extends State<EntryCanvas> {
     _beginInteraction();
     final width = math.max(EntryCanvas.minWidth, block.w);
     final height = math.max(EntryCanvas.minHeight, block.h);
+    final center = Offset(block.x + width / 2, block.y + height / 2);
+    final oppositeLocal = Offset(
+      -handle.horizontal * width / 2,
+      -handle.vertical * height / 2,
+    );
     _resizeSession = _BlockResizeSession(
       blockId: block.id,
       startPointer: pointer,
       startSize: Size(width, height),
       aspectRatio: height / width,
       rotation: block.rotation,
-      startPosition: Offset(block.x, block.y),
+      oppositeAnchor: center + _rotate(oppositeLocal, block.rotation),
       horizontal: handle.horizontal,
       vertical: handle.vertical,
     );
@@ -553,11 +558,6 @@ class _EntryCanvasState extends State<EntryCanvas> {
     );
   }
 
-  double _snap(double value) {
-    final size = math.max(1, widget.board.gridSize);
-    return (value / size).roundToDouble() * size;
-  }
-
   bool _containsResizeHandle(Offset point, ContentBlock block, double scale) {
     final width = math.max(EntryCanvas.minWidth, block.w);
     final height = math.max(EntryCanvas.minHeight, block.h);
@@ -633,7 +633,7 @@ class _BlockResizeSession {
     required this.startSize,
     required this.aspectRatio,
     required this.rotation,
-    required this.startPosition,
+    required this.oppositeAnchor,
     required this.horizontal,
     required this.vertical,
   });
@@ -643,7 +643,7 @@ class _BlockResizeSession {
   final Size startSize;
   final double aspectRatio;
   final double rotation;
-  final Offset startPosition;
+  final Offset oppositeAnchor;
   final double horizontal;
   final double vertical;
 }
