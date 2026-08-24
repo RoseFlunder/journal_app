@@ -208,6 +208,45 @@ class EditorController extends ChangeNotifier {
     unawaited(commitTransaction());
   }
 
+  /// Inserts a complete template graph as one command, remapping every node
+  /// and group reference so the source remains reusable.
+  void insertBlocks(
+    Iterable<ContentBlock> sources, {
+    Offset offset = Offset.zero,
+    String label = 'Insert template',
+  }) {
+    final sourceList = sources.map((block) => block.clone()).toList();
+    if (sourceList.isEmpty) return;
+    beginTransaction(label);
+    final idMap = <String, String>{
+      for (final source in sourceList) source.id: _uuid.v4(),
+    };
+    final inserted = <ContentBlock>[];
+    for (final source in sourceList) {
+      final json = source.toJson()
+        ..['id'] = idMap[source.id]
+        ..['x'] = source.x + offset.dx
+        ..['y'] = source.y + offset.dy
+        ..['groupId'] = source.groupId == null ? null : idMap[source.groupId];
+      if (source.childIds != null) {
+        json['childIds'] = source.childIds
+            ?.map((id) => idMap[id] ?? id)
+            .toList();
+      }
+      inserted.add(ContentBlock.fromJson(json));
+    }
+    _blocks.addAll(inserted);
+    _selection
+      ..clear()
+      ..addAll(
+        inserted
+            .where((block) => block.type != BlockType.group)
+            .map((block) => block.id),
+      );
+    notifyListeners();
+    unawaited(commitTransaction());
+  }
+
   void deleteSelection() {
     if (_selection.isEmpty) return;
     beginTransaction('Delete');

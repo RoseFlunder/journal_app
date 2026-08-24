@@ -200,6 +200,40 @@ void main() {
     expect(controller.blocks.lastWhere((b) => b.groupId != null).name, 'Notes');
   });
 
+  test(
+    'template insertion remaps groups and is undoable as one command',
+    () async {
+      final controller = EditorController(
+        blocks: const [],
+        initialBoard: const BoardSettings(),
+        persistDocument: (_, _) async {},
+      );
+      addTearDown(controller.dispose);
+      final group = ContentBlock(
+        id: 'template-group',
+        type: BlockType.group,
+        childIds: ['template-child'],
+        hidden: true,
+      );
+      final child = _text(id: 'template-child', x: 4, y: 5)..groupId = group.id;
+      controller.insertBlocks([group, child], offset: const Offset(10, 20));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.blocks, hasLength(2));
+      final insertedGroup = controller.blocks.firstWhere(
+        (block) => block.type == BlockType.group,
+      );
+      final insertedChild = controller.blocks.firstWhere(
+        (block) => block.type == BlockType.text,
+      );
+      expect(insertedGroup.childIds, [insertedChild.id]);
+      expect(insertedChild.groupId, insertedGroup.id);
+      expect(insertedChild.x, 14);
+      await controller.undo();
+      expect(controller.blocks, isEmpty);
+    },
+  );
+
   test('board settings and creative node payloads round-trip', () {
     final entry = Entry(
       id: 'entry',

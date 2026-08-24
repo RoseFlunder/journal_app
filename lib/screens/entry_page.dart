@@ -9,8 +9,10 @@ import 'package:uuid/uuid.dart';
 import '../editor/editor_toolbar.dart';
 import '../editor/editor_controller.dart';
 import '../editor/entry_canvas.dart';
+import '../models/document.dart';
 import '../models/entry.dart';
 import '../models/sticker.dart';
+import '../models/template.dart';
 import '../services/image_source.dart';
 import '../services/journal_store.dart';
 import '../widgets/entry_chrome.dart';
@@ -58,9 +60,15 @@ class EntryPage extends StatefulWidget {
 }
 
 class _RenameLayerDialog extends StatefulWidget {
-  const _RenameLayerDialog({required this.initial});
+  const _RenameLayerDialog({
+    this.initial = '',
+    this.title = 'Rename layer',
+    this.label = 'Layer name',
+  });
 
   final String initial;
+  final String title;
+  final String label;
 
   @override
   State<_RenameLayerDialog> createState() => _RenameLayerDialogState();
@@ -79,13 +87,13 @@ class _RenameLayerDialogState extends State<_RenameLayerDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Rename layer'),
+    title: Text(widget.title),
     content: TextField(
       controller: _controller,
       autofocus: true,
       textInputAction: TextInputAction.done,
       onSubmitted: (value) => Navigator.pop(context, value),
-      decoration: const InputDecoration(labelText: 'Layer name'),
+      decoration: InputDecoration(labelText: widget.label),
     ),
     actions: [
       TextButton(
@@ -803,6 +811,68 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _saveTemplate() async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => const _RenameLayerDialog(
+        title: 'Save template',
+        label: 'Template name',
+      ),
+    );
+    if (!mounted || name == null || name.trim().isEmpty) return;
+    await widget.store.saveTemplate(
+      JournalTemplate(
+        id: _uuid.v4(),
+        name: name.trim(),
+        document: EntryDocument.fromEntry(widget.entry),
+        createdAt: DateTime.now(),
+      ),
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved template “${name.trim()}”')),
+      );
+    }
+  }
+
+  void _showTemplates() {
+    final templates = widget.store.templates;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: PaperPage.paper,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * 0.68,
+          child: templates.isEmpty
+              ? const Center(child: Text('No saved templates yet'))
+              : ListView.builder(
+                  itemCount: templates.length,
+                  itemBuilder: (context, index) {
+                    final template = templates[index];
+                    return ListTile(
+                      leading: const Icon(Icons.dashboard_customize_outlined),
+                      title: Text(template.name),
+                      subtitle: Text(
+                        '${template.document.nodes.length} top-level objects',
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _editor.insertBlocks(
+                          template.document.toEntry().blocks,
+                          offset: const Offset(4, 4),
+                          label: 'Insert template',
+                        );
+                      },
+                    );
+                  },
+                ),
+        ),
+      ),
+    );
+  }
+
   static const _squareCrop = Rect.fromLTWH(0.125, 0, 0.75, 1);
   static const _portraitCrop = Rect.fromLTWH(0.22, 0, 0.56, 1);
   static const _wideCrop = Rect.fromLTWH(0, 0.2, 1, 0.6);
@@ -875,6 +945,27 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     _showImageEditor();
                   },
                 ),
+              ListTile(
+                leading: const Icon(Icons.dashboard_customize_outlined),
+                title: const Text('Save selection as template'),
+                subtitle: const Text('Reuse this board locally'),
+                enabled: _blocks.isNotEmpty,
+                onTap: _blocks.isEmpty
+                    ? null
+                    : () {
+                        Navigator.pop(context);
+                        _saveTemplate();
+                      },
+              ),
+              ListTile(
+                leading: const Icon(Icons.library_books_outlined),
+                title: const Text('Insert template'),
+                subtitle: const Text('Add a saved board at the camera center'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showTemplates();
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.group_work_outlined),
                 title: const Text('Group selection'),
