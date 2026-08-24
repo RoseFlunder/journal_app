@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../models/document.dart';
 import '../models/entry.dart';
 import '../models/template.dart';
+import 'journal_archive.dart';
 
 /// Kinds of binary assets stored in the `assets` box.
 enum AssetKind { image, audio }
@@ -419,6 +420,68 @@ class JournalStore extends ChangeNotifier {
 
   Future<void> deleteTemplate(String id) =>
       _enqueue(() => _templatesBox.delete(id));
+
+  /// Creates a portable `.cozyjournal` backup for one entry. The archive is
+  /// self-contained: referenced media bytes, the document snapshot, and all
+  /// reusable local templates are included.
+  JournalArchive? archiveForEntry(String entryId) {
+    final index = indexOfEntry(entryId);
+    if (index < 0) return null;
+    final referenced = <String>{};
+    for (final block in _entries[index].blocks) {
+      if (block.assetId != null) referenced.add(block.assetId!);
+    }
+    final assets = <ArchiveAsset>[];
+    for (final id in referenced) {
+      final raw = _assetsBox.get(id);
+      if (raw is! Map) continue;
+      final asset = AssetRecord.fromJson(Map<String, dynamic>.from(raw));
+      assets.add(
+        ArchiveAsset(
+          id: id,
+          mime: asset.mime,
+          bytes: Uint8List.fromList(asset.data),
+        ),
+      );
+    }
+    return JournalArchive(
+      document: EntryDocument.fromEntry(_entries[index]),
+      assets: assets,
+      templates: templates,
+    );
+  }
+
+  /// Imports an archive as a new entry. IDs are remapped so importing the
+  /// same backup twice never aliases its assets or group references.
+  Future<Entry> importArchive(JournalArchive archive) async {
+    final source = archive.document.toEntry();
+    final entry = await addEntry(title: source.title);
+    final assetIds = <String, String>{};
+    for (final asset in archive.assets) {
+      assetIds[asset.id] = await addAsset(
+        entry.id,
+        asset.mime.startsWith('audio/') ? AssetKind.audio : AssetKind.image,
+        asset.mime,
+        asset.bytes,
+      );
+    }
+    final blocks = source.blocks.map((block) {
+      final copy = block.clone();
+      if (copy.assetId != null) copy.assetId = assetIds[copy.assetId!];
+      return copy;
+    }).toList();
+    await updateEntry(entry.id, (target) {
+      target
+        ..blocks = blocks
+        ..board = source.board
+        ..view = source.view
+        ..music = source.music;
+    });
+    for (final template in archive.templates) {
+      await saveTemplate(template);
+    }
+    return entries.firstWhere((item) => item.id == entry.id);
+  }
 
   @override
   void dispose() {

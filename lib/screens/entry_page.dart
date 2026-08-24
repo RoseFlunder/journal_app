@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
@@ -14,6 +15,7 @@ import '../models/entry.dart';
 import '../models/sticker.dart';
 import '../models/template.dart';
 import '../services/image_source.dart';
+import '../services/journal_archive.dart';
 import '../services/journal_store.dart';
 import '../widgets/entry_chrome.dart';
 import '../widgets/page_viewport.dart';
@@ -873,6 +875,52 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _exportArchive() async {
+    final archive = widget.store.archiveForEntry(widget.entry.id);
+    if (archive == null || !mounted) return;
+    final uri = await FilePicker.saveFile(
+      fileName:
+          '${widget.entry.title.trim().isEmpty ? 'journal' : widget.entry.title.trim()}.cozyjournal',
+      bytes: archive.encode(),
+      mimeType: 'application/x-cozyjournal',
+      dialogTitle: 'Export journal backup',
+      type: FileType.custom,
+      allowedExtensions: ['cozyjournal'],
+    );
+    if (mounted && uri != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Journal backup exported')));
+    }
+  }
+
+  Future<void> _importArchive() async {
+    final picked = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['cozyjournal'],
+    );
+    if (!mounted || picked.isEmpty) return;
+    final file = picked.single;
+    final bytes = await file.readAsBytes();
+    try {
+      final archive = JournalArchive.decode(bytes);
+      await widget.store.importArchive(archive);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Journal backup imported as a new page'),
+          ),
+        );
+      }
+    } on FormatException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not import backup: ${error.message}')),
+        );
+      }
+    }
+  }
+
   static const _squareCrop = Rect.fromLTWH(0.125, 0, 0.75, 1);
   static const _portraitCrop = Rect.fromLTWH(0.22, 0, 0.56, 1);
   static const _wideCrop = Rect.fromLTWH(0, 0.2, 1, 0.6);
@@ -964,6 +1012,22 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                 onTap: () {
                   Navigator.pop(context);
                   _showTemplates();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.file_upload_outlined),
+                title: const Text('Export .cozyjournal backup'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _exportArchive();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.file_download_outlined),
+                title: const Text('Import .cozyjournal backup'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _importArchive();
                 },
               ),
               ListTile(

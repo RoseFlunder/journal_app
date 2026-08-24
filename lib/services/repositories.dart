@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../models/document.dart';
 import '../models/template.dart';
+import 'journal_archive.dart';
 import 'journal_store.dart';
 
 /// Repository boundary used by the editor. UI code can depend on this
@@ -18,6 +19,10 @@ abstract interface class JournalRepository {
   Future<void> deleteDocument(String id);
 
   Future<void> flush();
+
+  JournalArchive? archiveForDocument(String id);
+
+  Future<EntryDocument> importArchive(JournalArchive archive);
 }
 
 /// Immutable asset storage boundary. Asset bytes are never modified in
@@ -96,6 +101,13 @@ class HiveJournalRepository
 
   @override
   Future<void> flush() => store.flush();
+
+  @override
+  JournalArchive? archiveForDocument(String id) => store.archiveForEntry(id);
+
+  @override
+  Future<EntryDocument> importArchive(JournalArchive archive) async =>
+      EntryDocument.fromEntry(await store.importArchive(archive));
 
   @override
   Future<String> putAsset(
