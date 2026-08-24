@@ -26,6 +26,7 @@ class PageViewport extends StatefulWidget {
     this.openingMaxZoom = 2.0,
     this.controlsBottomInset = 12,
     this.boardMode = false,
+    this.boardTopInset = 52,
     // Kept for source compatibility with callers that used the old focused
     // page API. New callers should provide pageRect/contentRect instead.
     this.initialFocus,
@@ -74,6 +75,9 @@ class PageViewport extends StatefulWidget {
   /// Presents the shared camera as a paperless infinite board. It keeps the
   /// same persisted transform model while removing page-specific affordances.
   final bool boardMode;
+
+  /// Screen-space breathing room above initial and fit board content.
+  final double boardTopInset;
 
   @Deprecated('Use pageRect/contentRect')
   final Offset? initialFocus;
@@ -238,8 +242,18 @@ class _PageViewportState extends State<PageViewport> {
     return widthScale < heightScale ? widthScale : heightScale;
   }
 
-  Matrix4 _contentTransform(double zoom) =>
-      _centeredTransform(_contentRect, zoom);
+  Matrix4 _contentTransform(double zoom) {
+    if (!widget.boardMode) return _centeredTransform(_contentRect, zoom);
+    final scale = _fitScale * zoom;
+    return Matrix4.identity()
+      ..translateByDouble(
+        _viewportSize.width / 2 - _contentRect.center.dx * scale,
+        widget.boardTopInset - _contentRect.top * scale,
+        0,
+        1,
+      )
+      ..scaleByDouble(scale, scale, scale, 1);
+  }
 
   Matrix4 _centeredTransform(Rect rect, double zoom) {
     final scale = _fitScale * zoom;

@@ -135,11 +135,63 @@ class _JournalScreenState extends State<JournalScreen> {
   void _goNext() => goToPageIndex(_currentPage + 1);
 
   Future<void> _createPage() async {
-    final entry = await widget.store.addEntry();
-    // Wait for the PageView to pick up the new child, then animate to it.
+    final title = await _promptForTitle();
+    if (!mounted || title == null) return;
+    final entry = await widget.store.addEntry(title: title);
+    // Wait two frames: the store notification builds the new PageView child
+    // on the first one, then the controller can safely animate to it.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      goToEntry(widget.store.entries.indexWhere((e) => e.id == entry.id));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        goToEntry(widget.store.entries.indexWhere((e) => e.id == entry.id));
+      });
     });
+  }
+
+  Future<String?> _promptForTitle() async {
+    final controller = TextEditingController();
+    var canCreate = false;
+    final title = await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Name your journal page'),
+          content: TextField(
+            key: const ValueKey('new-page-title'),
+            controller: controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.sentences,
+            textInputAction: TextInputAction.done,
+            onChanged: (value) =>
+                setDialogState(() => canCreate = value.trim().isNotEmpty),
+            onSubmitted: (value) {
+              final trimmed = value.trim();
+              if (trimmed.isNotEmpty) Navigator.pop(context, trimmed);
+            },
+            decoration: const InputDecoration(
+              labelText: 'Page title',
+              hintText: 'e.g. Sunday reflections',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: canCreate
+                  ? () => Navigator.pop(context, controller.text.trim())
+                  : null,
+              child: const Text('Create page'),
+            ),
+          ],
+        ),
+      ),
+    );
+    // The dialog route can rebuild once during its exit animation after the
+    // future completes, so it must release its TextField before this local
+    // controller is disposed. It is short-lived and will be collected.
+    return title;
   }
 
   Widget _buildEntryPage(Entry entry) {

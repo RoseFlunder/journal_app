@@ -7,12 +7,14 @@ class PaperPage extends StatelessWidget {
     this.showRules = true,
     this.showMargin = true,
     this.finite = true,
+    this.showRulesOnInfinite = false,
   });
 
   final Widget child;
   final bool showRules;
   final bool showMargin;
   final bool finite;
+  final bool showRulesOnInfinite;
 
   static const paper = Color(0xFFF2E9D5);
   static const ink = Color(0xFF3B3226);
@@ -24,9 +26,14 @@ class PaperPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!finite) {
-      return DecoratedBox(
-        decoration: const BoxDecoration(color: paper),
-        child: child,
+      return CustomPaint(
+        painter: showRulesOnInfinite
+            ? PaperLinesPainter(showRules: true, showMargin: false)
+            : null,
+        child: DecoratedBox(
+          decoration: const BoxDecoration(color: paper),
+          child: child,
+        ),
       );
     }
     return DecoratedBox(
@@ -58,10 +65,7 @@ class PaperPage extends StatelessWidget {
 }
 
 class PaperLinesPainter extends CustomPainter {
-  const PaperLinesPainter({
-    this.showRules = true,
-    this.showMargin = true,
-  });
+  const PaperLinesPainter({this.showRules = true, this.showMargin = true});
 
   final bool showRules;
   final bool showMargin;

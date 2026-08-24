@@ -161,8 +161,8 @@ class JournalStore extends ChangeNotifier {
   int indexOfEntry(String id) => _entries.indexWhere((e) => e.id == id);
 
   /// Creates a new (empty) page at the end and returns it.
-  Future<Entry> addEntry() {
-    final entry = Entry.newPage();
+  Future<Entry> addEntry({String title = ''}) {
+    final entry = Entry.newPage()..title = title.trim();
     _entries.add(entry);
     final order = _entries.map((entry) => entry.id).toList();
     final write = _enqueue(() async {

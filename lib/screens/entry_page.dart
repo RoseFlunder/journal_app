@@ -151,12 +151,35 @@ class _EntryPageState extends State<EntryPage> {
   }
 
   void _stopTextEditing() {
+    // Commit before dropping the editing flags so the last keystroke cannot
+    // race the TextField's disposal. Hiding the platform input explicitly is
+    // important on mobile where unfocus alone may keep the composing surface.
     unawaited(_editor.flushText());
     FocusScope.of(context).unfocus();
+    unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.hide'));
     setState(() {
       _titleFocused = false;
       _textEditingId = null;
     });
+  }
+
+  void _finishEditing() {
+    // Clear both the visible selection and the controller selection. The
+    // canvas intentionally renders every controller-selected block, so
+    // clearing only [_selectedId] could leave a block looking editable.
+    unawaited(_editor.flushText());
+    FocusScope.of(context).unfocus();
+    unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.hide'));
+    _editor.select(null);
+    setState(() {
+      _editing = false;
+      _resizeActive = false;
+      _titleFocused = false;
+      _selectedId = null;
+      _textEditingId = null;
+      _selectMode = false;
+    });
+    widget.onEditingChanged(false);
   }
 
   ContentBlock? get _editingTextBlock {
@@ -514,137 +537,147 @@ class _EntryPageState extends State<EntryPage> {
       context: context,
       backgroundColor: PaperPage.paper,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.undo),
-              title: const Text('Undo'),
-              enabled: _editor.canUndo,
-              onTap: _editor.canUndo
-                  ? () {
-                      Navigator.pop(context);
-                      _undo();
-                    }
-                  : null,
-            ),
-            ListTile(
-              leading: const Icon(Icons.redo),
-              title: const Text('Redo'),
-              enabled: _editor.canRedo,
-              onTap: _editor.canRedo
-                  ? () {
-                      Navigator.pop(context);
-                      _redo();
-                    }
-                  : null,
-            ),
-            ListTile(
-              leading: const Icon(Icons.category_outlined),
-              title: const Text('Add shape'),
-              subtitle: const Text('Rectangle, ellipse, line, or arrow'),
-              onTap: () {
-                Navigator.pop(context);
-                _addShape();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.group_work_outlined),
-              title: const Text('Group selection'),
-              subtitle: const Text('Keep selected objects together'),
-              enabled: _editor.canGroup,
-              onTap: _editor.canGroup
-                  ? () {
-                      _editor.groupSelection();
-                      Navigator.pop(context);
-                    }
-                  : null,
-            ),
-            ListTile(
-              leading: const Icon(Icons.group_off_outlined),
-              title: const Text('Ungroup selection'),
-              enabled: _editor.canUngroup,
-              onTap: _editor.canUngroup
-                  ? () {
-                      _editor.ungroupSelection();
-                      Navigator.pop(context);
-                    }
-                  : null,
-            ),
-            ListTile(
-              leading: const Icon(Icons.align_horizontal_center_outlined),
-              title: const Text('Align selection'),
-              subtitle: const Text(
-                'Align selected objects to their shared bounds',
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.72,
+        minChildSize: 0.35,
+        maxChildSize: 0.94,
+        builder: (context, scrollController) => SafeArea(
+          child: ListView(
+            controller: scrollController,
+            padding: const EdgeInsets.only(bottom: 16),
+            children: [
+              ListTile(
+                leading: const Icon(Icons.undo),
+                title: const Text('Undo'),
+                enabled: _editor.canUndo,
+                onTap: _editor.canUndo
+                    ? () {
+                        Navigator.pop(context);
+                        _undo();
+                      }
+                    : null,
               ),
-              enabled: _editor.selection.length > 1,
-              onTap: _editor.selection.length > 1
-                  ? () {
-                      Navigator.pop(context);
-                      _showAlignment();
-                    }
-                  : null,
-            ),
-            ListTile(
-              leading: Icon(
-                _selectMode ? Icons.select_all : Icons.select_all_outlined,
+              ListTile(
+                leading: const Icon(Icons.redo),
+                title: const Text('Redo'),
+                enabled: _editor.canRedo,
+                onTap: _editor.canRedo
+                    ? () {
+                        Navigator.pop(context);
+                        _redo();
+                      }
+                    : null,
               ),
-              title: Text(_selectMode ? 'Exit select mode' : 'Select multiple'),
-              subtitle: const Text('Drag blank board space to lasso content'),
-              onTap: () {
-                setState(() => _selectMode = !_selectMode);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.layers_outlined),
-              title: const Text('Layers'),
-              subtitle: const Text('Reorder, show, hide, and lock content'),
-              onTap: () {
-                Navigator.pop(context);
-                _showLayers();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.tune),
-              title: const Text('Precise transform'),
-              subtitle: const Text(
-                'Move, resize, rotate, and nudge without dragging',
+              ListTile(
+                leading: const Icon(Icons.category_outlined),
+                title: const Text('Add shape'),
+                subtitle: const Text('Rectangle, ellipse, line, or arrow'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _addShape();
+                },
               ),
-              enabled: _editor.primarySelection != null,
-              onTap: _editor.primarySelection == null
-                  ? null
-                  : () {
-                      Navigator.pop(context);
-                      _showTransformInspector();
-                    },
-            ),
-            ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text('History & recovery'),
-              onTap: () {
-                Navigator.pop(context);
-                _showHistory();
-              },
-            ),
-            SwitchListTile(
-              secondary: const Icon(Icons.grid_4x4_outlined),
-              title: const Text('Snap to grid'),
-              value: _editor.board.snapToGrid,
-              onChanged: (value) => _editor.updateBoard(
-                _editor.board.copyWith(snapToGrid: value),
+              ListTile(
+                leading: const Icon(Icons.group_work_outlined),
+                title: const Text('Group selection'),
+                subtitle: const Text('Keep selected objects together'),
+                enabled: _editor.canGroup,
+                onTap: _editor.canGroup
+                    ? () {
+                        _editor.groupSelection();
+                        Navigator.pop(context);
+                      }
+                    : null,
               ),
-            ),
-            SwitchListTile(
-              secondary: const Icon(Icons.grid_on_outlined),
-              title: const Text('Show grid'),
-              value: _editor.board.gridVisible,
-              onChanged: (value) => _editor.updateBoard(
-                _editor.board.copyWith(gridVisible: value),
+              ListTile(
+                leading: const Icon(Icons.group_off_outlined),
+                title: const Text('Ungroup selection'),
+                enabled: _editor.canUngroup,
+                onTap: _editor.canUngroup
+                    ? () {
+                        _editor.ungroupSelection();
+                        Navigator.pop(context);
+                      }
+                    : null,
               ),
-            ),
-          ],
+              ListTile(
+                leading: const Icon(Icons.align_horizontal_center_outlined),
+                title: const Text('Align selection'),
+                subtitle: const Text(
+                  'Align selected objects to their shared bounds',
+                ),
+                enabled: _editor.selection.length > 1,
+                onTap: _editor.selection.length > 1
+                    ? () {
+                        Navigator.pop(context);
+                        _showAlignment();
+                      }
+                    : null,
+              ),
+              ListTile(
+                leading: Icon(
+                  _selectMode ? Icons.select_all : Icons.select_all_outlined,
+                ),
+                title: Text(
+                  _selectMode ? 'Exit select mode' : 'Select multiple',
+                ),
+                subtitle: const Text('Drag blank board space to lasso content'),
+                onTap: () {
+                  setState(() => _selectMode = !_selectMode);
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.layers_outlined),
+                title: const Text('Layers'),
+                subtitle: const Text('Reorder, show, hide, and lock content'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showLayers();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.tune),
+                title: const Text('Precise transform'),
+                subtitle: const Text(
+                  'Move, resize, rotate, and nudge without dragging',
+                ),
+                enabled: _editor.primarySelection != null,
+                onTap: _editor.primarySelection == null
+                    ? null
+                    : () {
+                        Navigator.pop(context);
+                        _showTransformInspector();
+                      },
+              ),
+              ListTile(
+                leading: const Icon(Icons.history),
+                title: const Text('History & recovery'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showHistory();
+                },
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.grid_4x4_outlined),
+                title: const Text('Snap to grid'),
+                value: _editor.board.snapToGrid,
+                onChanged: (value) => _editor.updateBoard(
+                  _editor.board.copyWith(snapToGrid: value),
+                ),
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.grid_on_outlined),
+                title: const Text('Show grid'),
+                value: _editor.board.gridVisible,
+                onChanged: (value) => _editor.updateBoard(
+                  _editor.board.copyWith(gridVisible: value),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1184,6 +1217,8 @@ class _EntryPageState extends State<EntryPage> {
                     Positioned.fill(
                       child: PaperPage(
                         finite: false,
+                        showRulesOnInfinite: true,
+                        showMargin: false,
                         child: ColoredBox(
                           color: Color(_editor.board.backgroundColorValue),
                         ),
@@ -1363,17 +1398,7 @@ class _EntryPageState extends State<EntryPage> {
                       textEditing: _textEditingId != null,
                       textFormattingAvailable: _textFormattingAvailable,
                       textSelection: _activeTextBlock != null,
-                      onToggleEditing: () {
-                        FocusScope.of(context).unfocus();
-                        setState(() {
-                          _editing = false;
-                          _resizeActive = false;
-                          _titleFocused = false;
-                          widget.onEditingChanged(false);
-                          _selectedId = null;
-                          _textEditingId = null;
-                        });
-                      },
+                      onToggleEditing: _finishEditing,
                       onAddText: _addText,
                       onAddImage: _addImage,
                       onAddSticker: _addSticker,

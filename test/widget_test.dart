@@ -36,6 +36,18 @@ void main() {
     temp.deleteSync(recursive: true);
   });
 
+  Future<void> createPageFromFab(
+    WidgetTester tester, {
+    String title = 'Untitled page',
+  }) async {
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('new-page-title')), title);
+    await tester.pump();
+    await tester.tap(find.text('Create page'));
+    await tester.pumpAndSettle();
+  }
+
   testWidgets(
     'create a page, navigate with home/back controls, find it in TOC, delete it',
     (tester) async {
@@ -57,9 +69,24 @@ void main() {
       expect(find.byTooltip('Previous page'), findsNothing);
       expect(find.byTooltip('Next page'), findsNothing);
 
-      // Create the first page from the FAB.
+      // A title is required; cancelling leaves no empty/untitled entry.
       await tester.tap(find.byType(FloatingActionButton));
       await tester.pumpAndSettle();
+      expect(find.text('Name your journal page'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'Create page'),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(store.entries, isEmpty);
+
+      // Create the first page from the FAB.
+      await createPageFromFab(tester);
 
       // Animated to the new entry page (no AppBar, placeholder title).
       expect(find.byType(AppBar), findsNothing);
@@ -247,16 +274,28 @@ void main() {
       'Lora',
     );
 
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+    await createPageFromFab(tester);
     expect(find.byType(PaperPage), findsOneWidget);
     expect(
       find.byWidgetPredicate(
         (widget) =>
             widget is CustomPaint && widget.painter is PaperLinesPainter,
       ),
-      findsNothing,
+      findsOneWidget,
     );
+    final boardPainter =
+        tester
+                .widget<CustomPaint>(
+                  find.byWidgetPredicate(
+                    (widget) =>
+                        widget is CustomPaint &&
+                        widget.painter is PaperLinesPainter,
+                  ),
+                )
+                .painter!
+            as PaperLinesPainter;
+    expect(boardPainter.showRules, isTrue);
+    expect(boardPainter.showMargin, isFalse);
 
     expect(
       tester.widget<Text>(find.text('Untitled page')).style?.fontFamily,
@@ -302,8 +341,7 @@ void main() {
     }
     await tester.pumpWidget(JournalApp(store: store));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+    await createPageFromFab(tester);
 
     await tester.tap(find.byTooltip('Edit page'));
     await tester.pump();
@@ -484,8 +522,7 @@ void main() {
     }
     await tester.pumpWidget(JournalApp(store: store));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+    await createPageFromFab(tester);
     await tester.tap(find.byTooltip('Edit page'));
     await tester.pump();
     await tester.tap(find.byTooltip('Add text'));
@@ -634,8 +671,7 @@ void main() {
     }
     await tester.pumpWidget(JournalApp(store: store));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+    await createPageFromFab(tester);
 
     final title = find.text('Untitled page');
     expect(tester.getTopLeft(title).dx, lessThan(400));
@@ -698,8 +734,7 @@ void main() {
     }
     await tester.pumpWidget(JournalApp(store: store));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+    await createPageFromFab(tester);
     final entry = store.entries.single;
 
     await store.updateEntry(entry.id, (entry) {
