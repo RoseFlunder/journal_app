@@ -96,6 +96,14 @@ class ContentBlock {
     this.crop,
     this.flipX = false,
     this.flipY = false,
+    this.imageMask = 'rectangle',
+    this.cornerRadius = 0,
+    this.frameColorValue,
+    this.frameWidth = 0,
+    this.brightness = 0,
+    this.contrast = 0,
+    this.saturation = 1,
+    this.warmth = 0,
     this.shape = 'rectangle',
     this.strokeColorValue,
     this.fillColorValue,
@@ -146,6 +154,17 @@ class ContentBlock {
   bool flipX;
   bool flipY;
 
+  /// Non-destructive image presentation settings. Original asset bytes stay
+  /// untouched and these values are shared by image and sticker nodes.
+  String imageMask;
+  double cornerRadius;
+  int? frameColorValue;
+  double frameWidth;
+  double brightness;
+  double contrast;
+  double saturation;
+  double warmth;
+
   /// Forward-compatible shape, ink, and group payloads.
   String shape;
   int? strokeColorValue;
@@ -188,6 +207,14 @@ class ContentBlock {
           },
     'flipX': flipX,
     'flipY': flipY,
+    'imageMask': imageMask,
+    'cornerRadius': cornerRadius,
+    'frameColorValue': frameColorValue,
+    'frameWidth': frameWidth,
+    'brightness': brightness,
+    'contrast': contrast,
+    'saturation': saturation,
+    'warmth': warmth,
     'shape': shape,
     'strokeColorValue': strokeColorValue,
     'fillColorValue': fillColorValue,
@@ -225,6 +252,14 @@ class ContentBlock {
     crop: _crop(json['crop']),
     flipX: json['flipX'] as bool? ?? false,
     flipY: json['flipY'] as bool? ?? false,
+    imageMask: json['imageMask'] as String? ?? 'rectangle',
+    cornerRadius: (json['cornerRadius'] as num?)?.toDouble() ?? 0,
+    frameColorValue: (json['frameColorValue'] as num?)?.toInt(),
+    frameWidth: (json['frameWidth'] as num?)?.toDouble() ?? 0,
+    brightness: (json['brightness'] as num?)?.toDouble() ?? 0,
+    contrast: (json['contrast'] as num?)?.toDouble() ?? 0,
+    saturation: (json['saturation'] as num?)?.toDouble() ?? 1,
+    warmth: (json['warmth'] as num?)?.toDouble() ?? 0,
     shape: json['shape'] as String? ?? 'rectangle',
     strokeColorValue: (json['strokeColorValue'] as num?)?.toInt(),
     fillColorValue: (json['fillColorValue'] as num?)?.toInt(),

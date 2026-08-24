@@ -111,16 +111,7 @@ class _BlockWidgetState extends State<BlockWidget> {
             child: const SizedBox.expand(),
           )
         : _isVisualBlock
-        ? (widget.imageProvider == null && widget.imageBytes == null
-              ? const Center(child: Icon(Icons.broken_image_outlined))
-              : Image(
-                  image:
-                      widget.imageProvider ?? MemoryImage(widget.imageBytes!),
-                  fit: BoxFit.contain,
-                  gaplessPlayback: true,
-                  errorBuilder: (context, error, stackTrace) =>
-                      const Center(child: Icon(Icons.broken_image_outlined)),
-                ))
+        ? _buildVisualContent()
         : widget.editing &&
               !widget.locked &&
               widget.selected &&
@@ -316,6 +307,117 @@ class _BlockWidgetState extends State<BlockWidget> {
         fontWeight: widget.block.bold ? FontWeight.bold : FontWeight.normal,
         fontStyle: widget.block.italic ? FontStyle.italic : FontStyle.normal,
       );
+
+  Widget _buildVisualContent() {
+    if (widget.imageProvider == null && widget.imageBytes == null) {
+      return const Center(child: Icon(Icons.broken_image_outlined));
+    }
+    final image = Image(
+      image: widget.imageProvider ?? MemoryImage(widget.imageBytes!),
+      fit: widget.block.crop == null ? BoxFit.contain : BoxFit.cover,
+      gaplessPlayback: true,
+      errorBuilder: (context, error, stackTrace) =>
+          const Center(child: Icon(Icons.broken_image_outlined)),
+    );
+    final crop = widget.block.crop;
+    Widget visual = crop == null
+        ? image
+        : Transform(
+            alignment: Alignment(
+              (crop.center.dx * 2) - 1,
+              (crop.center.dy * 2) - 1,
+            ),
+            transform: Matrix4.diagonal3Values(
+              1 / math.max(crop.width, 0.01),
+              1 / math.max(crop.height, 0.01),
+              1,
+            ),
+            child: image,
+          );
+    if (widget.block.flipX || widget.block.flipY) {
+      visual = Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.diagonal3Values(
+          widget.block.flipX ? -1 : 1,
+          widget.block.flipY ? -1 : 1,
+          1,
+        ),
+        child: visual,
+      );
+    }
+    if (widget.block.brightness.abs() > 0.001 ||
+        (widget.block.contrast).abs() > 0.001 ||
+        (widget.block.saturation - 1).abs() > 0.001 ||
+        widget.block.warmth.abs() > 0.001) {
+      visual = ColorFiltered(
+        colorFilter: _imageFilter(widget.block),
+        child: visual,
+      );
+    }
+    if (widget.block.imageMask == 'circle') {
+      visual = ClipOval(child: visual);
+    } else if (widget.block.imageMask == 'rounded' ||
+        widget.block.cornerRadius > 0) {
+      visual = ClipRRect(
+        borderRadius: BorderRadius.circular(
+          math.max(0, widget.block.cornerRadius),
+        ),
+        child: visual,
+      );
+    }
+    final frameWidth = widget.block.frameWidth;
+    if (frameWidth > 0) {
+      visual = DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: Color(widget.block.frameColorValue ?? 0xFF3B3226),
+            width: frameWidth,
+          ),
+          shape: widget.block.imageMask == 'circle'
+              ? BoxShape.circle
+              : BoxShape.rectangle,
+          borderRadius: widget.block.imageMask == 'circle'
+              ? null
+              : BorderRadius.circular(math.max(0, widget.block.cornerRadius)),
+        ),
+        child: visual,
+      );
+    }
+    return visual;
+  }
+
+  ColorFilter _imageFilter(ContentBlock block) {
+    final saturation = block.saturation.clamp(0.0, 2.0).toDouble();
+    final inverse = 1 - saturation;
+    final red = 0.213 * inverse;
+    final green = 0.715 * inverse;
+    final blue = 0.072 * inverse;
+    final contrast = 1 + block.contrast.clamp(-1.0, 1.0).toDouble();
+    final offset = 128 * (1 - contrast) + block.brightness * 255;
+    final warmth = block.warmth.clamp(-1.0, 1.0).toDouble() * 36;
+    return ColorFilter.matrix(<double>[
+      (red + saturation) * contrast,
+      green * contrast,
+      blue * contrast,
+      0,
+      offset + warmth,
+      red * contrast,
+      (green + saturation) * contrast,
+      blue * contrast,
+      0,
+      offset,
+      red * contrast,
+      green * contrast,
+      (blue + saturation) * contrast,
+      0,
+      offset - warmth,
+      0,
+      0,
+      0,
+      1,
+      0,
+    ]);
+  }
 
   void _scheduleTextFocus() {
     WidgetsBinding.instance.addPostFrameCallback((_) {

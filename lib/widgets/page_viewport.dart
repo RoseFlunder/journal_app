@@ -38,6 +38,11 @@ class PageViewport extends StatefulWidget {
   static const modelPageSize = Size(100, 141.4);
   static const modelToRenderScale = 10.0;
 
+  /// Legacy render host used while the world-camera service is rolled out.
+  /// Infinite boundary margins let the camera travel beyond it; node
+  /// coordinates are world-space and are never clamped to this value.
+  static const infiniteCanvasSize = Size(10000, 10000);
+
   static Offset modelToRender(Offset point) => point * modelToRenderScale;
 
   static Size modelSizeToRender(Size size) => size * modelToRenderScale;
@@ -106,8 +111,8 @@ class ViewportMath {
     final panY = value?.panY ?? 0;
     return ViewState(
       zoom: zoom.isFinite ? zoom.clamp(minZoom, maxZoom).toDouble() : 1,
-      panX: panX.isFinite ? panX.clamp(-10000, 10000).toDouble() : 0,
-      panY: panY.isFinite ? panY.clamp(-10000, 10000).toDouble() : 0,
+      panX: panX.isFinite ? panX : 0,
+      panY: panY.isFinite ? panY : 0,
     );
   }
 

@@ -59,7 +59,7 @@ class EntryPage extends StatefulWidget {
 
 class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   static const _uuid = Uuid();
-  static const _workspaceSize = Size(10000, 10000);
+  static const _workspaceSize = PageViewport.infiniteCanvasSize;
   static const _pageFramePosition = Offset(4000, 4500);
   static const _worldOrigin = Offset(450, 450);
   static const _headerPosition = Offset(4000, 4500);
@@ -539,6 +539,242 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
   }
 
+  ContentBlock? _imageSelection() {
+    final block = _editor.primarySelection;
+    if (block == null ||
+        (block.type != BlockType.image && block.type != BlockType.sticker)) {
+      return null;
+    }
+    return block;
+  }
+
+  void _commitImageEdit(
+    String blockId,
+    void Function(ContentBlock block) mutate, {
+    String label = 'Edit image',
+  }) {
+    final source = _blocks.where((block) => block.id == blockId).firstOrNull;
+    if (source == null || source.locked) return;
+    final next = source.clone();
+    mutate(next);
+    unawaited(_editor.replaceBlockAndCommit(next, label: label));
+  }
+
+  void _previewImageEdit(
+    String blockId,
+    void Function(ContentBlock block) mutate, {
+    String label = 'Edit image',
+  }) {
+    final source = _blocks.where((block) => block.id == blockId).firstOrNull;
+    if (source == null || source.locked) return;
+    final next = source.clone();
+    mutate(next);
+    _editor.replaceBlockSnapshot(next, label: label);
+  }
+
+  Future<void> _showImageEditor() async {
+    final block = _imageSelection();
+    if (block == null) return;
+    var opacity = block.opacity;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: PaperPage.paper,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.62,
+            minChildSize: 0.42,
+            maxChildSize: 0.9,
+            builder: (context, scrollController) => ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+              children: [
+                const ListTile(
+                  leading: Icon(Icons.tune),
+                  title: Text('Edit image'),
+                  subtitle: Text('Non-destructive crop and presentation'),
+                ),
+                const Divider(),
+                Text('Crop', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _cropChoice(
+                      context,
+                      label: 'Original',
+                      selected: block.crop == null,
+                      onTap: () => _commitImageEdit(
+                        block.id,
+                        (next) => next.crop = null,
+                      ),
+                    ),
+                    _cropChoice(
+                      context,
+                      label: 'Square',
+                      selected: block.crop == _squareCrop,
+                      onTap: () => _commitImageEdit(
+                        block.id,
+                        (next) => next.crop = _squareCrop,
+                      ),
+                    ),
+                    _cropChoice(
+                      context,
+                      label: 'Portrait',
+                      selected: block.crop == _portraitCrop,
+                      onTap: () => _commitImageEdit(
+                        block.id,
+                        (next) => next.crop = _portraitCrop,
+                      ),
+                    ),
+                    _cropChoice(
+                      context,
+                      label: 'Wide',
+                      selected: block.crop == _wideCrop,
+                      onTap: () => _commitImageEdit(
+                        block.id,
+                        (next) => next.crop = _wideCrop,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Opacity ${((opacity * 100).round())}%',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                Slider(
+                  min: 0.1,
+                  max: 1,
+                  value: opacity,
+                  label: '${(opacity * 100).round()}%',
+                  onChangeStart: (_) =>
+                      _editor.beginTransaction('Image opacity'),
+                  onChanged: (value) {
+                    opacity = value;
+                    setSheetState(() {});
+                    _previewImageEdit(
+                      block.id,
+                      (next) => next.opacity = value,
+                      label: 'Image opacity',
+                    );
+                  },
+                  onChangeEnd: (_) => unawaited(_editor.commitTransaction()),
+                ),
+                _imageAdjustmentSlider(
+                  context,
+                  label: 'Brightness',
+                  value: block.brightness,
+                  min: -1,
+                  max: 1,
+                  onStart: () => _editor.beginTransaction('Image brightness'),
+                  onChanged: (value) => _previewImageEdit(
+                    block.id,
+                    (next) => next.brightness = value,
+                    label: 'Image brightness',
+                  ),
+                  onEnd: () => unawaited(_editor.commitTransaction()),
+                ),
+                _imageAdjustmentSlider(
+                  context,
+                  label: 'Contrast',
+                  value: block.contrast,
+                  min: -1,
+                  max: 1,
+                  onStart: () => _editor.beginTransaction('Image contrast'),
+                  onChanged: (value) => _previewImageEdit(
+                    block.id,
+                    (next) => next.contrast = value,
+                    label: 'Image contrast',
+                  ),
+                  onEnd: () => unawaited(_editor.commitTransaction()),
+                ),
+                _imageAdjustmentSlider(
+                  context,
+                  label: 'Saturation',
+                  value: block.saturation,
+                  min: 0,
+                  max: 2,
+                  onStart: () => _editor.beginTransaction('Image saturation'),
+                  onChanged: (value) => _previewImageEdit(
+                    block.id,
+                    (next) => next.saturation = value,
+                    label: 'Image saturation',
+                  ),
+                  onEnd: () => unawaited(_editor.commitTransaction()),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed: () => _commitImageEdit(
+                        block.id,
+                        (next) => next.rotation += math.pi / 2,
+                      ),
+                      icon: const Icon(Icons.rotate_90_degrees_ccw),
+                      label: const Text('Rotate 90°'),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: () => _commitImageEdit(
+                        block.id,
+                        (next) => next.flipX = !next.flipX,
+                      ),
+                      icon: const Icon(Icons.flip),
+                      label: const Text('Flip horizontal'),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: () => _commitImageEdit(
+                        block.id,
+                        (next) => next.flipY = !next.flipY,
+                      ),
+                      icon: const Icon(Icons.flip_camera_android),
+                      label: const Text('Flip vertical'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text('Mask', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'rectangle', label: Text('Square')),
+                    ButtonSegment(value: 'rounded', label: Text('Rounded')),
+                    ButtonSegment(value: 'circle', label: Text('Circle')),
+                  ],
+                  selected: {block.imageMask},
+                  onSelectionChanged: (selection) => _commitImageEdit(
+                    block.id,
+                    (next) => next.imageMask = selection.first,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static const _squareCrop = Rect.fromLTWH(0.125, 0, 0.75, 1);
+  static const _portraitCrop = Rect.fromLTWH(0.22, 0, 0.56, 1);
+  static const _wideCrop = Rect.fromLTWH(0, 0.2, 1, 0.6);
+
+  Widget _cropChoice(
+    BuildContext context, {
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) => ChoiceChip(
+    label: Text(label),
+    selected: selected,
+    onSelected: (_) => onTap(),
+  );
+
   void _showMoreTools() {
     showModalBottomSheet<void>(
       context: context,
@@ -586,6 +822,16 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                   _addShape();
                 },
               ),
+              if (_imageSelection() != null)
+                ListTile(
+                  leading: const Icon(Icons.image_outlined),
+                  title: const Text('Edit image'),
+                  subtitle: const Text('Crop, flip, mask, and opacity'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showImageEditor();
+                  },
+                ),
               ListTile(
                 leading: const Icon(Icons.group_work_outlined),
                 title: const Text('Group selection'),
@@ -915,6 +1161,30 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
           decoration: InputDecoration(labelText: label),
         ),
       );
+
+  Widget _imageAdjustmentSlider(
+    BuildContext context, {
+    required String label,
+    required double value,
+    required double min,
+    required double max,
+    required VoidCallback onStart,
+    required ValueChanged<double> onChanged,
+    required VoidCallback onEnd,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: Theme.of(context).textTheme.titleMedium),
+      Slider(
+        min: min,
+        max: max,
+        value: value.clamp(min, max).toDouble(),
+        onChangeStart: (_) => onStart(),
+        onChanged: onChanged,
+        onChangeEnd: (_) => onEnd(),
+      ),
+    ],
+  );
 
   Widget _nudgeButton(String label, Offset delta) => Semantics(
     button: true,

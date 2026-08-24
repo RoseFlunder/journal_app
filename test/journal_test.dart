@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
@@ -116,6 +117,13 @@ void main() {
             w: 80,
             h: 45,
             rotation: 0.5,
+            crop: const Rect.fromLTWH(0.1, 0.2, 0.8, 0.7),
+            flipX: true,
+            imageMask: 'rounded',
+            cornerRadius: 12,
+            brightness: 0.2,
+            contrast: -0.1,
+            saturation: 1.4,
           ),
         ],
       );
@@ -127,6 +135,13 @@ void main() {
       expect(block.w, 80);
       expect(block.h, 45);
       expect(block.rotation, closeTo(0.5, 0.0001));
+      expect(block.crop, const Rect.fromLTWH(0.1, 0.2, 0.8, 0.7));
+      expect(block.flipX, isTrue);
+      expect(block.imageMask, 'rounded');
+      expect(block.cornerRadius, 12);
+      expect(block.brightness, 0.2);
+      expect(block.contrast, -0.1);
+      expect(block.saturation, 1.4);
     });
 
     test('round-trips sticker blocks and resolves the bundled catalog', () {

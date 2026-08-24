@@ -37,6 +37,15 @@ void main() {
     expect(normalized.panY, -500);
   });
 
+  test('world camera keeps large finite pans without artificial bounds', () {
+    final normalized = ViewportMath.normalize(
+      ViewState(zoom: 1, panX: 25000, panY: -40000),
+    );
+
+    expect(normalized.panX, 25000);
+    expect(normalized.panY, -40000);
+  });
+
   testWidgets(
     'fit content is available and double tap returns to the content fit',
     (tester) async {
@@ -95,15 +104,15 @@ void main() {
     expect(find.byTooltip('Fit page'), findsNothing);
   });
 
-  testWidgets('interactive limits scale with the page fit scale', (tester) async {
+  testWidgets('interactive limits scale with the page fit scale', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: SizedBox(
           width: 400,
           height: 600,
-          child: PageViewport(
-            child: ColoredBox(color: Colors.amber),
-          ),
+          child: PageViewport(child: ColoredBox(color: Colors.amber)),
         ),
       ),
     );
