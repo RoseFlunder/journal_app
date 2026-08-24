@@ -550,6 +550,29 @@ class _EntryPageState extends State<EntryPage> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.group_work_outlined),
+              title: const Text('Group selection'),
+              subtitle: const Text('Keep selected objects together'),
+              enabled: _editor.canGroup,
+              onTap: _editor.canGroup
+                  ? () {
+                      _editor.groupSelection();
+                      Navigator.pop(context);
+                    }
+                  : null,
+            ),
+            ListTile(
+              leading: const Icon(Icons.group_off_outlined),
+              title: const Text('Ungroup selection'),
+              enabled: _editor.canUngroup,
+              onTap: _editor.canUngroup
+                  ? () {
+                      _editor.ungroupSelection();
+                      Navigator.pop(context);
+                    }
+                  : null,
+            ),
+            ListTile(
               leading: const Icon(Icons.align_horizontal_center_outlined),
               title: const Text('Align selection'),
               subtitle: const Text(

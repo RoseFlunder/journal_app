@@ -83,6 +83,52 @@ void main() {
     expect(controller.selection, {'two'});
   });
 
+  test('grouping persists membership and moves children together', () async {
+    final controller = EditorController(
+      blocks: [
+        _text(id: 'one'),
+        _text(id: 'two', x: 50),
+      ],
+      initialBoard: const BoardSettings(),
+      persistDocument: (_, _) async {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.selectMany(['one', 'two']);
+    controller.groupSelection();
+    await Future<void>.delayed(Duration.zero);
+    final group = controller.blocks.singleWhere(
+      (block) => block.type == BlockType.group,
+    );
+    expect(group.childIds, ['one', 'two']);
+    expect(
+      controller.blocks
+          .where((block) => block.type == BlockType.text)
+          .map((block) => block.groupId),
+      everyElement(group.id),
+    );
+
+    controller.select('one');
+    controller.beginTransaction('Move group');
+    controller.moveSelection(const Offset(4, 2));
+    await controller.commitTransaction();
+    expect(controller.blocks.firstWhere((block) => block.id == 'one').x, 4);
+    expect(controller.blocks.firstWhere((block) => block.id == 'two').x, 54);
+
+    controller.ungroupSelection();
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      controller.blocks.where((block) => block.type == BlockType.group),
+      isEmpty,
+    );
+    expect(
+      controller.blocks
+          .where((block) => block.type == BlockType.text)
+          .every((block) => block.groupId == null),
+      isTrue,
+    );
+  });
+
   test('board settings and creative node payloads round-trip', () {
     final entry = Entry(
       id: 'entry',

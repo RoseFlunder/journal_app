@@ -44,6 +44,9 @@ class EditorController extends ChangeNotifier {
   bool get canRedo => _redo.isNotEmpty;
   bool get inTransaction => _transactionStart != null;
   bool get canPaste => _clipboard.isNotEmpty;
+  bool get canGroup => _expandedSelectedBlocks.length > 1;
+  bool get canUngroup =>
+      _expandedSelectedBlocks.any((block) => block.groupId != null);
   EditorSaveState get saveState => _saveState;
 
   ContentBlock? get primarySelection {
@@ -131,7 +134,7 @@ class EditorController extends ChangeNotifier {
   void markChanged() => notifyListeners();
 
   void moveSelection(Offset delta, {bool snap = false}) {
-    for (final id in _selection) {
+    for (final id in _expandedSelectedBlocks.map((block) => block.id)) {
       updateBlock(id, (block) {
         block.x += delta.dx;
         block.y += delta.dy;
@@ -180,9 +183,7 @@ class EditorController extends ChangeNotifier {
   }
 
   void duplicateSelection() {
-    final selected = _blocks
-        .where((block) => _selection.contains(block.id))
-        .toList();
+    final selected = _expandedSelectedBlocks;
     if (selected.isEmpty) return;
     beginTransaction('Duplicate');
     final copies = <ContentBlock>[];
@@ -191,6 +192,7 @@ class EditorController extends ChangeNotifier {
       final copy = ContentBlock.fromJson(copyJson)
         ..x += 4
         ..y += 4
+        ..groupId = null
         ..name = source.name == null ? null : '${source.name} copy';
       copies.add(copy);
     }
@@ -267,7 +269,7 @@ class EditorController extends ChangeNotifier {
   }
 
   void align(Alignment alignment) {
-    final blocks = _selectedBlocks;
+    final blocks = _expandedSelectedBlocks;
     if (blocks.length < 2) return;
     beginTransaction('Align');
     final bounds = _boundsFor(blocks);
@@ -302,6 +304,54 @@ class EditorController extends ChangeNotifier {
           block.y = bounds.bottom - block.h;
       }
     }
+    notifyListeners();
+    unawaited(commitTransaction());
+  }
+
+  void groupSelection() {
+    final children = _expandedSelectedBlocks
+        .where((block) => block.type != BlockType.group)
+        .toList();
+    if (children.length < 2) return;
+    beginTransaction('Group');
+    final bounds = _boundsFor(children);
+    final group = ContentBlock(
+      id: _uuid.v4(),
+      type: BlockType.group,
+      name: 'Group',
+      x: bounds.left,
+      y: bounds.top,
+      w: bounds.width,
+      h: bounds.height,
+      childIds: children.map((block) => block.id).toList(),
+      // The group is a structural parent; its children remain the rendered
+      // objects and inherit group transforms through [_expandedSelectedBlocks].
+      hidden: true,
+    );
+    for (final child in children) {
+      child.groupId = group.id;
+    }
+    _blocks.add(group);
+    _selection
+      ..clear()
+      ..addAll(children.map((block) => block.id));
+    notifyListeners();
+    unawaited(commitTransaction());
+  }
+
+  void ungroupSelection() {
+    final groupIds = _expandedSelectedBlocks
+        .map((block) => block.groupId)
+        .whereType<String>()
+        .toSet();
+    if (groupIds.isEmpty) return;
+    beginTransaction('Ungroup');
+    for (final child in _blocks.where(
+      (block) => groupIds.contains(block.groupId),
+    )) {
+      child.groupId = null;
+    }
+    _blocks.removeWhere((block) => groupIds.contains(block.id));
     notifyListeners();
     unawaited(commitTransaction());
   }
@@ -392,7 +442,7 @@ class EditorController extends ChangeNotifier {
   void _setSelectionProperty(String label, void Function(ContentBlock) change) {
     if (_selection.isEmpty) return;
     beginTransaction(label);
-    for (final block in _selectedBlocks) {
+    for (final block in _expandedSelectedBlocks) {
       change(block);
     }
     notifyListeners();
@@ -401,6 +451,26 @@ class EditorController extends ChangeNotifier {
 
   List<ContentBlock> get _selectedBlocks =>
       _blocks.where((block) => _selection.contains(block.id)).toList();
+
+  List<ContentBlock> get _expandedSelectedBlocks {
+    final groupIds = _selectedBlocks
+        .expand(
+          (block) => [
+            block.groupId,
+            if (block.type == BlockType.group) block.id,
+          ],
+        )
+        .whereType<String>()
+        .toSet();
+    return _blocks
+        .where(
+          (block) =>
+              _selection.contains(block.id) ||
+              (block.type != BlockType.group &&
+                  groupIds.contains(block.groupId)),
+        )
+        .toList();
+  }
 
   ContentBlock? _byId(String id) {
     for (final block in _blocks) {

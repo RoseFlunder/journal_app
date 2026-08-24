@@ -102,6 +102,7 @@ class ContentBlock {
     this.strokeWidth = 1,
     this.inkPoints,
     this.childIds,
+    this.groupId,
   });
 
   final String id;
@@ -152,6 +153,7 @@ class ContentBlock {
   double strokeWidth;
   List<Map<String, dynamic>>? inkPoints;
   List<String>? childIds;
+  String? groupId;
 
   ContentBlock clone() => ContentBlock.fromJson(toJson());
 
@@ -192,6 +194,7 @@ class ContentBlock {
     'strokeWidth': strokeWidth,
     'inkPoints': inkPoints,
     'childIds': childIds,
+    'groupId': groupId,
   };
 
   factory ContentBlock.fromJson(Map<String, dynamic> json) => ContentBlock(
@@ -233,6 +236,7 @@ class ContentBlock {
     childIds: (json['childIds'] as List<dynamic>?)
         ?.whereType<String>()
         .toList(),
+    groupId: json['groupId'] as String?,
   );
 
   static BlockType _blockType(String? value) => switch (value) {
