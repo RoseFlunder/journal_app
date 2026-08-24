@@ -130,6 +130,76 @@ void main() {
     );
   });
 
+  test('duplicate and clipboard preserve group membership', () async {
+    final controller = EditorController(
+      blocks: [
+        _text(id: 'one'),
+        _text(id: 'two', x: 50),
+      ],
+      initialBoard: const BoardSettings(),
+      persistDocument: (_, _) async {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.selectMany(['one', 'two']);
+    controller.groupSelection();
+    await Future<void>.delayed(Duration.zero);
+    controller.select('one');
+    controller.duplicateSelection();
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      controller.blocks.where((b) => b.type == BlockType.group),
+      hasLength(2),
+    );
+    final duplicatedChildren = controller.blocks
+        .where((b) => b.type == BlockType.text && b.groupId != null)
+        .where((b) => b.id != 'one' && b.id != 'two')
+        .toList();
+    expect(duplicatedChildren, hasLength(2));
+    final duplicateGroupId = duplicatedChildren.first.groupId;
+    expect(
+      duplicatedChildren.every((b) => b.groupId == duplicateGroupId),
+      isTrue,
+    );
+
+    controller.copySelection();
+    controller.paste();
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      controller.blocks.where((b) => b.type == BlockType.group),
+      hasLength(3),
+    );
+  });
+
+  test('layer commands rename and reorder without breaking groups', () async {
+    final controller = EditorController(
+      blocks: [
+        _text(id: 'one'),
+        _text(id: 'two', x: 50),
+        _text(id: 'top', x: 90),
+      ],
+      initialBoard: const BoardSettings(),
+      persistDocument: (_, _) async {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.selectMany(['one', 'two']);
+    controller.groupSelection();
+    await Future<void>.delayed(Duration.zero);
+    controller.select('one');
+    controller.renameSelection('Notes');
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      controller.blocks
+          .where((b) => b.groupId != null)
+          .every((b) => b.name == 'Notes'),
+      isTrue,
+    );
+    controller.moveLayerForward();
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.blocks.lastWhere((b) => b.groupId != null).name, 'Notes');
+  });
+
   test('board settings and creative node payloads round-trip', () {
     final entry = Entry(
       id: 'entry',
@@ -182,4 +252,44 @@ void main() {
       expect(restored.blocks.single.opacity, 0.7);
     },
   );
+
+  test('immutable document boundary nests group children locally', () {
+    final children = [
+      _text(id: 'child-a', x: 4, y: 8),
+      _text(id: 'child-b', x: 44, y: 8),
+    ];
+    final group = ContentBlock(
+      id: 'group',
+      type: BlockType.group,
+      x: 4,
+      y: 8,
+      w: 80,
+      h: 20,
+      childIds: ['child-a', 'child-b'],
+      hidden: true,
+    );
+    for (final child in children) {
+      child.groupId = group.id;
+    }
+    final document = EntryDocument.fromEntry(
+      Entry(
+        id: 'nested-document',
+        createdAt: DateTime.utc(2026),
+        blocks: [group, ...children],
+      ),
+    );
+
+    expect(document.nodes, hasLength(1));
+    expect(document.nodes.single.type, BlockType.group);
+    expect(document.nodes.single.children, hasLength(2));
+
+    final restored = document.toEntry();
+    expect(restored.blocks, hasLength(3));
+    expect(restored.blocks.first.type, BlockType.group);
+    expect(restored.blocks.first.childIds, ['child-a', 'child-b']);
+    expect(
+      restored.blocks.skip(1).every((block) => block.groupId == 'group'),
+      isTrue,
+    );
+  });
 }

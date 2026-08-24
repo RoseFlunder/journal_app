@@ -48,7 +48,9 @@ class CanvasNode {
     this.locked = false,
     this.visible = true,
     this.accessibilityLabel,
-  }) : payload = UnmodifiableMapView(Map<String, dynamic>.from(payload));
+    Iterable<CanvasNode> children = const [],
+  }) : payload = UnmodifiableMapView(Map<String, dynamic>.from(payload)),
+       children = UnmodifiableListView(List<CanvasNode>.from(children));
 
   final String id;
   final BlockType type;
@@ -58,6 +60,7 @@ class CanvasNode {
   final bool locked;
   final bool visible;
   final String? accessibilityLabel;
+  final List<CanvasNode> children;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -68,9 +71,13 @@ class CanvasNode {
     'locked': locked,
     'visible': visible,
     'accessibilityLabel': accessibilityLabel,
+    'children': children.map((node) => node.toJson()).toList(),
   };
 
-  factory CanvasNode.fromBlock(ContentBlock block) => CanvasNode(
+  factory CanvasNode.fromBlock(
+    ContentBlock block, {
+    Iterable<CanvasNode> children = const [],
+  }) => CanvasNode(
     id: block.id,
     type: block.type,
     transform: Transform2D(
@@ -85,6 +92,7 @@ class CanvasNode {
     locked: block.locked,
     visible: !block.hidden,
     accessibilityLabel: block.name,
+    children: children,
   );
 
   factory CanvasNode.fromJson(Map<String, dynamic> json) {
@@ -114,6 +122,11 @@ class CanvasNode {
       locked: json['locked'] as bool? ?? false,
       visible: json['visible'] as bool? ?? true,
       accessibilityLabel: json['accessibilityLabel'] as String?,
+      children: (json['children'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map(
+            (child) => CanvasNode.fromJson(Map<String, dynamic>.from(child)),
+          ),
     );
   }
 
@@ -163,7 +176,7 @@ class EntryDocument {
     title: entry.title,
     createdAt: entry.createdAt,
     modifiedAt: entry.modifiedAt,
-    nodes: entry.blocks.map(CanvasNode.fromBlock),
+    nodes: _topLevelNodes(entry.blocks),
     board: entry.board,
     view: entry.view,
     music: entry.music,
@@ -199,7 +212,7 @@ class EntryDocument {
     title: title,
     createdAt: createdAt,
     modifiedAt: modifiedAt,
-    blocks: nodes.map((node) => node.toBlock()).toList(),
+    blocks: nodes.expand(_flattenNode).toList(),
     board: board,
     view: view,
     music: music,
@@ -219,4 +232,47 @@ class EntryDocument {
     'revision': revision,
     'schemaVersion': schemaVersion,
   };
+
+  static List<CanvasNode> _topLevelNodes(List<ContentBlock> blocks) {
+    final byId = {for (final block in blocks) block.id: block};
+    final building = <String>{};
+    CanvasNode build(ContentBlock block) {
+      if (!building.add(block.id)) {
+        return CanvasNode.fromBlock(block);
+      }
+      final children = block.type == BlockType.group
+          ? (block.childIds ?? const <String>[])
+                .map((id) => byId[id])
+                .whereType<ContentBlock>()
+                .map(build)
+          : const <CanvasNode>[];
+      building.remove(block.id);
+      return CanvasNode.fromBlock(block, children: children);
+    }
+
+    return blocks
+        .where(
+          (block) =>
+              block.groupId == null &&
+              (block.type != BlockType.group || block.childIds != null),
+        )
+        .map(build)
+        .toList(growable: false);
+  }
+
+  static Iterable<ContentBlock> _flattenNode(CanvasNode node) sync* {
+    final block = node.toBlock();
+    if (node.children.isNotEmpty) {
+      block.childIds = node.children.map((child) => child.id).toList();
+      block.hidden = true;
+    }
+    yield block;
+    for (final child in node.children) {
+      final descendants = _flattenNode(child).toList();
+      for (final descendant in descendants) {
+        if (descendant.type != BlockType.group) descendant.groupId = node.id;
+        yield descendant;
+      }
+    }
+  }
 }

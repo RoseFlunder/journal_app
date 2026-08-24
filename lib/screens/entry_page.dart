@@ -57,6 +57,49 @@ class EntryPage extends StatefulWidget {
   State<EntryPage> createState() => _EntryPageState();
 }
 
+class _RenameLayerDialog extends StatefulWidget {
+  const _RenameLayerDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_RenameLayerDialog> createState() => _RenameLayerDialogState();
+}
+
+class _RenameLayerDialogState extends State<_RenameLayerDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initial,
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Rename layer'),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      textInputAction: TextInputAction.done,
+      onSubmitted: (value) => Navigator.pop(context, value),
+      decoration: const InputDecoration(labelText: 'Layer name'),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, _controller.text),
+        child: const Text('Rename'),
+      ),
+    ],
+  );
+}
+
 class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   static const _uuid = Uuid();
   static const _workspaceSize = PageViewport.infiniteCanvasSize;
@@ -1334,6 +1377,15 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     return KeyEventResult.ignored;
   }
 
+  Future<void> _renameLayer(ContentBlock block) async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => _RenameLayerDialog(initial: block.name ?? ''),
+    );
+    if (!mounted || name == null) return;
+    _editor.renameLayer(block.id, name);
+  }
+
   void _showLayers() {
     showModalBottomSheet<void>(
       context: context,
@@ -1351,8 +1403,17 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
               ),
               const Divider(height: 1),
               Expanded(
-                child: ListView.builder(
+                child: ReorderableListView.builder(
                   itemCount: _blocks.length,
+                  onReorderItem: (oldIndex, newIndex) {
+                    final visible = _blocks.reversed.toList();
+                    if (oldIndex < 0 || oldIndex >= visible.length) return;
+                    final targetIndex = (_blocks.length - newIndex - 1).clamp(
+                      0,
+                      _blocks.length,
+                    );
+                    _editor.reorderLayer(visible[oldIndex].id, targetIndex);
+                  },
                   itemBuilder: (context, index) {
                     final block = _blocks[_blocks.length - index - 1];
                     final selected = _selectedId == block.id;
@@ -1370,6 +1431,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                           BlockType.group => 'Group',
                         };
                     return ListTile(
+                      key: ValueKey('layer-${block.id}'),
+                      contentPadding: EdgeInsets.only(
+                        left: block.groupId == null ? 16 : 40,
+                        right: 8,
+                      ),
                       selected: selected,
                       leading: Icon(switch (block.type) {
                         BlockType.text => Icons.text_fields,
@@ -1412,6 +1478,35 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                                   ? Icons.lock
                                   : Icons.lock_open_outlined,
                             ),
+                          ),
+                          PopupMenuButton<String>(
+                            tooltip: 'Layer actions',
+                            onSelected: (action) {
+                              switch (action) {
+                                case 'rename':
+                                  _renameLayer(block);
+                                case 'forward':
+                                  _editor.select(block.id);
+                                  _editor.moveLayerForward();
+                                case 'backward':
+                                  _editor.select(block.id);
+                                  _editor.moveLayerBackward();
+                              }
+                            },
+                            itemBuilder: (context) => const [
+                              PopupMenuItem(
+                                value: 'rename',
+                                child: Text('Rename layer'),
+                              ),
+                              PopupMenuItem(
+                                value: 'forward',
+                                child: Text('Bring forward'),
+                              ),
+                              PopupMenuItem(
+                                value: 'backward',
+                                child: Text('Send backward'),
+                              ),
+                            ],
                           ),
                         ],
                       ),

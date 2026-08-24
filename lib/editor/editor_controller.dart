@@ -29,6 +29,7 @@ class EditorController extends ChangeNotifier {
   final List<_EditorCommand> _redo = [];
   final Set<String> _selection = <String>{};
   List<ContentBlock> _clipboard = <ContentBlock>[];
+  Set<String> _clipboardSelection = <String>{};
   List<ContentBlock> _blocks;
   BoardSettings _board;
   _EditorSnapshot? _transactionStart;
@@ -228,29 +229,52 @@ class EditorController extends ChangeNotifier {
   }
 
   void duplicateSelection() {
-    final selected = _expandedSelectedBlocks;
+    final selected = _selectedGraphBlocks;
     if (selected.isEmpty) return;
     beginTransaction('Duplicate');
+    final selectedIds = Set<String>.from(_selection);
+    final idMap = <String, String>{
+      for (final source in selected) source.id: _uuid.v4(),
+    };
     final copies = <ContentBlock>[];
     for (final source in selected) {
-      final copyJson = source.toJson()..['id'] = _uuid.v4();
+      final copyJson = source.toJson()
+        ..['id'] = idMap[source.id]
+        ..['groupId'] = source.groupId == null ? null : idMap[source.groupId];
+      if (source.childIds != null) {
+        copyJson['childIds'] = source.childIds
+            ?.map((id) => idMap[id] ?? id)
+            .toList();
+      }
       final copy = ContentBlock.fromJson(copyJson)
         ..x += 4
         ..y += 4
-        ..groupId = null
         ..name = source.name == null ? null : '${source.name} copy';
       copies.add(copy);
     }
     _blocks.addAll(copies);
     _selection
       ..clear()
-      ..addAll(copies.map((block) => block.id));
+      ..addAll(
+        selectedIds
+            .map((id) => idMap[id])
+            .whereType<String>()
+            .followedBy(
+              _selection.isEmpty
+                  ? copies.map((block) => block.id)
+                  : const <String>[],
+            ),
+      );
+    if (_selection.isEmpty) {
+      _selection.addAll(copies.map((block) => block.id));
+    }
     notifyListeners();
     unawaited(commitTransaction());
   }
 
   void copySelection() {
-    _clipboard = _selectedBlocks.map((block) => block.clone()).toList();
+    _clipboard = _selectedGraphBlocks.map((block) => block.clone()).toList();
+    _clipboardSelection = Set<String>.from(_selection);
     notifyListeners();
   }
 
@@ -263,9 +287,19 @@ class EditorController extends ChangeNotifier {
   void paste({Offset offset = const Offset(4, 4)}) {
     if (_clipboard.isEmpty) return;
     beginTransaction('Paste');
+    final idMap = <String, String>{
+      for (final source in _clipboard) source.id: _uuid.v4(),
+    };
     final pasted = <ContentBlock>[];
     for (final source in _clipboard) {
-      final json = source.toJson()..['id'] = _uuid.v4();
+      final json = source.toJson()
+        ..['id'] = idMap[source.id]
+        ..['groupId'] = source.groupId == null ? null : idMap[source.groupId];
+      if (source.childIds != null) {
+        json['childIds'] = source.childIds
+            ?.map((id) => idMap[id] ?? id)
+            .toList();
+      }
       final copy = ContentBlock.fromJson(json)
         ..x += offset.dx
         ..y += offset.dy;
@@ -274,7 +308,10 @@ class EditorController extends ChangeNotifier {
     _blocks.addAll(pasted);
     _selection
       ..clear()
-      ..addAll(pasted.map((block) => block.id));
+      ..addAll(_clipboardSelection.map((id) => idMap[id]).whereType<String>());
+    if (_selection.isEmpty) {
+      _selection.addAll(pasted.map((block) => block.id));
+    }
     notifyListeners();
     unawaited(commitTransaction());
   }
@@ -307,6 +344,54 @@ class EditorController extends ChangeNotifier {
     final selected = _blocks.where((block) => ids.contains(block.id)).toList();
     _blocks.removeWhere((block) => ids.contains(block.id));
     _blocks.insertAll(0, selected);
+    notifyListeners();
+    unawaited(commitTransaction());
+  }
+
+  void moveLayerForward() {
+    final block = primarySelection;
+    if (block == null) return;
+    final index = _blocks.indexWhere((item) => item.id == block.id);
+    if (index < 0 || index >= _blocks.length - 1) return;
+    reorderLayer(block.id, index + 1);
+  }
+
+  void moveLayerBackward() {
+    final block = primarySelection;
+    if (block == null) return;
+    final index = _blocks.indexWhere((item) => item.id == block.id);
+    if (index <= 0) return;
+    reorderLayer(block.id, index - 1);
+  }
+
+  void reorderLayer(String blockId, int targetIndex) {
+    final source = _byId(blockId);
+    if (source == null) return;
+    beginTransaction('Reorder layer');
+    final unitIds = _layerUnitIds(source);
+    final moving = _blocks
+        .where((block) => unitIds.contains(block.id))
+        .toList();
+    _blocks.removeWhere((block) => unitIds.contains(block.id));
+    final index = targetIndex.clamp(0, _blocks.length).toInt();
+    _blocks.insertAll(index, moving);
+    notifyListeners();
+    unawaited(commitTransaction());
+  }
+
+  void renameSelection(String name) {
+    if (_selection.isEmpty) return;
+    final normalized = name.trim();
+    if (normalized.isEmpty) return;
+    _setSelectionProperty('Rename', (block) => block.name = normalized);
+  }
+
+  void renameLayer(String blockId, String name) {
+    final normalized = name.trim();
+    final block = _byId(blockId);
+    if (block == null || normalized.isEmpty) return;
+    beginTransaction('Rename layer');
+    block.name = normalized;
     notifyListeners();
     unawaited(commitTransaction());
   }
@@ -496,6 +581,39 @@ class EditorController extends ChangeNotifier {
 
   List<ContentBlock> get _selectedBlocks =>
       _blocks.where((block) => _selection.contains(block.id)).toList();
+
+  /// Returns the complete structural graph for clipboard/duplicate actions,
+  /// including hidden group parents that are not rendered as selectable
+  /// blocks. Transform operations continue to use [_expandedSelectedBlocks]
+  /// so a group move changes its children exactly once.
+  List<ContentBlock> get _selectedGraphBlocks {
+    final groupIds = _selectedBlocks
+        .expand(
+          (block) => [
+            block.groupId,
+            if (block.type == BlockType.group) block.id,
+          ],
+        )
+        .whereType<String>()
+        .toSet();
+    final ids = _expandedSelectedBlocks.map((block) => block.id).toSet()
+      ..addAll(groupIds);
+    return _blocks.where((block) => ids.contains(block.id)).toList();
+  }
+
+  Set<String> _layerUnitIds(ContentBlock block) {
+    final groupId = block.type == BlockType.group ? block.id : block.groupId;
+    if (groupId == null) return {block.id};
+    return _blocks
+        .where(
+          (item) =>
+              item.id == groupId ||
+              item.groupId == groupId ||
+              (item.type == BlockType.group && item.id == groupId),
+        )
+        .map((item) => item.id)
+        .toSet();
+  }
 
   List<ContentBlock> get _expandedSelectedBlocks {
     final groupIds = _selectedBlocks
