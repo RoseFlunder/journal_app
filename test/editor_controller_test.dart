@@ -65,6 +65,24 @@ void main() {
     expect(controller.canUndo, isFalse);
   });
 
+  test('additive selection keeps both blocks selected', () {
+    final controller = EditorController(
+      blocks: [
+        _text(id: 'one'),
+        _text(id: 'two', x: 50),
+      ],
+      initialBoard: const BoardSettings(),
+      persistDocument: (_, _) async {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.select('one');
+    controller.select('two', additive: true);
+    expect(controller.selection, {'one', 'two'});
+    controller.select('one', additive: true);
+    expect(controller.selection, {'two'});
+  });
+
   test('board settings and creative node payloads round-trip', () {
     final entry = Entry(
       id: 'entry',

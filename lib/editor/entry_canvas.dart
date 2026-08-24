@@ -1,8 +1,8 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/entry.dart';
 import '../widgets/page_viewport.dart';
@@ -15,6 +15,7 @@ class EntryCanvas extends StatefulWidget {
     this.board = const BoardSettings(),
     required this.editing,
     required this.selectedId,
+    this.selectedIds = const <String>{},
     required this.textEditingId,
     required this.onSelect,
     required this.onEditText,
@@ -34,6 +35,7 @@ class EntryCanvas extends StatefulWidget {
   final BoardSettings board;
   final bool editing;
   final String? selectedId;
+  final Set<String> selectedIds;
   final String? textEditingId;
   final ValueChanged<String?> onSelect;
   final ValueChanged<String> onEditText;
@@ -176,7 +178,9 @@ class _EntryCanvasState extends State<EntryCanvas> {
                               opacity: block.opacity,
                               child: BlockWidget(
                                 block: block,
-                                selected: widget.selectedId == block.id,
+                                selected: widget.selectedIds.isEmpty
+                                    ? widget.selectedId == block.id
+                                    : widget.selectedIds.contains(block.id),
                                 editing: widget.editing,
                                 locked: block.locked,
                                 textEditing: widget.textEditingId == block.id,
@@ -224,7 +228,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
                           ),
                         ),
                       if (selectedBlock != null && !selectedBlock.locked)
-                        _buildResizeHandle(context, selectedBlock, scale),
+                        ..._buildResizeHandles(context, selectedBlock, scale),
                     ],
                   ),
                 ),
@@ -246,37 +250,34 @@ class _EntryCanvasState extends State<EntryCanvas> {
       pointer - session.startPointer,
       -session.rotation,
     );
-    double width;
-    double height;
+    var x = session.startPosition.dx;
+    var y = session.startPosition.dy;
+    var width = session.startSize.width;
+    var height = session.startSize.height;
+    if (session.horizontal < 0) {
+      x += localDelta.dx;
+      width -= localDelta.dx;
+    } else if (session.horizontal > 0) {
+      width += localDelta.dx;
+    }
+    if (session.vertical < 0) {
+      y += localDelta.dy;
+      height -= localDelta.dy;
+    } else if (session.vertical > 0) {
+      height += localDelta.dy;
+    }
     if (block.type != BlockType.image && block.type != BlockType.sticker) {
-      width = math.max(
-        EntryCanvas.minWidth,
-        session.startSize.width + localDelta.dx,
-      );
-      height = math.max(
-        EntryCanvas.minHeight,
-        session.startSize.height + localDelta.dy,
-      );
+      if (width < EntryCanvas.minWidth) width = EntryCanvas.minWidth;
+      if (height < EntryCanvas.minHeight) height = EntryCanvas.minHeight;
     } else {
       final ratio = session.aspectRatio;
-      final widthDelta =
-          (localDelta.dx + ratio * localDelta.dy) / (1 + ratio * ratio);
-      width = math.max(
-        EntryCanvas.minWidth,
-        math.max(
-          EntryCanvas.minHeight / ratio,
-          session.startSize.width + widthDelta,
-        ),
-      );
+      final proposed = session.horizontal == 0 ? height * ratio : width;
+      width = math.max(EntryCanvas.minWidth, proposed);
       height = math.max(EntryCanvas.minHeight, width * ratio);
     }
-    final center =
-        session.oppositeCorner +
-        _rotate(Offset(width / 2, height / 2), session.rotation);
-    final topLeft = center - Offset(width / 2, height / 2);
     return block
-      ..x = topLeft.dx
-      ..y = topLeft.dy
+      ..x = x
+      ..y = y
       ..w = width
       ..h = height;
   }
@@ -325,6 +326,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
     BuildContext canvasContext,
     ContentBlock block,
     Offset globalPosition,
+    _ResizeHandle handle,
   ) {
     if (block.locked) return;
     final renderObject = canvasContext.findRenderObject();
@@ -335,16 +337,15 @@ class _EntryCanvasState extends State<EntryCanvas> {
     _beginInteraction();
     final width = math.max(EntryCanvas.minWidth, block.w);
     final height = math.max(EntryCanvas.minHeight, block.h);
-    final center = Offset(block.x + width / 2, block.y + height / 2);
-    final oppositeCorner =
-        center - _rotate(Offset(width / 2, height / 2), block.rotation);
     _resizeSession = _BlockResizeSession(
       blockId: block.id,
       startPointer: pointer,
       startSize: Size(width, height),
       aspectRatio: height / width,
       rotation: block.rotation,
-      oppositeCorner: oppositeCorner,
+      startPosition: Offset(block.x, block.y),
+      horizontal: handle.horizontal,
+      vertical: handle.vertical,
     );
   }
 
@@ -377,21 +378,26 @@ class _EntryCanvasState extends State<EntryCanvas> {
     if (--_interactionDepth == 0) widget.onInteractionEnd?.call();
   }
 
-  Widget _buildResizeHandle(
+  List<Widget> _buildResizeHandles(
     BuildContext canvasContext,
     ContentBlock block,
     double scale,
-  ) {
+  ) => _ResizeHandle.values.map((handle) {
     final width = math.max(EntryCanvas.minWidth, block.w);
     final height = math.max(EntryCanvas.minHeight, block.h);
     final center = Offset(
       block.x + widget.worldOrigin.dx + width / 2,
       block.y + widget.worldOrigin.dy + height / 2,
     );
-    final corner =
-        center + _rotate(Offset(width / 2, height / 2), block.rotation);
+    final local = Offset(
+      width * handle.horizontal / 2,
+      height * handle.vertical / 2,
+    );
+    final point = center + _rotate(local, block.rotation);
+    // Keep handles outside the object edge so they do not steal a move drag.
     final handleOffset =
-        corner * scale -
+        point * scale +
+        Offset(handle.horizontal * 28, handle.vertical * 28) -
         const Offset(_resizeHandleSize / 2, _resizeHandleSize / 2);
     return Positioned(
       left: handleOffset.dx,
@@ -399,7 +405,11 @@ class _EntryCanvasState extends State<EntryCanvas> {
       width: _resizeHandleSize,
       height: _resizeHandleSize,
       child: RawGestureDetector(
-        key: ValueKey('resize-${block.id}'),
+        key: ValueKey(
+          handle == _ResizeHandle.bottomRight
+              ? 'resize-${block.id}'
+              : 'resize-${block.id}-${handle.name}',
+        ),
         gestures: {
           EagerGestureRecognizer:
               GestureRecognizerFactoryWithHandlers<EagerGestureRecognizer>(
@@ -413,7 +423,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
             if (_resizePointer != null) return;
             _resizePointer = event.pointer;
             _setResizeActive(true);
-            _startResize(canvasContext, block, event.position);
+            _startResize(canvasContext, block, event.position, handle);
           },
           onPointerMove: (event) {
             if (_resizePointer == event.pointer) {
@@ -432,16 +442,12 @@ class _EntryCanvasState extends State<EntryCanvas> {
               shape: BoxShape.circle,
               border: Border.all(color: const Color(0xFFC97068), width: 3),
             ),
-            child: const Icon(
-              Icons.open_in_full,
-              size: 20,
-              color: Color(0xFFC97068),
-            ),
+            child: Icon(handle.icon, size: 20, color: const Color(0xFFC97068)),
           ),
         ),
       ),
     );
-  }
+  }).toList();
 
   void _setResizeActive(bool active) {
     if (_resizeActiveNotified == active) return;
@@ -478,14 +484,20 @@ class _EntryCanvasState extends State<EntryCanvas> {
       (block.x + widget.worldOrigin.dx) * scale + width * scale / 2,
       (block.y + widget.worldOrigin.dy) * scale + height * scale / 2,
     );
-    final corner =
-        center +
-        _rotate(Offset(width * scale / 2, height * scale / 2), block.rotation);
-    return Rect.fromCenter(
-      center: corner,
-      width: _resizeHandleSize,
-      height: _resizeHandleSize,
-    ).contains(point);
+    return _ResizeHandle.values.any((handle) {
+      final local = Offset(
+        width * scale * handle.horizontal / 2,
+        height * scale * handle.vertical / 2,
+      );
+      return Rect.fromCenter(
+        center:
+            center +
+            _rotate(local, block.rotation) +
+            Offset(handle.horizontal * 28, handle.vertical * 28),
+        width: _resizeHandleSize,
+        height: _resizeHandleSize,
+      ).contains(point);
+    });
   }
 
   Offset? _globalToModel(BuildContext context, Offset globalPosition) {
@@ -531,7 +543,9 @@ class _BlockResizeSession {
     required this.startSize,
     required this.aspectRatio,
     required this.rotation,
-    required this.oppositeCorner,
+    required this.startPosition,
+    required this.horizontal,
+    required this.vertical,
   });
 
   final String blockId;
@@ -539,7 +553,25 @@ class _BlockResizeSession {
   final Size startSize;
   final double aspectRatio;
   final double rotation;
-  final Offset oppositeCorner;
+  final Offset startPosition;
+  final double horizontal;
+  final double vertical;
+}
+
+enum _ResizeHandle {
+  topLeft(-1, -1, Icons.north_west),
+  top(0, -1, Icons.unfold_more),
+  topRight(1, -1, Icons.north_east),
+  right(1, 0, Icons.unfold_less),
+  bottomRight(1, 1, Icons.south_east),
+  bottom(0, 1, Icons.unfold_more),
+  bottomLeft(-1, 1, Icons.south_west),
+  left(-1, 0, Icons.unfold_less);
+
+  const _ResizeHandle(this.horizontal, this.vertical, this.icon);
+  final double horizontal;
+  final double vertical;
+  final IconData icon;
 }
 
 class _GridPainter extends CustomPainter {

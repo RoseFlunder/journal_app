@@ -1088,6 +1088,7 @@ class _EntryPageState extends State<EntryPage> {
                         board: _editor.board,
                         editing: _editing,
                         selectedId: _selectedId,
+                        selectedIds: _editor.selection,
                         textEditingId: _textEditingId,
                         onResizeActiveChanged: (active) {
                           if (_resizeActive == active || !mounted) return;
@@ -1103,7 +1104,12 @@ class _EntryPageState extends State<EntryPage> {
                             });
                             return;
                           }
-                          _editor.select(id);
+                          final keys =
+                              HardwareKeyboard.instance.logicalKeysPressed;
+                          final additive =
+                              keys.contains(LogicalKeyboardKey.shiftLeft) ||
+                              keys.contains(LogicalKeyboardKey.shiftRight);
+                          _editor.select(id, additive: additive);
                           setState(() {
                             _titleFocused = false;
                             _selectedId = id;
