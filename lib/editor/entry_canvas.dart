@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/entry.dart';
 import '../widgets/page_viewport.dart';
@@ -26,7 +27,12 @@ class EntryCanvas extends StatefulWidget {
     this.onInteractionEnd,
     this.onMoveSelection,
     this.selectMode = false,
+    this.drawMode = false,
+    this.inkColorValue = 0xFF3B3226,
+    this.inkWidth = 1.8,
+    this.inkOpacity = 1,
     this.onLassoSelected,
+    this.onInkCreated,
     required this.imageBytes,
     this.imageProvider,
     required this.onOpenImage,
@@ -51,7 +57,12 @@ class EntryCanvas extends StatefulWidget {
   final VoidCallback? onInteractionEnd;
   final ValueChanged<Offset>? onMoveSelection;
   final bool selectMode;
+  final bool drawMode;
+  final int inkColorValue;
+  final double inkWidth;
+  final double inkOpacity;
   final ValueChanged<Set<String>>? onLassoSelected;
+  final ValueChanged<ContentBlock>? onInkCreated;
   final Uint8List? Function(String assetId) imageBytes;
   final ImageProvider<Object>? Function(String assetId)? imageProvider;
   final ValueChanged<ContentBlock> onOpenImage;
@@ -67,6 +78,7 @@ class EntryCanvas extends StatefulWidget {
 }
 
 class _EntryCanvasState extends State<EntryCanvas> {
+  static final _uuid = Uuid();
   static const _resizeHandleSize = 48.0;
   _BlockMoveSession? _moveSession;
   _BlockResizeSession? _resizeSession;
@@ -77,6 +89,8 @@ class _EntryCanvasState extends State<EntryCanvas> {
   int? _lassoPointer;
   Offset? _lassoStart;
   Offset? _lassoEnd;
+  int? _inkPointer;
+  final List<Offset> _inkPoints = <Offset>[];
 
   @override
   void dispose() {
@@ -150,6 +164,14 @@ class _EntryCanvasState extends State<EntryCanvas> {
                   onPointerDown: widget.editing
                       ? (event) {
                           final point = event.localPosition;
+                          if (widget.drawMode) {
+                            _inkPointer = event.pointer;
+                            _inkPoints
+                              ..clear()
+                              ..add(_localToModel(point));
+                            setState(() {});
+                            return;
+                          }
                           if (selectedBlock != null &&
                               _containsResizeHandle(
                                 point,
@@ -177,12 +199,33 @@ class _EntryCanvasState extends State<EntryCanvas> {
                       : null,
                   onPointerMove: widget.editing
                       ? (event) {
+                          if (_inkPointer == event.pointer) {
+                            _inkPoints.add(_localToModel(event.localPosition));
+                            setState(() {});
+                            return;
+                          }
                           if (_lassoPointer != event.pointer) return;
                           setState(() => _lassoEnd = event.localPosition);
                         }
                       : null,
-                  onPointerUp: widget.editing ? _finishLasso : null,
-                  onPointerCancel: widget.editing ? _finishLasso : null,
+                  onPointerUp: widget.editing
+                      ? (event) {
+                          if (_inkPointer == event.pointer) {
+                            _finishInk();
+                          } else {
+                            _finishLasso(event);
+                          }
+                        }
+                      : null,
+                  onPointerCancel: widget.editing
+                      ? (event) {
+                          if (_inkPointer == event.pointer) {
+                            _cancelInk();
+                          } else {
+                            _finishLasso(event);
+                          }
+                        }
+                      : null,
                   child: Stack(
                     children: [
                       for (final block in widget.blocks.where(
@@ -195,72 +238,95 @@ class _EntryCanvasState extends State<EntryCanvas> {
                               math.max(EntryCanvas.minWidth, block.w) * scale,
                           height:
                               math.max(EntryCanvas.minHeight, block.h) * scale,
-                          child: Transform.rotate(
-                            angle: block.rotation,
-                            child: Opacity(
-                              opacity: block.opacity,
-                              child: BlockWidget(
-                                block: block,
-                                selected: widget.selectedIds.isEmpty
-                                    ? widget.selectedId == block.id
-                                    : widget.selectedIds.contains(block.id),
-                                editing: widget.editing,
-                                locked: block.locked,
-                                controlScale: widget.cameraScale,
-                                textEditing: widget.textEditingId == block.id,
-                                onTap: () => widget.onSelect(block.id),
-                                onEditText: () => widget.onEditText(block.id),
-                                onMoveStart: (globalPosition) =>
-                                    _startMove(context, block, globalPosition),
-                                onMoveUpdate: (globalPosition) =>
-                                    _updateMove(context, block, globalPosition),
-                                onMoveEnd: _endMove,
-                                onRotate: (delta) {
-                                  if (!block.locked) {
-                                    final next = block.clone()
-                                      ..rotation += delta;
-                                    block.rotation = next.rotation;
-                                    widget.onChanged(next);
-                                  }
-                                },
-                                onTransformStart: _beginInteraction,
-                                onTransformEnd: _endInteraction,
-                                imageBytes:
-                                    _visualId(block) == null ||
-                                        widget.imageProvider != null
-                                    ? null
-                                    : widget.imageBytes(_visualId(block)!),
-                                imageProvider: _visualId(block) == null
-                                    ? null
-                                    : widget.imageProvider?.call(
-                                        _visualId(block)!,
-                                      ),
-                                onOpenImage: block.type == BlockType.image
-                                    ? () => widget.onOpenImage(block)
-                                    : null,
-                                onTextChanged: (text) {
-                                  if (block.locked) return;
-                                  final onTextChanged = widget.onTextChanged;
-                                  if (onTextChanged != null) {
-                                    onTextChanged(block.id, text);
-                                  } else {
-                                    final next = block.clone()..text = text;
-                                    block.text = next.text;
-                                    widget.onChanged(next);
-                                  }
-                                },
-                                onRichTextChanged: (text, delta) => widget
-                                    .onTextChanged
-                                    ?.call(block.id, text, delta: delta),
-                                preserveAspectRatio:
-                                    block.type == BlockType.image ||
-                                    block.type == BlockType.sticker,
+                          child: IgnorePointer(
+                            ignoring: widget.drawMode,
+                            child: Transform.rotate(
+                              angle: block.rotation,
+                              child: Opacity(
+                                opacity: block.opacity,
+                                child: BlockWidget(
+                                  block: block,
+                                  selected: widget.selectedIds.isEmpty
+                                      ? widget.selectedId == block.id
+                                      : widget.selectedIds.contains(block.id),
+                                  editing: widget.editing,
+                                  locked: block.locked,
+                                  controlScale: widget.cameraScale,
+                                  textEditing: widget.textEditingId == block.id,
+                                  onTap: () => widget.onSelect(block.id),
+                                  onEditText: () => widget.onEditText(block.id),
+                                  onMoveStart: (globalPosition) => _startMove(
+                                    context,
+                                    block,
+                                    globalPosition,
+                                  ),
+                                  onMoveUpdate: (globalPosition) => _updateMove(
+                                    context,
+                                    block,
+                                    globalPosition,
+                                  ),
+                                  onMoveEnd: _endMove,
+                                  onRotate: (delta) {
+                                    if (!block.locked) {
+                                      final next = block.clone()
+                                        ..rotation += delta;
+                                      block.rotation = next.rotation;
+                                      widget.onChanged(next);
+                                    }
+                                  },
+                                  onTransformStart: _beginInteraction,
+                                  onTransformEnd: _endInteraction,
+                                  imageBytes:
+                                      _visualId(block) == null ||
+                                          widget.imageProvider != null
+                                      ? null
+                                      : widget.imageBytes(_visualId(block)!),
+                                  imageProvider: _visualId(block) == null
+                                      ? null
+                                      : widget.imageProvider?.call(
+                                          _visualId(block)!,
+                                        ),
+                                  onOpenImage: block.type == BlockType.image
+                                      ? () => widget.onOpenImage(block)
+                                      : null,
+                                  onTextChanged: (text) {
+                                    if (block.locked) return;
+                                    final onTextChanged = widget.onTextChanged;
+                                    if (onTextChanged != null) {
+                                      onTextChanged(block.id, text);
+                                    } else {
+                                      final next = block.clone()..text = text;
+                                      block.text = next.text;
+                                      widget.onChanged(next);
+                                    }
+                                  },
+                                  onRichTextChanged: (text, delta) => widget
+                                      .onTextChanged
+                                      ?.call(block.id, text, delta: delta),
+                                  preserveAspectRatio:
+                                      block.type == BlockType.image ||
+                                      block.type == BlockType.sticker,
+                                ),
                               ),
                             ),
                           ),
                         ),
                       if (selectedBlock != null && !selectedBlock.locked)
                         ..._buildResizeHandles(context, selectedBlock, scale),
+                      if (_inkPoints.length > 1)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: CustomPaint(
+                              painter: _InkPreviewPainter(
+                                points: _inkPoints,
+                                worldOrigin: widget.worldOrigin,
+                                color: Color(widget.inkColorValue),
+                                width: widget.inkWidth,
+                                opacity: widget.inkOpacity,
+                              ),
+                            ),
+                          ),
+                        ),
                       if (_lassoStart != null && _lassoEnd != null)
                         Positioned.fromRect(
                           rect: Rect.fromPoints(_lassoStart!, _lassoEnd!),
@@ -475,6 +541,53 @@ class _EntryCanvasState extends State<EntryCanvas> {
           .toSet();
       widget.onLassoSelected?.call(ids);
     }
+    setState(() {});
+  }
+
+  Offset _localToModel(Offset point) =>
+      point / PageViewport.modelToRenderScale - widget.worldOrigin;
+
+  void _finishInk() {
+    _inkPointer = null;
+    if (_inkPoints.length < 2) {
+      _inkPoints.clear();
+      setState(() {});
+      return;
+    }
+    var minX = _inkPoints.first.dx;
+    var maxX = minX;
+    var minY = _inkPoints.first.dy;
+    var maxY = minY;
+    for (final point in _inkPoints.skip(1)) {
+      minX = math.min(minX, point.dx);
+      maxX = math.max(maxX, point.dx);
+      minY = math.min(minY, point.dy);
+      maxY = math.max(maxY, point.dy);
+    }
+    const padding = 2.0;
+    final block = ContentBlock(
+      id: _uuid.v4(),
+      type: BlockType.ink,
+      x: minX - padding,
+      y: minY - padding,
+      w: math.max(EntryCanvas.minWidth, maxX - minX + padding * 2),
+      h: math.max(EntryCanvas.minHeight, maxY - minY + padding * 2),
+      strokeColorValue: widget.inkColorValue,
+      strokeWidth: widget.inkWidth,
+      opacity: widget.inkOpacity,
+      inkPoints: [
+        for (final point in _inkPoints)
+          {'x': point.dx - minX + padding, 'y': point.dy - minY + padding},
+      ],
+    );
+    _inkPoints.clear();
+    setState(() {});
+    widget.onInkCreated?.call(block);
+  }
+
+  void _cancelInk() {
+    _inkPointer = null;
+    _inkPoints.clear();
     setState(() {});
   }
 
@@ -710,4 +823,47 @@ class _GridPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _GridPainter oldDelegate) =>
       oldDelegate.spacing != spacing;
+}
+
+class _InkPreviewPainter extends CustomPainter {
+  const _InkPreviewPainter({
+    required this.points,
+    required this.worldOrigin,
+    required this.color,
+    required this.width,
+    required this.opacity,
+  });
+
+  final List<Offset> points;
+  final Offset worldOrigin;
+  final Color color;
+  final double width;
+  final double opacity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.length < 2) return;
+    final path = Path();
+    for (var index = 0; index < points.length; index++) {
+      final point =
+          (points[index] + worldOrigin) * PageViewport.modelToRenderScale;
+      if (index == 0) {
+        path.moveTo(point.dx, point.dy);
+      } else {
+        path.lineTo(point.dx, point.dy);
+      }
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..strokeWidth = width
+        ..color = color.withValues(alpha: opacity),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _InkPreviewPainter oldDelegate) => true;
 }

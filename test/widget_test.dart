@@ -562,6 +562,42 @@ void main() {
     expect(find.byType(QuillEditor), findsOneWidget);
   });
 
+  testWidgets('draw mode commits one vector ink stroke', (tester) async {
+    ContentBlock? drawn;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 400,
+          height: 300,
+          child: EntryCanvas(
+            workspaceSize: const Size(400, 300),
+            blocks: const [],
+            editing: true,
+            drawMode: true,
+            selectedId: null,
+            textEditingId: null,
+            onSelect: (_) {},
+            onEditText: (_) {},
+            onChanged: (_) {},
+            onInkCreated: (block) => drawn = block,
+            imageBytes: (_) => null,
+            onOpenImage: (_) {},
+          ),
+        ),
+      ),
+    );
+    final gesture = await tester.startGesture(const Offset(120, 110));
+    await gesture.moveBy(const Offset(24, 12));
+    await gesture.moveBy(const Offset(18, 18));
+    await gesture.up();
+    await tester.pump();
+
+    expect(drawn?.type, BlockType.ink);
+    expect(drawn?.inkPoints, hasLength(3));
+    expect(drawn?.w, greaterThanOrEqualTo(16));
+    expect(drawn?.h, greaterThanOrEqualTo(10));
+  });
+
   testWidgets('text color picker applies preset, custom, and default colors', (
     tester,
   ) async {

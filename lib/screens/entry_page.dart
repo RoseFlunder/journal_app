@@ -122,6 +122,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   bool _editing = false;
   bool _resizeActive = false;
   bool _selectMode = false;
+  bool _drawMode = false;
+  int _inkColorValue = 0xFF3B3226;
+  double _inkWidth = 1.8;
+  double _inkOpacity = 1;
   double _cameraScale = 1;
   bool _titleFocused = false;
   String? _selectedId;
@@ -238,6 +242,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       _selectedId = null;
       _textEditingId = null;
       _selectMode = false;
+      _drawMode = false;
     });
     widget.onEditingChanged(false);
   }
@@ -936,6 +941,81 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     onSelected: (_) => onTap(),
   );
 
+  void _showInkSettings() {
+    var colorValue = _inkColorValue;
+    var width = _inkWidth;
+    var opacity = _inkOpacity;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: PaperPage.paper,
+      showDragHandle: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const ListTile(
+                  leading: Icon(Icons.draw_outlined),
+                  title: Text('Ink settings'),
+                  subtitle: Text('Vector pen and highlighter presets'),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 10,
+                  children: [
+                    for (final choice in const [
+                      (label: 'Ink', value: 0xFF3B3226),
+                      (label: 'Berry', value: 0xFF873F4D),
+                      (label: 'Moss', value: 0xFF4E684A),
+                    ])
+                      ChoiceChip(
+                        label: Text(choice.label),
+                        selected: colorValue == choice.value,
+                        onSelected: (_) =>
+                            setSheetState(() => colorValue = choice.value),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text('Width ${width.toStringAsFixed(1)}'),
+                Slider(
+                  min: 0.8,
+                  max: 8,
+                  value: width,
+                  onChanged: (value) => setSheetState(() => width = value),
+                ),
+                Text('Opacity ${(opacity * 100).round()}%'),
+                Slider(
+                  min: 0.2,
+                  max: 1,
+                  value: opacity,
+                  onChanged: (value) => setSheetState(() => opacity = value),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton(
+                    onPressed: () {
+                      setState(() {
+                        _inkColorValue = colorValue;
+                        _inkWidth = width;
+                        _inkOpacity = opacity;
+                      });
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Apply'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showMoreTools() {
     showModalBottomSheet<void>(
       context: context,
@@ -1080,6 +1160,28 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                   Navigator.pop(context);
                 },
               ),
+              ListTile(
+                leading: Icon(_drawMode ? Icons.draw : Icons.draw_outlined),
+                title: Text(_drawMode ? 'Exit draw mode' : 'Draw'),
+                subtitle: const Text('Draw a vector ink stroke on the board'),
+                onTap: () {
+                  setState(() {
+                    _drawMode = !_drawMode;
+                    if (_drawMode) _selectMode = false;
+                  });
+                  Navigator.pop(context);
+                },
+              ),
+              if (_drawMode)
+                ListTile(
+                  leading: const Icon(Icons.tune),
+                  title: const Text('Ink settings'),
+                  subtitle: const Text('Color, width, and opacity'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showInkSettings();
+                  },
+                ),
               ListTile(
                 leading: const Icon(Icons.layers_outlined),
                 title: const Text('Layers'),
@@ -1810,12 +1912,20 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                         onMoveSelection: (delta) =>
                             _editor.moveSelection(delta, snap: true),
                         selectMode: _selectMode,
+                        drawMode: _drawMode,
+                        inkColorValue: _inkColorValue,
+                        inkWidth: _inkWidth,
+                        inkOpacity: _inkOpacity,
                         onLassoSelected: (ids) {
                           _editor.selectMany(ids);
                           setState(() {
                             _selectedId = ids.isEmpty ? null : ids.last;
                             _textEditingId = null;
                           });
+                        },
+                        onInkCreated: (block) {
+                          _editor.add(block);
+                          setState(() => _selectedId = block.id);
                         },
                         imageBytes: widget.store.getAsset,
                         imageProvider: _imageProvider,
