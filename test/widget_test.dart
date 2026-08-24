@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:image/image.dart' as img;
@@ -373,6 +374,13 @@ void main() {
       'A first note',
     );
     await tester.pump();
+    expect(store.entries.single.blocks.single.richTextDelta, isNotNull);
+    expect(
+      store.entries.single.blocks.single.richTextDelta!.whereType<Map>().any(
+        (operation) => operation['insert'] == 'A first note',
+      ),
+      isTrue,
+    );
     expect(store.entries.single.blocks.single.text, 'A first note');
     await tester.tap(find.byTooltip('Choose font'));
     await tester.pumpAndSettle();
@@ -510,6 +518,48 @@ void main() {
     expect(find.byType(Image), findsOneWidget);
     expect(find.byKey(const ValueKey('rotate-image-widget')), findsOneWidget);
     expect(rotation, 0);
+  });
+
+  testWidgets('formatted Delta text blocks use the Quill editor', (
+    tester,
+  ) async {
+    final block = ContentBlock(
+      id: 'rich-text-widget',
+      type: BlockType.text,
+      text: 'Bold note',
+      richTextDelta: const [
+        {
+          'insert': 'Bold note',
+          'attributes': {'bold': true},
+        },
+        {'insert': '\n'},
+      ],
+      w: 160,
+      h: 80,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 240,
+          height: 160,
+          child: BlockWidget(
+            block: block,
+            selected: true,
+            editing: true,
+            textEditing: true,
+            onTap: () {},
+            onEditText: () {},
+            onMoveStart: (_) {},
+            onMoveUpdate: (_) {},
+            onMoveEnd: () {},
+            onRotate: (_) {},
+            onTextChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byType(QuillEditor), findsOneWidget);
   });
 
   testWidgets('text color picker applies preset, custom, and default colors', (

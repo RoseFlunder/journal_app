@@ -490,7 +490,12 @@ class EditorController extends ChangeNotifier {
     if (_transactionStart == null) beginTransaction('Edit text');
     updateBlock(id, (block) {
       block.text = text;
-      if (delta != null) block.richTextDelta = List<dynamic>.from(delta);
+      block.richTextDelta = delta == null
+          ? <dynamic>[
+              {'insert': text},
+              {'insert': '\n'},
+            ]
+          : List<dynamic>.from(delta);
     });
     _textTimer?.cancel();
     _textTimer = Timer(const Duration(milliseconds: 500), () {

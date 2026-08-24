@@ -44,7 +44,8 @@ class EntryCanvas extends StatefulWidget {
   final ValueChanged<String?> onSelect;
   final ValueChanged<String> onEditText;
   final ValueChanged<ContentBlock> onChanged;
-  final void Function(String blockId, String text)? onTextChanged;
+  final void Function(String blockId, String text, {List<dynamic>? delta})?
+  onTextChanged;
   final ValueChanged<bool>? onResizeActiveChanged;
   final VoidCallback? onInteractionStart;
   final VoidCallback? onInteractionEnd;
@@ -248,6 +249,9 @@ class _EntryCanvasState extends State<EntryCanvas> {
                                     widget.onChanged(next);
                                   }
                                 },
+                                onRichTextChanged: (text, delta) => widget
+                                    .onTextChanged
+                                    ?.call(block.id, text, delta: delta),
                                 preserveAspectRatio:
                                     block.type == BlockType.image ||
                                     block.type == BlockType.sticker,

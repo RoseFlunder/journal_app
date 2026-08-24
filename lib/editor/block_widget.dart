@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -23,6 +24,7 @@ class BlockWidget extends StatefulWidget {
     this.onTransformStart,
     this.onTransformEnd,
     required this.onTextChanged,
+    this.onRichTextChanged,
     this.preserveAspectRatio = false,
     this.imageBytes,
     this.imageProvider,
@@ -44,6 +46,7 @@ class BlockWidget extends StatefulWidget {
   final VoidCallback? onTransformStart;
   final VoidCallback? onTransformEnd;
   final ValueChanged<String> onTextChanged;
+  final void Function(String text, List<dynamic> delta)? onRichTextChanged;
   final bool preserveAspectRatio;
   final Uint8List? imageBytes;
   final ImageProvider<Object>? imageProvider;
@@ -56,6 +59,9 @@ class BlockWidget extends StatefulWidget {
 class _BlockWidgetState extends State<BlockWidget> {
   late final TextEditingController _controller;
   late final FocusNode _textFocusNode;
+  late final FocusNode _richFocusNode;
+  QuillController? _quillController;
+  String? _lastQuillDelta;
   bool _movingEdge = false;
   bool _movingBody = false;
   bool _rotating = false;
@@ -69,6 +75,8 @@ class _BlockWidgetState extends State<BlockWidget> {
     super.initState();
     _controller = TextEditingController(text: widget.block.text);
     _textFocusNode = FocusNode();
+    _richFocusNode = FocusNode();
+    _createQuillController();
     if (widget.textEditing) _scheduleTextFocus();
   }
 
@@ -82,6 +90,13 @@ class _BlockWidgetState extends State<BlockWidget> {
         selection: TextSelection.collapsed(offset: widget.block.text.length),
       );
     }
+    if (_quillController == null &&
+        widget.block.richTextDelta != null &&
+        widget.textEditing &&
+        !oldWidget.textEditing) {
+      _createQuillController();
+    }
+    _quillController?.readOnly = !widget.textEditing;
     if (!oldWidget.textEditing && widget.textEditing) {
       _scheduleTextFocus();
     } else if (oldWidget.textEditing && !widget.textEditing) {
@@ -93,6 +108,9 @@ class _BlockWidgetState extends State<BlockWidget> {
   void dispose() {
     _controller.dispose();
     _textFocusNode.dispose();
+    _quillController?.removeListener(_handleQuillChanged);
+    _quillController?.dispose();
+    _richFocusNode.dispose();
     super.dispose();
   }
 
@@ -116,21 +134,9 @@ class _BlockWidgetState extends State<BlockWidget> {
               !widget.locked &&
               widget.selected &&
               widget.textEditing
-        ? TextField(
-            key: ValueKey('block-text-${widget.block.id}'),
-            controller: _controller,
-            focusNode: _textFocusNode,
-            maxLines: null,
-            expands: true,
-            keyboardType: TextInputType.multiline,
-            textInputAction: TextInputAction.newline,
-            onChanged: widget.onTextChanged,
-            style: _textStyle(context),
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.all(8),
-            ),
-          )
+        ? _buildTextEditor()
+        : _quillController != null
+        ? _buildTextEditor()
         : Align(
             alignment: Alignment.topLeft,
             child: Padding(
@@ -386,6 +392,86 @@ class _BlockWidgetState extends State<BlockWidget> {
     return visual;
   }
 
+  Widget _buildTextEditor() {
+    final controller = _quillController;
+    if (controller != null && _usesQuill) {
+      controller.readOnly = !widget.textEditing;
+      return QuillEditor.basic(
+        key: ValueKey('block-quill-${widget.block.id}'),
+        controller: controller,
+        focusNode: _richFocusNode,
+        config: QuillEditorConfig(
+          scrollable: false,
+          expands: true,
+          padding: const EdgeInsets.all(8),
+          showCursor: widget.textEditing,
+          enableInteractiveSelection: widget.textEditing,
+        ),
+      );
+    }
+    return TextField(
+      key: ValueKey('block-text-${widget.block.id}'),
+      controller: _controller,
+      focusNode: _textFocusNode,
+      maxLines: null,
+      expands: true,
+      keyboardType: TextInputType.multiline,
+      textInputAction: TextInputAction.newline,
+      onChanged: widget.onTextChanged,
+      style: _textStyle(context),
+      decoration: const InputDecoration(
+        border: InputBorder.none,
+        contentPadding: EdgeInsets.all(8),
+      ),
+    );
+  }
+
+  void _createQuillController() {
+    final raw = widget.block.richTextDelta;
+    if (raw == null || !_richDeltaHasFormatting(raw)) return;
+    try {
+      final document = Document.fromJson(List<dynamic>.from(raw));
+      _quillController =
+          QuillController(
+              document: document,
+              selection: TextSelection.collapsed(
+                offset: math.max(0, document.length - 1),
+              ),
+            )
+            ..readOnly = !widget.textEditing
+            ..addListener(_handleQuillChanged);
+      _lastQuillDelta = document.toDelta().toJson().toString();
+    } catch (_) {
+      // Keep the plain TextField fallback for malformed or incomplete Delta
+      // payloads rather than preventing the entry from opening.
+      _quillController = null;
+    }
+  }
+
+  bool get _usesQuill => _richDeltaHasFormatting(widget.block.richTextDelta);
+
+  bool _richDeltaHasFormatting(List<dynamic>? delta) =>
+      delta?.any((operation) {
+        if (operation is! Map) return false;
+        final attributes = operation['attributes'];
+        return attributes is Map && attributes.isNotEmpty;
+      }) ??
+      false;
+
+  void _handleQuillChanged() {
+    final controller = _quillController;
+    if (controller == null || controller.readOnly) return;
+    final delta = controller.document.toDelta().toJson();
+    final fingerprint = delta.toString();
+    if (fingerprint == _lastQuillDelta) return;
+    _lastQuillDelta = fingerprint;
+    final plain = controller.document.toPlainText();
+    widget.onRichTextChanged?.call(
+      plain.endsWith('\n') ? plain.substring(0, plain.length - 1) : plain,
+      delta,
+    );
+  }
+
   ColorFilter _imageFilter(ContentBlock block) {
     final saturation = block.saturation.clamp(0.0, 2.0).toDouble();
     final inverse = 1 - saturation;
@@ -422,7 +508,8 @@ class _BlockWidgetState extends State<BlockWidget> {
   void _scheduleTextFocus() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !widget.editing || !widget.textEditing) return;
-      _textFocusNode.requestFocus();
+      (_quillController == null ? _textFocusNode : _richFocusNode)
+          .requestFocus();
       SystemChannels.textInput.invokeMethod<void>('TextInput.show');
     });
   }
