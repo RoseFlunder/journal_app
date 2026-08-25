@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,6 +27,7 @@ class EntryCanvas extends StatefulWidget {
     this.onInteractionStart,
     this.onInteractionEnd,
     this.onMoveSelection,
+    this.onRotateSelection,
     this.selectMode = false,
     this.drawMode = false,
     this.inkColorValue = 0xFF3B3226,
@@ -57,6 +59,7 @@ class EntryCanvas extends StatefulWidget {
   final VoidCallback? onInteractionStart;
   final VoidCallback? onInteractionEnd;
   final ValueChanged<Offset>? onMoveSelection;
+  final ValueChanged<double>? onRotateSelection;
   final bool selectMode;
   final bool drawMode;
   final int inkColorValue;
@@ -82,6 +85,7 @@ class EntryCanvas extends StatefulWidget {
 class _EntryCanvasState extends State<EntryCanvas> {
   static final _uuid = Uuid();
   static const _resizeHandleSize = 48.0;
+  static const _resizeMarkerSize = 10.0;
   _BlockMoveSession? _moveSession;
   _BlockResizeSession? _resizeSession;
   Matrix4? _resizeGlobalToCanvas;
@@ -93,6 +97,10 @@ class _EntryCanvasState extends State<EntryCanvas> {
   Offset? _lassoEnd;
   int? _inkPointer;
   final List<Offset> _inkPoints = <Offset>[];
+  final Map<int, Offset> _selectionRotationPointers = <int, Offset>{};
+  bool _selectionRotationRejected = false;
+  bool _selectionRotating = false;
+  double? _selectionRotationAngle;
 
   @override
   void dispose() {
@@ -101,6 +109,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
     _resizeGlobalToCanvas = null;
     _resizePointer = null;
     _resizeActiveNotified = false;
+    _selectionRotationPointers.clear();
     super.dispose();
   }
 
@@ -122,6 +131,9 @@ class _EntryCanvasState extends State<EntryCanvas> {
       _resizeSession = null;
       _resizeGlobalToCanvas = null;
       _resizePointer = null;
+      _selectionRotationPointers.clear();
+      _selectionRotating = false;
+      _selectionRotationAngle = null;
       if (_resizeActiveNotified) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _setResizeActive(false);
@@ -166,6 +178,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
                   onPointerDown: widget.editing
                       ? (event) {
                           final point = event.localPosition;
+                          _handleSelectionRotationDown(event, scale);
                           if (widget.drawMode) {
                             _inkPointer = event.pointer;
                             _inkPoints
@@ -201,6 +214,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
                       : null,
                   onPointerMove: widget.editing
                       ? (event) {
+                          _handleSelectionRotationMove(event);
                           if (_inkPointer == event.pointer) {
                             _inkPoints.add(_localToModel(event.localPosition));
                             setState(() {});
@@ -212,6 +226,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
                       : null,
                   onPointerUp: widget.editing
                       ? (event) {
+                          _handleSelectionRotationUp(event);
                           if (_inkPointer == event.pointer) {
                             _finishInk();
                           } else {
@@ -221,6 +236,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
                       : null,
                   onPointerCancel: widget.editing
                       ? (event) {
+                          _handleSelectionRotationUp(event);
                           if (_inkPointer == event.pointer) {
                             _cancelInk();
                           } else {
@@ -268,16 +284,11 @@ class _EntryCanvasState extends State<EntryCanvas> {
                                     globalPosition,
                                   ),
                                   onMoveEnd: _endMove,
-                                  onRotate: (delta) {
-                                    if (!block.locked) {
-                                      final next = block.clone()
-                                        ..rotation += delta;
-                                      block.rotation = next.rotation;
-                                      widget.onChanged(next);
-                                    }
-                                  },
+                                  onRotate: (delta) =>
+                                      _rotateBlockOrSelection(block, delta),
                                   onTransformStart: _beginInteraction,
                                   onTransformEnd: _endInteraction,
+                                  showRotateHandle: _showRotateHandle,
                                   imageBytes:
                                       _visualId(block) == null ||
                                           widget.imageProvider != null
@@ -360,6 +371,105 @@ class _EntryCanvasState extends State<EntryCanvas> {
     );
   }
 
+  bool get _showRotateHandle =>
+      kIsWeb ||
+      (defaultTargetPlatform != TargetPlatform.android &&
+          defaultTargetPlatform != TargetPlatform.iOS);
+
+  bool _isSelected(ContentBlock block) => widget.selectedIds.isEmpty
+      ? widget.selectedId == block.id
+      : widget.selectedIds.contains(block.id);
+
+  Iterable<ContentBlock> _rotationTargets() => widget.blocks.where(
+    (block) => !block.hidden && _isSelected(block) && !block.locked,
+  );
+
+  Set<String> _rotationHits(Offset point, double scale) => {
+    for (final block in _rotationTargets())
+      if (_containsBlock(point, block, scale)) block.id,
+  };
+
+  void _handleSelectionRotationDown(PointerDownEvent event, double scale) {
+    if (!widget.editing || widget.drawMode || widget.selectMode) return;
+    if (_selectionRotationPointers.isEmpty) {
+      _selectionRotationRejected = false;
+      _selectionRotating = false;
+      _selectionRotationAngle = null;
+    }
+    _selectionRotationPointers[event.pointer] = event.localPosition;
+    if (_selectionRotationPointers.length != 2 ||
+        _selectionRotationRejected ||
+        _rotationTargets().isEmpty) {
+      return;
+    }
+
+    final points = _selectionRotationPointers.values.toList(growable: false);
+    final firstHits = _rotationHits(points[0], scale);
+    final secondHits = _rotationHits(points[1], scale);
+    if (firstHits.isEmpty || secondHits.isEmpty) {
+      _selectionRotationRejected = true;
+      return;
+    }
+
+    // When both fingers are inside one block, its existing pointer listener
+    // owns the gesture. This canvas-level path is for multi-selection fingers
+    // placed on different selected blocks.
+    if (firstHits.intersection(secondHits).isNotEmpty) {
+      _selectionRotationRejected = true;
+      return;
+    }
+
+    if (_moveSession != null) {
+      _moveSession = null;
+      _endInteraction();
+    }
+    _selectionRotating = true;
+    _selectionRotationAngle = _pointerAngle(_selectionRotationPointers);
+    _beginInteraction();
+  }
+
+  void _handleSelectionRotationMove(PointerMoveEvent event) {
+    if (!_selectionRotationPointers.containsKey(event.pointer)) return;
+    _selectionRotationPointers[event.pointer] = event.localPosition;
+    if (!_selectionRotating || _selectionRotationPointers.length < 2) return;
+    final angle = _pointerAngle(_selectionRotationPointers);
+    final previous = _selectionRotationAngle;
+    if (angle == null || previous == null) return;
+    var delta = angle - previous;
+    if (delta > math.pi) delta -= math.pi * 2;
+    if (delta < -math.pi) delta += math.pi * 2;
+    widget.onRotateSelection?.call(delta);
+    _selectionRotationAngle = angle;
+  }
+
+  void _handleSelectionRotationUp(PointerEvent event) {
+    _selectionRotationPointers.remove(event.pointer);
+    if (_selectionRotationPointers.isNotEmpty) return;
+    if (_selectionRotating) _endInteraction();
+    _selectionRotating = false;
+    _selectionRotationRejected = false;
+    _selectionRotationAngle = null;
+  }
+
+  double? _pointerAngle(Map<int, Offset> pointers) {
+    if (pointers.length < 2) return null;
+    final points = pointers.values.take(2).toList(growable: false);
+    final delta = points[1] - points[0];
+    return math.atan2(delta.dy, delta.dx);
+  }
+
+  void _rotateBlockOrSelection(ContentBlock block, double delta) {
+    if (block.locked || !_isSelected(block)) return;
+    final rotateSelection = widget.onRotateSelection;
+    if (rotateSelection != null) {
+      rotateSelection(delta);
+      return;
+    }
+    final next = block.clone()..rotation += delta;
+    block.rotation = next.rotation;
+    widget.onChanged(next);
+  }
+
   ContentBlock _resizedBlock(
     ContentBlock block,
     _BlockResizeSession session,
@@ -412,7 +522,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
     ContentBlock block,
     Offset globalPosition,
   ) {
-    if (block.locked) return;
+    if (block.locked || _selectionRotating) return;
     final pointer = _globalToModel(canvasContext, globalPosition);
     if (pointer == null) return;
     _beginInteraction();
@@ -432,7 +542,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
     ContentBlock block,
     Offset globalPosition,
   ) {
-    if (block.locked) return;
+    if (block.locked || _selectionRotating) return;
     final session = _moveSession;
     if (session == null || session.blockId != block.id) return;
     final pointer = _globalToModel(canvasContext, globalPosition);
@@ -453,6 +563,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
   }
 
   void _endMove() {
+    if (_moveSession == null) return;
     _moveSession = null;
     _endInteraction();
   }
@@ -664,12 +775,19 @@ class _EntryCanvasState extends State<EntryCanvas> {
             if (_resizePointer == event.pointer) _endResize();
           },
           child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFFC97068), width: 3),
+            decoration: const BoxDecoration(),
+            child: Center(
+              child: SizedBox(
+                width: _resizeMarkerSize,
+                height: _resizeMarkerSize,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Color(0xFFC97068),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
             ),
-            child: Icon(handle.icon, size: 20, color: const Color(0xFFC97068)),
           ),
         ),
       ),

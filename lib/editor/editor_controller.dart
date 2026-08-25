@@ -170,6 +170,15 @@ class EditorController extends ChangeNotifier {
     }
   }
 
+  /// Rotates every selected, unlocked rendered block around its own center.
+  /// The caller owns the surrounding transaction so a continuous gesture is
+  /// committed as one undoable command.
+  void rotateSelection(double delta) {
+    for (final id in _expandedSelectedBlocks.map((block) => block.id)) {
+      updateBlock(id, (block) => block.rotation += delta);
+    }
+  }
+
   /// Snaps the current selection once at the end of a gesture. Keeping raw
   /// pointer deltas during the gesture prevents small movements from being
   /// rounded away on every pointer event.

@@ -296,7 +296,7 @@ void main() {
                 .painter!
             as PaperLinesPainter;
     expect(boardPainter.showRules, isTrue);
-    expect(boardPainter.showMargin, isFalse);
+    expect(boardPainter.showMargin, isTrue);
 
     expect(
       tester.widget<Text>(find.text('Untitled page')).style?.fontFamily,
@@ -749,7 +749,7 @@ void main() {
     expect(find.byKey(const ValueKey('rotate-sticker-widget')), findsOneWidget);
   });
 
-  testWidgets('entry title is editable and loads near the top left', (
+  testWidgets('entry title is editable and centered at the top of the page', (
     tester,
   ) async {
     store = JournalStore();
@@ -762,7 +762,8 @@ void main() {
     await createPageFromFab(tester);
 
     final title = find.text('Untitled page');
-    expect(tester.getTopLeft(title).dx, lessThan(400));
+    final titleRect = tester.getRect(title);
+    expect(titleRect.center.dx, closeTo(400, 2));
     expect(tester.getTopLeft(title).dy, lessThan(300));
 
     await tester.tap(find.byTooltip('Edit page'));
@@ -960,6 +961,169 @@ void main() {
     await verifyAtScale(0.5);
     await verifyAtScale(1.5);
   });
+
+  testWidgets('rotate handle can be hidden for mobile presentation', (
+    tester,
+  ) async {
+    final block = ContentBlock(
+      id: 'platform-rotation',
+      type: BlockType.text,
+      text: 'Rotate me',
+      w: 30,
+      h: 20,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 240,
+          height: 200,
+          child: BlockWidget(
+            block: block,
+            selected: true,
+            editing: true,
+            textEditing: false,
+            showRotateHandle: false,
+            onTap: () {},
+            onEditText: () {},
+            onMoveStart: (_) {},
+            onMoveUpdate: (_) {},
+            onMoveEnd: () {},
+            onRotate: (_) {},
+            onTextChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('rotate-platform-rotation')),
+      findsNothing,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 240,
+          height: 200,
+          child: BlockWidget(
+            block: block,
+            selected: true,
+            editing: true,
+            textEditing: false,
+            showRotateHandle: true,
+            onTap: () {},
+            onEditText: () {},
+            onMoveStart: (_) {},
+            onMoveUpdate: (_) {},
+            onMoveEnd: () {},
+            onRotate: (_) {},
+            onTextChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('rotate-platform-rotation')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'two fingers on separate selected blocks rotate the selection once',
+    (tester) async {
+      final first = ContentBlock(
+        id: 'rotation-first',
+        type: BlockType.text,
+        text: 'First',
+        x: 10,
+        y: 10,
+        w: 20,
+        h: 10,
+      );
+      final second = ContentBlock(
+        id: 'rotation-second',
+        type: BlockType.text,
+        text: 'Second',
+        x: 50,
+        y: 10,
+        w: 20,
+        h: 10,
+      );
+      final deltas = <double>[];
+      var starts = 0;
+      var ends = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EntryCanvas(
+            workspaceSize: const Size(800, 400),
+            blocks: [first, second],
+            editing: true,
+            selectedId: first.id,
+            selectedIds: {first.id, second.id},
+            textEditingId: null,
+            onSelect: (_) {},
+            onEditText: (_) {},
+            onChanged: (_) {},
+            onRotateSelection: deltas.add,
+            onInteractionStart: () => starts++,
+            onInteractionEnd: () => ends++,
+            imageBytes: (_) => null,
+            onOpenImage: (_) {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final oneFinger = await tester.startGesture(
+        const Offset(200, 150),
+        pointer: 3,
+      );
+      await oneFinger.moveBy(const Offset(0, 40));
+      await tester.pump();
+      expect(deltas, isEmpty);
+      await oneFinger.up();
+
+      final outsideFirst = await tester.startGesture(
+        const Offset(40, 40),
+        pointer: 4,
+      );
+      final outsideSecond = await tester.startGesture(
+        const Offset(760, 360),
+        pointer: 5,
+      );
+      await outsideSecond.moveBy(const Offset(0, -40));
+      await tester.pump();
+      expect(deltas, isEmpty);
+      await outsideSecond.up();
+      await outsideFirst.up();
+      starts = 0;
+      ends = 0;
+
+      final firstFinger = await tester.startGesture(
+        const Offset(200, 150),
+        pointer: 1,
+      );
+      final secondFinger = await tester.startGesture(
+        const Offset(600, 150),
+        pointer: 2,
+      );
+      await secondFinger.moveBy(const Offset(0, 100));
+      await tester.pump();
+
+      expect(deltas, isNotEmpty);
+      expect(starts, 1);
+      expect(first.x, 10);
+      expect(second.x, 50);
+
+      await secondFinger.up();
+      await firstFinger.up();
+      await tester.pump();
+      expect(ends, 1);
+    },
+  );
 
   testWidgets('selected block border uses the same anchored drag path', (
     tester,

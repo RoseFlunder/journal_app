@@ -26,8 +26,6 @@ class PageViewport extends StatefulWidget {
     this.contentRect,
     this.openingMaxZoom = 2.0,
     this.controlsBottomInset = 12,
-    this.boardMode = false,
-    this.boardTopInset = 52,
     // Kept for source compatibility with callers that used the old focused
     // page API. New callers should provide pageRect/contentRect instead.
     this.initialFocus,
@@ -37,11 +35,6 @@ class PageViewport extends StatefulWidget {
   static const pageSize = Size(1000, 1414);
   static const modelPageSize = Size(100, 141.4);
   static const modelToRenderScale = 10.0;
-
-  /// Legacy render host used while the world-camera service is rolled out.
-  /// Infinite boundary margins let the camera travel beyond it; node
-  /// coordinates are world-space and are never clamped to this value.
-  static const infiniteCanvasSize = Size(10000, 10000);
 
   static Offset modelToRender(Offset point) => point * modelToRenderScale;
 
@@ -80,13 +73,6 @@ class PageViewport extends StatefulWidget {
   /// Extra space reserved below camera controls, for example for the editor
   /// toolbar.
   final double controlsBottomInset;
-
-  /// Presents the shared camera as a paperless infinite board. It keeps the
-  /// same persisted transform model while removing page-specific affordances.
-  final bool boardMode;
-
-  /// Screen-space breathing room above initial and fit board content.
-  final double boardTopInset;
 
   @Deprecated('Use pageRect/contentRect')
   final Offset? initialFocus;
@@ -254,18 +240,8 @@ class _PageViewportState extends State<PageViewport> {
     return widthScale < heightScale ? widthScale : heightScale;
   }
 
-  Matrix4 _contentTransform(double zoom) {
-    if (!widget.boardMode) return _centeredTransform(_contentRect, zoom);
-    final scale = _fitScale * zoom;
-    return Matrix4.identity()
-      ..translateByDouble(
-        _viewportSize.width / 2 - _contentRect.center.dx * scale,
-        widget.boardTopInset - _contentRect.top * scale,
-        0,
-        1,
-      )
-      ..scaleByDouble(scale, scale, scale, 1);
-  }
+  Matrix4 _contentTransform(double zoom) =>
+      _centeredTransform(_contentRect, zoom);
 
   Matrix4 _centeredTransform(Rect rect, double zoom) {
     final scale = _fitScale * zoom;
@@ -391,7 +367,7 @@ class _PageViewportState extends State<PageViewport> {
                   constrained: false,
                   panEnabled: widget.interactive && widget.gesturesEnabled,
                   scaleEnabled: widget.interactive && widget.gesturesEnabled,
-                  boundaryMargin: const EdgeInsets.all(double.infinity),
+                  boundaryMargin: const EdgeInsets.all(64),
                   child: SizedBox(
                     width: widget.canvasSize.width,
                     height: widget.canvasSize.height,
@@ -438,16 +414,10 @@ class _PageViewportState extends State<PageViewport> {
                             icon: const Icon(Icons.center_focus_strong),
                           ),
                           IconButton(
-                            tooltip: widget.boardMode
-                                ? 'Center board'
-                                : 'Fit page',
+                            tooltip: 'Fit page',
                             color: Colors.white,
                             onPressed: _fitPage,
-                            icon: Icon(
-                              widget.boardMode
-                                  ? Icons.filter_center_focus_outlined
-                                  : Icons.fit_screen_outlined,
-                            ),
+                            icon: Icon(Icons.fit_screen_outlined),
                           ),
                           IconButton(
                             tooltip: 'Zoom in',

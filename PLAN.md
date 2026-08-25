@@ -1,6 +1,6 @@
 # Creative Journal Editor — Audited Roadmap
 
-Source of truth for the mobile-first, local-first, paperless creative board.
+Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
 Last audited: 2026-08-25 on top of commit `124ec34` (`Add vector ink drawing
@@ -36,15 +36,16 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [x] Serialize final text commit, background checkpoint, and storage flush to
   eliminate lifecycle races.
 
-### Infinite board and camera
+### A4 paper page and camera
 
-- [x] Continuous ruled-paper background, persisted camera, and centered
-  first-open header.
-- [~] Coordinates allow negative and large values, and content-fit includes
-  rotated bounds.
-- [!] Rendering still relies on a 10,000×10,000 `InteractiveViewer` host.
-- [x] Resize and rotation controls are inverse-scaled to approximately 48
-  logical pixels.
+- [x] Finite A4 ruled-paper background, persisted camera, centered title, and
+  full-page first-open fit.
+- [~] Coordinates retain the page-local model scale, and content-fit includes
+  rotated bounds for the optional fit-content action.
+- [x] Rendering uses the finite A4 `InteractiveViewer` host instead of an
+  infinite board.
+- [x] Resize hit targets remain touch-sized while visual markers are subtle;
+  desktop/web rotation handles and mobile two-finger rotation are supported.
 - [!] Move selection borders, handles, lasso, guides, and ink preview into a
   true screen-space overlay.
 - [x] Exclude hidden nodes and structural group blocks from content-fit bounds.
@@ -62,8 +63,8 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [x] Rotated resizing preserves the opposite world-space anchor.
 - [x] Correct the inverted aspect ratio used by vertical-only image and sticker
   resizing; regression coverage now exercises a vertical visual handle.
-- [~] Two-finger rotation exists; simultaneous selection scaling and rotation
-  is missing.
+- [x] Two-finger rotation is constrained to selected block geometry and rotates
+  the active selection as one transaction; mobile hides the rotate handle.
 - [~] Contextual toolbar, scrollable More sheet, duplicate, clipboard, lock,
   layers, groups, and delete exist.
 - [x] Single-tap selects text and double-tap enters editing; double-tap visual
@@ -163,9 +164,8 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
    - Convert groups to nested local-coordinate nodes.
    - Account for undo and clipboard during asset retention.
 
-3. **True board and interaction overlay**
-   - Remove the fixed canvas and introduce camera, transform, and snapping
-     services.
+3. **Complete page interaction overlay**
+   - Introduce camera, transform, and snapping services for the finite page.
    - Render visible nodes and interaction chrome in their correct coordinate
      spaces.
    - Add culling, smart guides, distribution, haptics, and platform gesture
@@ -199,7 +199,8 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 ## Assumptions
 
 - Android remains the first mobile target; Web and Windows are first-class.
-- The board remains ruled, local-first, paperless, and effectively unbounded.
+- The editor remains ruled and local-first, with one finite A4 paper page per
+  journal entry.
 - Existing saved-data compatibility remains out of scope.
 - Cloud sync, collaboration, generative AI, marketplace features, and rich
   embedded media remain deferred.

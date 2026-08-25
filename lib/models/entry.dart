@@ -23,8 +23,8 @@ abstract final class JournalFonts {
 /// are the original persisted journal formats; the others are additive.
 enum BlockType { text, image, sticker, ink, shape, group }
 
-/// Presentation and snapping settings for a paperless board. World-space
-/// coordinates are intentionally unrestricted.
+/// Presentation and snapping settings for a journal page. Coordinates remain
+/// model-local so rendering is independent of screen size.
 class BoardSettings {
   const BoardSettings({
     this.backgroundColorValue = 0xFFF4EDDC,

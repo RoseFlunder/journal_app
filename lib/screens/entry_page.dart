@@ -112,10 +112,13 @@ class _RenameLayerDialogState extends State<_RenameLayerDialog> {
 
 class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   static const _uuid = Uuid();
-  static const _workspaceSize = PageViewport.infiniteCanvasSize;
-  static const _pageFramePosition = Offset(4000, 4500);
-  static const _worldOrigin = Offset(450, 450);
-  static const _headerPosition = Offset(4000, 4500);
+  static const _workspaceSize = PageViewport.pageSize;
+  static const _pageFramePosition = Offset.zero;
+  // Existing block coordinates are model-local and were historically given a
+  // 50-unit page inset by the infinite-board origin. Keep that visual inset
+  // while rendering against the finite page origin.
+  static const _worldOrigin = Offset(50, 50);
+  static const _headerPosition = Offset.zero;
   static const _fontSizeStep = 2.0;
   static const _minFontSize = 12.0;
   static const _maxFontSize = 48.0;
@@ -1834,39 +1837,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
   }
 
-  Rect _contentBounds() {
-    // This is the actual visible header column: the title field and date are
-    // inset from the page frame by the same padding used below.
-    var bounds = Rect.fromLTWH(
-      _headerPosition.dx + 220,
-      _headerPosition.dy + 18,
-      752,
-      92,
-    );
-    for (final block in _blocks) {
-      if (block.hidden || block.type == BlockType.group) continue;
-      final width =
-          math.max(EntryCanvas.minWidth, block.w) *
-          PageViewport.modelToRenderScale;
-      final height =
-          math.max(EntryCanvas.minHeight, block.h) *
-          PageViewport.modelToRenderScale;
-      final center = Offset(
-        (block.x + _worldOrigin.dx) * PageViewport.modelToRenderScale +
-            width / 2,
-        (block.y + _worldOrigin.dy) * PageViewport.modelToRenderScale +
-            height / 2,
-      );
-      bounds = bounds.expandToInclude(
-        ViewportMath.rotatedRectBounds(
-          Rect.fromCenter(center: center, width: width, height: height),
-          block.rotation,
-        ),
-      );
-    }
-    return bounds;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Focus(
@@ -1878,7 +1848,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
           child: Stack(
             children: [
               PageViewport(
-                boardMode: true,
                 onScaleChanged: (scale) {
                   if (!mounted || (scale - _cameraScale).abs() < 0.001) {
                     return;
@@ -1892,7 +1861,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                   PageViewport.pageSize.width,
                   PageViewport.pageSize.height,
                 ),
-                contentRect: _contentBounds(),
                 controlsBottomInset: _editing ? 88 : 12,
                 controlsVisible: widget.controlsVisible,
                 gesturesEnabled: !_resizeActive,
@@ -1902,14 +1870,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                   fit: StackFit.expand,
                   children: [
                     Positioned.fill(
-                      child: PaperPage(
-                        finite: false,
-                        showRulesOnInfinite: true,
-                        showMargin: false,
-                        child: ColoredBox(
-                          color: Color(_editor.board.backgroundColorValue),
-                        ),
-                      ),
+                      child: PaperPage(child: const SizedBox.expand()),
                     ),
                     Positioned.fill(
                       child: EntryCanvas(
@@ -1968,6 +1929,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                         },
                         onMoveSelection: (delta) =>
                             _editor.moveSelection(delta, snap: true),
+                        onRotateSelection: _editor.rotateSelection,
                         selectMode: _selectMode,
                         drawMode: _drawMode,
                         inkColorValue: _inkColorValue,
@@ -1992,13 +1954,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     Positioned(
                       left: _headerPosition.dx,
                       top: _headerPosition.dy,
-                      width: 1000,
+                      width: PageViewport.pageSize.width,
                       child: Padding(
-                        // Leave room for the page-level Home control in the
-                        // upper-left corner of the viewport.
-                        padding: const EdgeInsets.fromLTRB(220, 18, 28, 24),
+                        padding: const EdgeInsets.fromLTRB(28, 18, 28, 24),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             _editing
@@ -2015,6 +1975,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                                     },
                                     onChanged: widget.onTitleChanged,
                                     style: _titleStyle(context),
+                                    textAlign: TextAlign.center,
                                     decoration: const InputDecoration(
                                       hintText: 'Untitled page',
                                       border: InputBorder.none,
@@ -2026,6 +1987,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                                         ? 'Untitled page'
                                         : widget.entry.title,
                                     style: _titleStyle(context),
+                                    textAlign: TextAlign.center,
                                   ),
                             const SizedBox(height: 4),
                             Text(
@@ -2034,6 +1996,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                               ),
                               style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(color: Colors.black54),
+                              textAlign: TextAlign.center,
                             ),
                           ],
                         ),

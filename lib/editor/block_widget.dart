@@ -23,6 +23,7 @@ class BlockWidget extends StatefulWidget {
     required this.onRotate,
     this.onTransformStart,
     this.onTransformEnd,
+    this.showRotateHandle = true,
     required this.onTextChanged,
     this.onRichTextChanged,
     this.preserveAspectRatio = false,
@@ -46,6 +47,7 @@ class BlockWidget extends StatefulWidget {
   final ValueChanged<double> onRotate;
   final VoidCallback? onTransformStart;
   final VoidCallback? onTransformEnd;
+  final bool showRotateHandle;
   final ValueChanged<String> onTextChanged;
   final void Function(String text, List<dynamic> delta)? onRichTextChanged;
   final bool preserveAspectRatio;
@@ -270,7 +272,8 @@ class _BlockWidgetState extends State<BlockWidget> {
               if (widget.editing &&
                   !widget.locked &&
                   widget.selected &&
-                  _isTransformable)
+                  _isTransformable &&
+                  widget.showRotateHandle)
                 Positioned(
                   top: -48,
                   left: 0,

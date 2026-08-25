@@ -125,4 +125,36 @@ void main() {
     expect(viewer.minScale, closeTo(0.5 * (600 / 1414), 0.001));
     expect(viewer.maxScale, closeTo(3 * (600 / 1414), 0.001));
   });
+
+  testWidgets('finite A4 page opens with the complete page fitted', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 800,
+          height: 600,
+          child: PageViewport(
+            canvasSize: PageViewport.pageSize,
+            pageRect: const Rect.fromLTWH(0, 0, 1000, 1414),
+            child: const SizedBox.expand(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final viewer = tester.widget<InteractiveViewer>(
+      find.byType(InteractiveViewer),
+    );
+    final transform = viewer.transformationController!.value;
+    final pageScale = 600 / 1414;
+    final expectedScale = pageScale * ((552 / 1414) / pageScale);
+    final translation = transform.getTranslation();
+
+    expect(transform.getMaxScaleOnAxis(), closeTo(expectedScale, 0.001));
+    expect(translation.x, closeTo((800 - 1000 * expectedScale) / 2, 0.001));
+    expect(translation.y, closeTo((600 - 1414 * expectedScale) / 2, 0.001));
+  });
 }

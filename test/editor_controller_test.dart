@@ -66,6 +66,44 @@ void main() {
     expect(controller.canUndo, isFalse);
   });
 
+  test(
+    'selection rotation updates unlocked blocks in one transaction',
+    () async {
+      var saves = 0;
+      final controller = EditorController(
+        blocks: [
+          _text(id: 'one'),
+          _text(id: 'two', x: 50),
+          _text(id: 'locked', x: 100)..locked = true,
+        ],
+        initialBoard: const BoardSettings(),
+        persistDocument: (_, _) async => saves++,
+      );
+      addTearDown(controller.dispose);
+
+      controller.selectMany(['one', 'two', 'locked']);
+      controller.beginTransaction('Transform');
+      controller.rotateSelection(0.5);
+      controller.rotateSelection(0.25);
+      await controller.commitTransaction();
+
+      expect(
+        controller.blocks.firstWhere((block) => block.id == 'one').rotation,
+        closeTo(0.75, 0.001),
+      );
+      expect(
+        controller.blocks.firstWhere((block) => block.id == 'two').rotation,
+        closeTo(0.75, 0.001),
+      );
+      expect(
+        controller.blocks.firstWhere((block) => block.id == 'locked').rotation,
+        0,
+      );
+      expect(saves, 1);
+      expect(controller.canUndo, isTrue);
+    },
+  );
+
   test('additive selection keeps both blocks selected', () {
     final controller = EditorController(
       blocks: [
