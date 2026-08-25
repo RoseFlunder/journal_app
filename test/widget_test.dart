@@ -476,6 +476,48 @@ void main() {
     expect(store.entries.single.blocks, isEmpty);
   });
 
+  testWidgets('grid switches update immediately and persist their state', (
+    tester,
+  ) async {
+    store = JournalStore();
+    await store.init();
+    for (final existing in store.entries.toList()) {
+      await store.deleteEntry(existing.id);
+    }
+    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpAndSettle();
+    await createPageFromFab(tester);
+
+    await tester.tap(find.byTooltip('Edit page'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('More editing tools'));
+    await tester.pumpAndSettle();
+
+    final showGridText = find.text('Show grid');
+    final snapToGridText = find.text('Snap to grid');
+    await tester.scrollUntilVisible(
+      showGridText,
+      500,
+      scrollable: find.byType(Scrollable).last,
+    );
+    final showGrid = find.widgetWithText(SwitchListTile, 'Show grid');
+    final snapToGrid = find.widgetWithText(SwitchListTile, 'Snap to grid');
+    await tester.ensureVisible(showGrid);
+    await tester.ensureVisible(snapToGridText);
+    expect(tester.widget<SwitchListTile>(showGrid).value, isFalse);
+    expect(tester.widget<SwitchListTile>(snapToGrid).value, isFalse);
+
+    await tester.tap(showGrid);
+    await tester.pump();
+    expect(tester.widget<SwitchListTile>(showGrid).value, isTrue);
+    expect(store.entries.single.board.gridVisible, isTrue);
+
+    await tester.tap(snapToGrid);
+    await tester.pump();
+    expect(tester.widget<SwitchListTile>(snapToGrid).value, isTrue);
+    expect(store.entries.single.board.snapToGrid, isTrue);
+  });
+
   testWidgets('image blocks render and expose rotation controls', (
     tester,
   ) async {

@@ -29,7 +29,7 @@ class BoardSettings {
   const BoardSettings({
     this.backgroundColorValue = 0xFFF4EDDC,
     this.gridVisible = false,
-    this.snapToGrid = true,
+    this.snapToGrid = false,
     this.gridSize = 8,
   });
 
@@ -61,7 +61,7 @@ class BoardSettings {
     backgroundColorValue:
         (json?['backgroundColorValue'] as num?)?.toInt() ?? 0xFFF4EDDC,
     gridVisible: json?['gridVisible'] as bool? ?? false,
-    snapToGrid: json?['snapToGrid'] as bool? ?? true,
+    snapToGrid: json?['snapToGrid'] as bool? ?? false,
     gridSize: (json?['gridSize'] as num?)?.toDouble() ?? 8,
   );
 }

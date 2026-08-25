@@ -1076,214 +1076,226 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       backgroundColor: PaperPage.paper,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.72,
-        minChildSize: 0.35,
-        maxChildSize: 0.94,
-        builder: (context, scrollController) => SafeArea(
-          child: ListView(
-            controller: scrollController,
-            padding: const EdgeInsets.only(bottom: 16),
-            children: [
-              ListTile(
-                leading: const Icon(Icons.undo),
-                title: const Text('Undo'),
-                enabled: _editor.canUndo,
-                onTap: _editor.canUndo
-                    ? () {
-                        Navigator.pop(context);
-                        _undo();
-                      }
-                    : null,
-              ),
-              ListTile(
-                leading: const Icon(Icons.redo),
-                title: const Text('Redo'),
-                enabled: _editor.canRedo,
-                onTap: _editor.canRedo
-                    ? () {
-                        Navigator.pop(context);
-                        _redo();
-                      }
-                    : null,
-              ),
-              ListTile(
-                leading: const Icon(Icons.category_outlined),
-                title: const Text('Add shape'),
-                subtitle: const Text('Rectangle, ellipse, line, or arrow'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _addShape();
-                },
-              ),
-              if (_imageSelection() != null)
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.72,
+          minChildSize: 0.35,
+          maxChildSize: 0.94,
+          builder: (context, scrollController) => SafeArea(
+            child: ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.only(bottom: 16),
+              children: [
                 ListTile(
-                  leading: const Icon(Icons.image_outlined),
-                  title: const Text('Edit image'),
-                  subtitle: const Text('Crop, flip, mask, and opacity'),
+                  leading: const Icon(Icons.undo),
+                  title: const Text('Undo'),
+                  enabled: _editor.canUndo,
+                  onTap: _editor.canUndo
+                      ? () {
+                          Navigator.pop(context);
+                          _undo();
+                        }
+                      : null,
+                ),
+                ListTile(
+                  leading: const Icon(Icons.redo),
+                  title: const Text('Redo'),
+                  enabled: _editor.canRedo,
+                  onTap: _editor.canRedo
+                      ? () {
+                          Navigator.pop(context);
+                          _redo();
+                        }
+                      : null,
+                ),
+                ListTile(
+                  leading: const Icon(Icons.category_outlined),
+                  title: const Text('Add shape'),
+                  subtitle: const Text('Rectangle, ellipse, line, or arrow'),
                   onTap: () {
                     Navigator.pop(context);
-                    _showImageEditor();
+                    _addShape();
                   },
                 ),
-              ListTile(
-                leading: const Icon(Icons.dashboard_customize_outlined),
-                title: const Text('Save selection as template'),
-                subtitle: const Text('Reuse selected objects locally'),
-                enabled: _editor.hasSelection,
-                onTap: !_editor.hasSelection
-                    ? null
-                    : () {
-                        Navigator.pop(context);
-                        _saveTemplate();
-                      },
-              ),
-              ListTile(
-                leading: const Icon(Icons.library_books_outlined),
-                title: const Text('Insert template'),
-                subtitle: const Text('Add a saved board at the camera center'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showTemplates();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.file_upload_outlined),
-                title: const Text('Export .cozyjournal backup'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _exportArchive();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.file_download_outlined),
-                title: const Text('Import .cozyjournal backup'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _importArchive();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.group_work_outlined),
-                title: const Text('Group selection'),
-                subtitle: const Text('Keep selected objects together'),
-                enabled: _editor.canGroup,
-                onTap: _editor.canGroup
-                    ? () {
-                        _editor.groupSelection();
-                        Navigator.pop(context);
-                      }
-                    : null,
-              ),
-              ListTile(
-                leading: const Icon(Icons.group_off_outlined),
-                title: const Text('Ungroup selection'),
-                enabled: _editor.canUngroup,
-                onTap: _editor.canUngroup
-                    ? () {
-                        _editor.ungroupSelection();
-                        Navigator.pop(context);
-                      }
-                    : null,
-              ),
-              ListTile(
-                leading: const Icon(Icons.align_horizontal_center_outlined),
-                title: const Text('Align selection'),
-                subtitle: const Text(
-                  'Align selected objects to their shared bounds',
+                if (_imageSelection() != null)
+                  ListTile(
+                    leading: const Icon(Icons.image_outlined),
+                    title: const Text('Edit image'),
+                    subtitle: const Text('Crop, flip, mask, and opacity'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showImageEditor();
+                    },
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.dashboard_customize_outlined),
+                  title: const Text('Save selection as template'),
+                  subtitle: const Text('Reuse selected objects locally'),
+                  enabled: _editor.hasSelection,
+                  onTap: !_editor.hasSelection
+                      ? null
+                      : () {
+                          Navigator.pop(context);
+                          _saveTemplate();
+                        },
                 ),
-                enabled: _editor.selection.length > 1,
-                onTap: _editor.selection.length > 1
-                    ? () {
-                        Navigator.pop(context);
-                        _showAlignment();
-                      }
-                    : null,
-              ),
-              ListTile(
-                leading: Icon(
-                  _selectMode ? Icons.select_all : Icons.select_all_outlined,
+                ListTile(
+                  leading: const Icon(Icons.library_books_outlined),
+                  title: const Text('Insert template'),
+                  subtitle: const Text(
+                    'Add a saved board at the camera center',
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showTemplates();
+                  },
                 ),
-                title: Text(
-                  _selectMode ? 'Exit select mode' : 'Select multiple',
+                ListTile(
+                  leading: const Icon(Icons.file_upload_outlined),
+                  title: const Text('Export .cozyjournal backup'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _exportArchive();
+                  },
                 ),
-                subtitle: const Text('Drag blank board space to lasso content'),
-                onTap: () {
-                  setState(() => _selectMode = !_selectMode);
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: Icon(_drawMode ? Icons.draw : Icons.draw_outlined),
-                title: Text(_drawMode ? 'Exit draw mode' : 'Draw'),
-                subtitle: const Text('Draw a vector ink stroke on the board'),
-                onTap: () {
-                  setState(() {
-                    _drawMode = !_drawMode;
-                    if (_drawMode) _selectMode = false;
-                  });
-                  Navigator.pop(context);
-                },
-              ),
-              if (_drawMode)
+                ListTile(
+                  leading: const Icon(Icons.file_download_outlined),
+                  title: const Text('Import .cozyjournal backup'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _importArchive();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.group_work_outlined),
+                  title: const Text('Group selection'),
+                  subtitle: const Text('Keep selected objects together'),
+                  enabled: _editor.canGroup,
+                  onTap: _editor.canGroup
+                      ? () {
+                          _editor.groupSelection();
+                          Navigator.pop(context);
+                        }
+                      : null,
+                ),
+                ListTile(
+                  leading: const Icon(Icons.group_off_outlined),
+                  title: const Text('Ungroup selection'),
+                  enabled: _editor.canUngroup,
+                  onTap: _editor.canUngroup
+                      ? () {
+                          _editor.ungroupSelection();
+                          Navigator.pop(context);
+                        }
+                      : null,
+                ),
+                ListTile(
+                  leading: const Icon(Icons.align_horizontal_center_outlined),
+                  title: const Text('Align selection'),
+                  subtitle: const Text(
+                    'Align selected objects to their shared bounds',
+                  ),
+                  enabled: _editor.selection.length > 1,
+                  onTap: _editor.selection.length > 1
+                      ? () {
+                          Navigator.pop(context);
+                          _showAlignment();
+                        }
+                      : null,
+                ),
+                ListTile(
+                  leading: Icon(
+                    _selectMode ? Icons.select_all : Icons.select_all_outlined,
+                  ),
+                  title: Text(
+                    _selectMode ? 'Exit select mode' : 'Select multiple',
+                  ),
+                  subtitle: const Text(
+                    'Drag blank board space to lasso content',
+                  ),
+                  onTap: () {
+                    setState(() => _selectMode = !_selectMode);
+                    Navigator.pop(context);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(_drawMode ? Icons.draw : Icons.draw_outlined),
+                  title: Text(_drawMode ? 'Exit draw mode' : 'Draw'),
+                  subtitle: const Text('Draw a vector ink stroke on the board'),
+                  onTap: () {
+                    setState(() {
+                      _drawMode = !_drawMode;
+                      if (_drawMode) _selectMode = false;
+                    });
+                    Navigator.pop(context);
+                  },
+                ),
+                if (_drawMode)
+                  ListTile(
+                    leading: const Icon(Icons.tune),
+                    title: const Text('Ink settings'),
+                    subtitle: const Text('Color, width, and opacity'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showInkSettings();
+                    },
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.layers_outlined),
+                  title: const Text('Layers'),
+                  subtitle: const Text('Reorder, show, hide, and lock content'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showLayers();
+                  },
+                ),
                 ListTile(
                   leading: const Icon(Icons.tune),
-                  title: const Text('Ink settings'),
-                  subtitle: const Text('Color, width, and opacity'),
+                  title: const Text('Precise transform'),
+                  subtitle: const Text(
+                    'Move, resize, rotate, and nudge without dragging',
+                  ),
+                  enabled: _editor.primarySelection != null,
+                  onTap: _editor.primarySelection == null
+                      ? null
+                      : () {
+                          Navigator.pop(context);
+                          _showTransformInspector();
+                        },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.history),
+                  title: const Text('History & recovery'),
                   onTap: () {
                     Navigator.pop(context);
-                    _showInkSettings();
+                    _showHistory();
                   },
                 ),
-              ListTile(
-                leading: const Icon(Icons.layers_outlined),
-                title: const Text('Layers'),
-                subtitle: const Text('Reorder, show, hide, and lock content'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showLayers();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.tune),
-                title: const Text('Precise transform'),
-                subtitle: const Text(
-                  'Move, resize, rotate, and nudge without dragging',
+                SwitchListTile(
+                  secondary: const Icon(Icons.grid_4x4_outlined),
+                  title: const Text('Snap to grid'),
+                  value: _editor.board.snapToGrid,
+                  onChanged: (value) {
+                    _editor.updateBoard(
+                      _editor.board.copyWith(snapToGrid: value),
+                    );
+                    setSheetState(() {});
+                  },
                 ),
-                enabled: _editor.primarySelection != null,
-                onTap: _editor.primarySelection == null
-                    ? null
-                    : () {
-                        Navigator.pop(context);
-                        _showTransformInspector();
-                      },
-              ),
-              ListTile(
-                leading: const Icon(Icons.history),
-                title: const Text('History & recovery'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showHistory();
-                },
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.grid_4x4_outlined),
-                title: const Text('Snap to grid'),
-                value: _editor.board.snapToGrid,
-                onChanged: (value) => _editor.updateBoard(
-                  _editor.board.copyWith(snapToGrid: value),
+                SwitchListTile(
+                  secondary: const Icon(Icons.grid_on_outlined),
+                  title: const Text('Show grid'),
+                  value: _editor.board.gridVisible,
+                  onChanged: (value) {
+                    _editor.updateBoard(
+                      _editor.board.copyWith(gridVisible: value),
+                    );
+                    setSheetState(() {});
+                  },
                 ),
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.grid_on_outlined),
-                title: const Text('Show grid'),
-                value: _editor.board.gridVisible,
-                onChanged: (value) => _editor.updateBoard(
-                  _editor.board.copyWith(gridVisible: value),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

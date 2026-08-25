@@ -15,6 +15,16 @@ import 'package:journal_app/services/repositories.dart';
 
 void main() {
   group('Entry JSON', () {
+    test('new board settings leave grid and snapping disabled', () {
+      const defaults = BoardSettings();
+      final restored = BoardSettings.fromJson(const {});
+
+      expect(defaults.gridVisible, isFalse);
+      expect(defaults.snapToGrid, isFalse);
+      expect(restored.gridVisible, isFalse);
+      expect(restored.snapToGrid, isFalse);
+    });
+
     test('bounds initial image size while preserving aspect ratio', () {
       final portrait = imageBlockSize(800, 2400);
       final landscape = imageBlockSize(2400, 800);
