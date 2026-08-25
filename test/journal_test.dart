@@ -289,6 +289,21 @@ void main() {
       },
     );
 
+    test('flush runs registered editor hooks before storage drains', () async {
+      final store = await freshStore();
+      var called = false;
+      Future<void> hook() async {
+        called = true;
+      }
+
+      store.addFlushHook(hook);
+
+      await store.flush();
+
+      expect(called, isTrue);
+      store.removeFlushHook(hook);
+    });
+
     test('add, update, delete and persistence', () async {
       var store = await freshStore();
 

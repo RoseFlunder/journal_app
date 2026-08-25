@@ -436,6 +436,8 @@ void main() {
     expect(find.byType(BlockWidget), findsOneWidget);
 
     await tester.tap(find.text('A first note'));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.text('A first note'));
     await tester.pumpAndSettle();
     expect(find.byKey(ValueKey('block-text-$blockId')), findsOneWidget);
     expect(tester.testTextInput.isVisible, isTrue);
@@ -1256,6 +1258,51 @@ void main() {
       expect(afterOpposite.dx, closeTo(beforeOpposite.dx, 0.001));
       expect(afterOpposite.dy, closeTo(beforeOpposite.dy, 0.001));
     }
+  });
+
+  testWidgets('vertical visual resize preserves width-to-height ratio', (
+    tester,
+  ) async {
+    final block = ContentBlock(
+      id: 'vertical-visual-resize',
+      type: BlockType.image,
+      x: 4,
+      y: 4,
+      w: 30,
+      h: 20,
+      assetId: 'asset-1',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 800,
+          height: 600,
+          child: EntryCanvas(
+            workspaceSize: const Size(400, 300),
+            blocks: [block],
+            editing: true,
+            selectedId: block.id,
+            textEditingId: null,
+            onSelect: (_) {},
+            onEditText: (_) {},
+            onChanged: (_) {},
+            imageBytes: (_) => null,
+            onOpenImage: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final handle = find.byKey(ValueKey('resize-${block.id}-bottom'));
+    final gesture = await tester.startGesture(tester.getCenter(handle));
+    await gesture.moveBy(const Offset(0, 30));
+    await tester.pump();
+    await gesture.up();
+
+    expect(block.h, closeTo(23, 0.01));
+    expect(block.w, closeTo(34.5, 0.01));
+    expect(block.y, closeTo(4, 0.01));
   });
 
   testWidgets('splash wordmark fades in and is capped at 600 pixels', (

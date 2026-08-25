@@ -29,6 +29,7 @@ class BlockWidget extends StatefulWidget {
     this.imageBytes,
     this.imageProvider,
     this.onOpenImage,
+    this.onEditImage,
   });
 
   final ContentBlock block;
@@ -51,6 +52,7 @@ class BlockWidget extends StatefulWidget {
   final Uint8List? imageBytes;
   final ImageProvider<Object>? imageProvider;
   final VoidCallback? onOpenImage;
+  final VoidCallback? onEditImage;
 
   @override
   State<BlockWidget> createState() => _BlockWidgetState();
@@ -162,14 +164,17 @@ class _BlockWidgetState extends State<BlockWidget> {
           : null,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: widget.editing
+        onTap: widget.editing ? widget.onTap : widget.onOpenImage,
+        onDoubleTap: widget.editing
             ? () {
-                widget.onTap();
-                if (widget.block.type == BlockType.text && !widget.locked) {
+                if (widget.locked) return;
+                if (widget.block.type == BlockType.text) {
                   widget.onEditText();
+                } else if (_isVisualBlock) {
+                  widget.onEditImage?.call();
                 }
               }
-            : widget.onOpenImage,
+            : null,
         onPanDown: widget.editing && !widget.locked
             ? (details) => _panDownGlobalPosition = details.globalPosition
             : null,
@@ -691,7 +696,7 @@ class _InkPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
-        ..strokeWidth = block.strokeWidth.clamp(0.5, 20).toDouble()
+        ..strokeWidth = block.strokeWidth.clamp(0.5, 20).toDouble() * 10
         ..color = Color(block.strokeColorValue ?? 0xFF3B3226),
     );
   }

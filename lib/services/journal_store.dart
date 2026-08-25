@@ -104,11 +104,20 @@ class JournalStore extends ChangeNotifier {
   bool _loaded = false;
   Future<void> _writeQueue = Future<void>.value();
   final Map<String, Timer> _checkpointTimers = {};
+  final Set<Future<void> Function()> _flushHooks = {};
 
   /// The entries in page order. Index 0 of this list is page 1 (after TOC).
   List<Entry> get entries => List.unmodifiable(_entries);
 
   bool get isLoaded => _loaded;
+
+  /// Registers an in-memory editor flush that must complete before storage
+  /// is flushed. This keeps app lifecycle persistence ordered when the app
+  /// shell and an active editor observe the same lifecycle event.
+  void addFlushHook(Future<void> Function() hook) => _flushHooks.add(hook);
+
+  void removeFlushHook(Future<void> Function() hook) =>
+      _flushHooks.remove(hook);
 
   /// Opens the Hive boxes and loads all entries.
   Future<void> init() async {
@@ -217,6 +226,9 @@ class JournalStore extends ChangeNotifier {
 
   /// Waits for all queued writes and Hive's pending disk operations.
   Future<void> flush() async {
+    for (final hook in List<Future<void> Function()>.from(_flushHooks)) {
+      await hook();
+    }
     await _writeQueue;
     await _entriesBox.flush();
     await _assetsBox.flush();

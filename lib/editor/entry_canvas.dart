@@ -36,6 +36,7 @@ class EntryCanvas extends StatefulWidget {
     required this.imageBytes,
     this.imageProvider,
     required this.onOpenImage,
+    this.onEditImage,
     this.workspaceSize = PageViewport.pageSize,
     this.worldOrigin = Offset.zero,
     this.cameraScale = 1,
@@ -66,6 +67,7 @@ class EntryCanvas extends StatefulWidget {
   final Uint8List? Function(String assetId) imageBytes;
   final ImageProvider<Object>? Function(String assetId)? imageProvider;
   final ValueChanged<ContentBlock> onOpenImage;
+  final ValueChanged<ContentBlock>? onEditImage;
   final Size workspaceSize;
   final Offset worldOrigin;
   final double cameraScale;
@@ -289,6 +291,11 @@ class _EntryCanvasState extends State<EntryCanvas> {
                                   onOpenImage: block.type == BlockType.image
                                       ? () => widget.onOpenImage(block)
                                       : null,
+                                  onEditImage:
+                                      block.type == BlockType.image ||
+                                          block.type == BlockType.sticker
+                                      ? () => widget.onEditImage?.call(block)
+                                      : null,
                                   onTextChanged: (text) {
                                     if (block.locked) return;
                                     final onTextChanged = widget.onTextChanged;
@@ -380,9 +387,12 @@ class _EntryCanvasState extends State<EntryCanvas> {
       if (height < EntryCanvas.minHeight) height = EntryCanvas.minHeight;
     } else {
       final ratio = session.aspectRatio;
-      final proposed = session.horizontal == 0 ? height * ratio : width;
-      width = math.max(EntryCanvas.minWidth, proposed);
-      height = math.max(EntryCanvas.minHeight, width * ratio);
+      if (session.horizontal == 0) {
+        width = math.max(EntryCanvas.minWidth, height * ratio);
+      } else {
+        width = math.max(EntryCanvas.minWidth, width);
+        height = math.max(EntryCanvas.minHeight, width / ratio);
+      }
     }
     final oppositeLocal = Offset(
       -session.horizontal * width / 2,
@@ -471,7 +481,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
       blockId: block.id,
       startPointer: pointer,
       startSize: Size(width, height),
-      aspectRatio: height / width,
+      aspectRatio: width / height,
       rotation: block.rotation,
       oppositeAnchor: center + _rotate(oppositeLocal, block.rotation),
       horizontal: handle.horizontal,
@@ -859,7 +869,7 @@ class _InkPreviewPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
-        ..strokeWidth = width
+        ..strokeWidth = width * PageViewport.modelToRenderScale
         ..color = color.withValues(alpha: opacity),
     );
   }

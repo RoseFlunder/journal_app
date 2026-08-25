@@ -141,6 +141,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   final Map<String, ImageProvider<Object>> _imageProviders = {};
   final Map<String, ImageProvider<Object>> _stickerProviders = {};
   late final EditorController _editor;
+  Future<void> Function()? _flushHook;
 
   List<ContentBlock> get _blocks => _editor.blocks;
 
@@ -159,6 +160,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         widget.store.scheduleCheckpoint(widget.entry.id);
       },
     )..addListener(_handleEditorChanged);
+    _flushHook = _editor.flushText;
+    widget.store.addFlushHook(_flushHook!);
   }
 
   void _handleEditorChanged() {
@@ -173,6 +176,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    final flushHook = _flushHook;
+    if (flushHook != null) widget.store.removeFlushHook(flushHook);
     _editor
       ..removeListener(_handleEditorChanged)
       ..dispose();
@@ -188,9 +193,14 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      unawaited(_editor.flushText());
-      unawaited(widget.store.flush());
+      unawaited(_flushLifecycle());
     }
+  }
+
+  Future<void> _flushLifecycle() async {
+    await widget.store.flush();
+    await widget.store.createCheckpoint(widget.entry.id);
+    await widget.store.flush();
   }
 
   void _handleTitleFocusChanged() {
@@ -633,7 +643,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   Future<void> _showImageEditor() async {
     final block = _imageSelection();
     if (block == null) return;
+    var crop = block.crop;
     var opacity = block.opacity;
+    var brightness = block.brightness;
+    var contrast = block.contrast;
+    var saturation = block.saturation;
+    var imageMask = block.imageMask;
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: PaperPage.paper,
@@ -665,38 +680,47 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     _cropChoice(
                       context,
                       label: 'Original',
-                      selected: block.crop == null,
-                      onTap: () => _commitImageEdit(
-                        block.id,
-                        (next) => next.crop = null,
-                      ),
+                      selected: crop == null,
+                      onTap: () {
+                        setSheetState(() => crop = null);
+                        _commitImageEdit(block.id, (next) => next.crop = null);
+                      },
                     ),
                     _cropChoice(
                       context,
                       label: 'Square',
-                      selected: block.crop == _squareCrop,
-                      onTap: () => _commitImageEdit(
-                        block.id,
-                        (next) => next.crop = _squareCrop,
-                      ),
+                      selected: crop == _squareCrop,
+                      onTap: () {
+                        setSheetState(() => crop = _squareCrop);
+                        _commitImageEdit(
+                          block.id,
+                          (next) => next.crop = _squareCrop,
+                        );
+                      },
                     ),
                     _cropChoice(
                       context,
                       label: 'Portrait',
-                      selected: block.crop == _portraitCrop,
-                      onTap: () => _commitImageEdit(
-                        block.id,
-                        (next) => next.crop = _portraitCrop,
-                      ),
+                      selected: crop == _portraitCrop,
+                      onTap: () {
+                        setSheetState(() => crop = _portraitCrop);
+                        _commitImageEdit(
+                          block.id,
+                          (next) => next.crop = _portraitCrop,
+                        );
+                      },
                     ),
                     _cropChoice(
                       context,
                       label: 'Wide',
-                      selected: block.crop == _wideCrop,
-                      onTap: () => _commitImageEdit(
-                        block.id,
-                        (next) => next.crop = _wideCrop,
-                      ),
+                      selected: crop == _wideCrop,
+                      onTap: () {
+                        setSheetState(() => crop = _wideCrop);
+                        _commitImageEdit(
+                          block.id,
+                          (next) => next.crop = _wideCrop,
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -726,43 +750,52 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                 _imageAdjustmentSlider(
                   context,
                   label: 'Brightness',
-                  value: block.brightness,
+                  value: brightness,
                   min: -1,
                   max: 1,
                   onStart: () => _editor.beginTransaction('Image brightness'),
-                  onChanged: (value) => _previewImageEdit(
-                    block.id,
-                    (next) => next.brightness = value,
-                    label: 'Image brightness',
-                  ),
+                  onChanged: (value) {
+                    setSheetState(() => brightness = value);
+                    _previewImageEdit(
+                      block.id,
+                      (next) => next.brightness = value,
+                      label: 'Image brightness',
+                    );
+                  },
                   onEnd: () => unawaited(_editor.commitTransaction()),
                 ),
                 _imageAdjustmentSlider(
                   context,
                   label: 'Contrast',
-                  value: block.contrast,
+                  value: contrast,
                   min: -1,
                   max: 1,
                   onStart: () => _editor.beginTransaction('Image contrast'),
-                  onChanged: (value) => _previewImageEdit(
-                    block.id,
-                    (next) => next.contrast = value,
-                    label: 'Image contrast',
-                  ),
+                  onChanged: (value) {
+                    setSheetState(() => contrast = value);
+                    _previewImageEdit(
+                      block.id,
+                      (next) => next.contrast = value,
+                      label: 'Image contrast',
+                    );
+                  },
                   onEnd: () => unawaited(_editor.commitTransaction()),
                 ),
                 _imageAdjustmentSlider(
                   context,
                   label: 'Saturation',
-                  value: block.saturation,
+                  value: saturation,
                   min: 0,
                   max: 2,
                   onStart: () => _editor.beginTransaction('Image saturation'),
-                  onChanged: (value) => _previewImageEdit(
-                    block.id,
-                    (next) => next.saturation = value,
-                    label: 'Image saturation',
-                  ),
+                  onChanged: (value) {
+                    setSheetState(() => saturation = value);
+                    _previewImageEdit(
+                      block.id,
+                      (next) => next.saturation = value,
+                      label: 'Image saturation',
+                    );
+                  },
                   onEnd: () => unawaited(_editor.commitTransaction()),
                 ),
                 const SizedBox(height: 8),
@@ -804,11 +837,15 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     ButtonSegment(value: 'rounded', label: Text('Rounded')),
                     ButtonSegment(value: 'circle', label: Text('Circle')),
                   ],
-                  selected: {block.imageMask},
-                  onSelectionChanged: (selection) => _commitImageEdit(
-                    block.id,
-                    (next) => next.imageMask = selection.first,
-                  ),
+                  selected: {imageMask},
+                  onSelectionChanged: (selection) {
+                    final nextMask = selection.first;
+                    setSheetState(() => imageMask = nextMask);
+                    _commitImageEdit(
+                      block.id,
+                      (next) => next.imageMask = nextMask,
+                    );
+                  },
                 ),
               ],
             ),
@@ -819,6 +856,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   Future<void> _saveTemplate() async {
+    final selectedBlocks = _editor.selectedGraphSnapshot();
+    if (selectedBlocks.isEmpty) return;
     final name = await showDialog<String>(
       context: context,
       builder: (context) => const _RenameLayerDialog(
@@ -827,12 +866,21 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       ),
     );
     if (!mounted || name == null || name.trim().isEmpty) return;
+    final now = DateTime.now();
     await widget.store.saveTemplate(
       JournalTemplate(
         id: _uuid.v4(),
         name: name.trim(),
-        document: EntryDocument.fromEntry(widget.entry),
-        createdAt: DateTime.now(),
+        document: EntryDocument.fromEntry(
+          Entry(
+            id: _uuid.v4(),
+            title: widget.entry.title,
+            createdAt: now,
+            blocks: selectedBlocks,
+            board: _editor.board,
+          ),
+        ),
+        createdAt: now,
       ),
     );
     if (mounted) {
@@ -868,7 +916,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                         Navigator.pop(context);
                         _editor.insertBlocks(
                           template.document.toEntry().blocks,
-                          offset: const Offset(4, 4),
+                          offset: Offset(
+                            PageViewport.modelPageSize.width / 2,
+                            PageViewport.modelPageSize.height / 2,
+                          ),
                           label: 'Insert template',
                         );
                       },
@@ -1076,9 +1127,9 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
               ListTile(
                 leading: const Icon(Icons.dashboard_customize_outlined),
                 title: const Text('Save selection as template'),
-                subtitle: const Text('Reuse this board locally'),
-                enabled: _blocks.isNotEmpty,
-                onTap: _blocks.isEmpty
+                subtitle: const Text('Reuse selected objects locally'),
+                enabled: _editor.hasSelection,
+                onTap: !_editor.hasSelection
                     ? null
                     : () {
                         Navigator.pop(context);
@@ -1793,6 +1844,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       92,
     );
     for (final block in _blocks) {
+      if (block.hidden || block.type == BlockType.group) continue;
       final width =
           math.max(EntryCanvas.minWidth, block.w) *
           PageViewport.modelToRenderScale;
@@ -1901,6 +1953,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                           });
                         },
                         onEditText: _beginTextEditing,
+                        onEditImage: (block) {
+                          _editor.select(block.id);
+                          setState(() => _selectedId = block.id);
+                          _showImageEditor();
+                        },
                         onChanged: _changeBlock,
                         onTextChanged: _editor.replaceText,
                         onInteractionStart: () =>

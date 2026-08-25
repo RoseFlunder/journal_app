@@ -568,6 +568,12 @@ class EditorController extends ChangeNotifier {
 
   List<ContentBlock> snapshotBlocks() => _cloneBlocks(_blocks);
 
+  /// Returns the selected structural graph as detached snapshots for local
+  /// templates and clipboard consumers.
+  List<ContentBlock> selectedGraphSnapshot() => _selectedGraphBlocks
+      .map((block) => block.clone())
+      .toList(growable: false);
+
   /// Replaces the working document after a checkpoint restore or archive
   /// import. History intentionally starts fresh at the restored version.
   void replaceDocument(List<ContentBlock> blocks, BoardSettings board) {
