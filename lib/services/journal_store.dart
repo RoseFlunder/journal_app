@@ -91,6 +91,8 @@ class JournalStore extends ChangeNotifier {
   static const _boxMeta = 'meta';
   static const _boxCheckpoints = 'entryCheckpoints';
   static const _boxTemplates = 'journalTemplates';
+  static const _kRecentColorValues = 'colorPickerRecent';
+  static const _kFavoriteColorValues = 'colorPickerFavorites';
 
   static const _uuid = Uuid();
 
@@ -101,6 +103,8 @@ class JournalStore extends ChangeNotifier {
   late Box _templatesBox;
 
   List<Entry> _entries = [];
+  List<int> _recentColorValues = <int>[];
+  Set<int> _favoriteColorValues = <int>{};
   bool _loaded = false;
   Future<void> _writeQueue = Future<void>.value();
   final Map<String, Timer> _checkpointTimers = {};
@@ -108,6 +112,10 @@ class JournalStore extends ChangeNotifier {
 
   /// The entries in page order. Index 0 of this list is page 1 (after TOC).
   List<Entry> get entries => List.unmodifiable(_entries);
+
+  List<int> get recentColorValues => List.unmodifiable(_recentColorValues);
+
+  Set<int> get favoriteColorValues => Set.unmodifiable(_favoriteColorValues);
 
   bool get isLoaded => _loaded;
 
@@ -126,7 +134,49 @@ class JournalStore extends ChangeNotifier {
     _metaBox = await Hive.openBox(_boxMeta);
     _checkpointsBox = await Hive.openBox(_boxCheckpoints);
     _templatesBox = await Hive.openBox(_boxTemplates);
+    _loadColorPreferences();
     _load();
+  }
+
+  void _loadColorPreferences() {
+    final recent = _metaBox.get(_kRecentColorValues);
+    _recentColorValues = recent is List
+        ? recent.whereType<num>().map((value) => value.toInt()).take(8).toList()
+        : <int>[];
+    final favorites = _metaBox.get(_kFavoriteColorValues);
+    _favoriteColorValues = favorites is List
+        ? favorites
+              .whereType<num>()
+              .map((value) => value.toInt())
+              .take(12)
+              .toSet()
+        : <int>{};
+  }
+
+  /// Persists the user's color-picker recents and favorites independently of
+  /// journal documents so they are available on every page.
+  Future<void> updateColorPreferences({
+    List<int>? recent,
+    Set<int>? favorites,
+  }) {
+    if (recent != null) {
+      _recentColorValues = recent.take(8).toList(growable: false);
+    }
+    if (favorites != null) {
+      _favoriteColorValues = favorites.take(12).toSet();
+    }
+    return _enqueue(() async {
+      if (recent != null) {
+        await _metaBox.put(_kRecentColorValues, _recentColorValues);
+      }
+      if (favorites != null) {
+        await _metaBox.put(
+          _kFavoriteColorValues,
+          _favoriteColorValues.toList(growable: false),
+        );
+      }
+      notifyListeners();
+    });
   }
 
   void _load() {

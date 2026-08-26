@@ -661,59 +661,123 @@ void main() {
     expect(drawn?.h, greaterThanOrEqualTo(10));
   });
 
-  testWidgets('text color picker applies preset, custom, and default colors', (
-    tester,
-  ) async {
-    store = JournalStore();
-    await store.init();
-    for (final existing in store.entries.toList()) {
-      await store.deleteEntry(existing.id);
-    }
-    await tester.pumpWidget(JournalApp(store: store));
-    await tester.pumpAndSettle();
-    await createPageFromFab(tester);
-    await tester.tap(find.byTooltip('Edit page'));
-    await tester.pump();
-    await tester.tap(find.byTooltip('Add text'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'visual text color picker supports palette, custom, and default colors',
+    (tester) async {
+      store = JournalStore();
+      await store.init();
+      for (final existing in store.entries.toList()) {
+        await store.deleteEntry(existing.id);
+      }
+      await tester.pumpWidget(JournalApp(store: store));
+      await tester.pumpAndSettle();
+      await createPageFromFab(tester);
+      await tester.tap(find.byTooltip('Edit page'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Add text'));
+      await tester.pumpAndSettle();
 
-    final blockId = store.entries.single.blocks.single.id;
-    await tester.enterText(
-      find.byKey(ValueKey('block-text-$blockId')),
-      'Colorful note',
-    );
-    await tester.tap(find.byTooltip('Text color'));
-    await tester.pumpAndSettle();
-    expect(find.text('Text color'), findsOneWidget);
-    await tester.tap(find.bySemanticsLabel('Berry'));
-    await tester.tap(find.text('Apply'));
-    await tester.pumpAndSettle();
-    expect(store.entries.single.blocks.single.textColorValue, 0xFF873F4D);
-    expect(
-      tester
-          .widget<TextField>(find.byKey(ValueKey('block-text-$blockId')))
-          .style
-          ?.color
-          ?.toARGB32(),
-      0xFF873F4D,
-    );
+      final blockId = store.entries.single.blocks.single.id;
+      await tester.enterText(
+        find.byKey(ValueKey('block-text-$blockId')),
+        'Colorful note',
+      );
+      await tester.tap(find.byTooltip('Text color'));
+      await tester.pumpAndSettle();
+      expect(find.text('Text color'), findsOneWidget);
+      expect(find.byKey(const ValueKey('color-wheel')), findsOneWidget);
+      expect(find.byKey(const ValueKey('color-field')), findsOneWidget);
+      expect(find.byKey(const ValueKey('color-opacity')), findsOneWidget);
+      expect(find.byType(Slider), findsNothing);
+      expect(find.textContaining('Hue '), findsNothing);
+      expect(find.textContaining('Saturation '), findsNothing);
+      expect(find.textContaining('Brightness '), findsNothing);
+      await tester.tap(find.bySemanticsLabel('Berry'));
+      expect(store.entries.single.blocks.single.textColorValue, 0xFF873F4D);
+      await tester.tap(find.byKey(const ValueKey('toggle-color-favorite')));
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+      expect(store.entries.single.blocks.single.textColorValue, 0xFF873F4D);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(ValueKey('block-text-$blockId')))
+            .style
+            ?.color
+            ?.toARGB32(),
+        0xFF873F4D,
+      );
 
-    await tester.tap(find.byKey(const ValueKey('entry-title')));
-    await tester.pump();
-    await tester.tap(find.byTooltip('Text color'));
-    await tester.pumpAndSettle();
-    final dialogFields = find.byType(TextField);
-    await tester.enterText(dialogFields.last, '123456');
-    await tester.tap(find.text('Apply'));
-    await tester.pumpAndSettle();
-    expect(store.entries.single.titleTextColorValue, 0xFF123456);
+      await tester.tap(find.byTooltip('Text color'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('color-eyedropper')));
+      await tester.pump();
+      expect(find.text('Tap the page to sample a color'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('color-sample-cancel')));
+      await tester.pumpAndSettle();
+      expect(store.entries.single.blocks.single.textColorValue, 0xFF873F4D);
 
-    await tester.tap(find.byTooltip('Text color'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Default ink'));
-    await tester.pumpAndSettle();
-    expect(store.entries.single.titleTextColorValue, isNull);
-  });
+      await tester.tap(find.byTooltip('Text color'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('color-eyedropper')));
+      await tester.pump();
+      final page = tester.getRect(find.byType(PaperPage));
+      await tester.tapAt(page.center);
+      await tester.pumpAndSettle();
+      expect(find.text('Text color'), findsNothing);
+      expect(
+        store.entries.single.blocks.single.textColorValue,
+        isNot(0xFF873F4D),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('entry-title')));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Text color'));
+      await tester.pumpAndSettle();
+      expect(find.text('Favorite colors'), findsOneWidget);
+      final titleField = find.byKey(const ValueKey('color-field'));
+      await tester.ensureVisible(titleField);
+      await tester.pump();
+      final titleFieldRect = tester.getRect(titleField);
+      await tester.tapAt(titleFieldRect.bottomRight - const Offset(8, 8));
+      await tester.pump();
+      expect(store.entries.single.titleTextColorValue, isNotNull);
+      final liveTitleColor = store.entries.single.titleTextColorValue;
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(store.entries.single.titleTextColorValue, isNull);
+
+      await tester.tap(find.byTooltip('Text color'));
+      await tester.pumpAndSettle();
+      final wheelFinder = find.byKey(const ValueKey('color-wheel'));
+      await tester.ensureVisible(wheelFinder);
+      await tester.pump();
+      final wheel = tester.getRect(wheelFinder);
+      await tester.tapAt(wheel.center + Offset(0, -wheel.height / 2 + 14));
+      await tester.pump();
+      expect(store.entries.single.titleTextColorValue, isNot(liveTitleColor));
+      final opacity = find.byKey(const ValueKey('color-opacity'));
+      await tester.ensureVisible(opacity);
+      await tester.pump();
+      await tester.tapAt(tester.getRect(opacity).center);
+      await tester.pump();
+      expect(
+        (Color(store.entries.single.titleTextColorValue!).a * 255).round(),
+        closeTo(128, 2),
+      );
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+      expect(store.entries.single.titleTextColorValue, isNotNull);
+      await store.flush();
+      expect(store.recentColorValues, isNotEmpty);
+      expect(store.favoriteColorValues, contains(0xFF873F4D));
+
+      await tester.tap(find.byTooltip('Text color'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Default ink'));
+      await tester.pumpAndSettle();
+      expect(store.entries.single.titleTextColorValue, isNull);
+    },
+  );
 
   testWidgets('image provider remains stable across rebuilds', (tester) async {
     final bytes = Uint8List.fromList(

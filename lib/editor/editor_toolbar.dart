@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../models/entry.dart';
@@ -22,6 +24,13 @@ class EditorToolbar extends StatelessWidget {
     required this.onFontFamilyChanged,
     required this.textColorValue,
     required this.onTextColorChanged,
+    this.onTextColorEditStart,
+    this.onTextColorEditEnd,
+    this.recentColorValues = const <int>[],
+    this.favoriteColorValues = const <int>{},
+    this.onRecentColorAdded,
+    this.onFavoriteColorsChanged,
+    this.onSampleColor,
     required this.onToggleBold,
     required this.onToggleItalic,
     required this.bold,
@@ -56,6 +65,13 @@ class EditorToolbar extends StatelessWidget {
   final ValueChanged<String?> onFontFamilyChanged;
   final int? textColorValue;
   final ValueChanged<int?> onTextColorChanged;
+  final VoidCallback? onTextColorEditStart;
+  final VoidCallback? onTextColorEditEnd;
+  final List<int> recentColorValues;
+  final Set<int> favoriteColorValues;
+  final ValueChanged<int>? onRecentColorAdded;
+  final ValueChanged<Set<int>>? onFavoriteColorsChanged;
+  final Future<Color?> Function()? onSampleColor;
   final VoidCallback onToggleBold;
   final VoidCallback onToggleItalic;
   final bool bold;
@@ -146,6 +162,13 @@ class EditorToolbar extends StatelessWidget {
                     compact: compact,
                     colorValue: textColorValue,
                     onChanged: onTextColorChanged,
+                    onEditStart: onTextColorEditStart,
+                    onEditEnd: onTextColorEditEnd,
+                    recentColorValues: recentColorValues,
+                    favoriteColorValues: favoriteColorValues,
+                    onRecentColorAdded: onRecentColorAdded,
+                    onFavoriteColorsChanged: onFavoriteColorsChanged,
+                    onSampleColor: onSampleColor,
                   ),
                   _Action(
                     tooltip: 'Decrease font size',
@@ -322,21 +345,67 @@ class _TextColorPicker extends StatelessWidget {
     required this.compact,
     required this.colorValue,
     required this.onChanged,
+    this.onEditStart,
+    this.onEditEnd,
+    this.recentColorValues = const <int>[],
+    this.favoriteColorValues = const <int>{},
+    this.onRecentColorAdded,
+    this.onFavoriteColorsChanged,
+    this.onSampleColor,
   });
 
   final bool compact;
   final int? colorValue;
   final ValueChanged<int?> onChanged;
+  final VoidCallback? onEditStart;
+  final VoidCallback? onEditEnd;
+  final List<int> recentColorValues;
+  final Set<int> favoriteColorValues;
+  final ValueChanged<int>? onRecentColorAdded;
+  final ValueChanged<Set<int>>? onFavoriteColorsChanged;
+  final Future<Color?> Function()? onSampleColor;
 
   Color get _color =>
       colorValue == null ? const Color(0xFF3B3226) : Color(colorValue!);
 
   Future<void> _open(BuildContext context) async {
-    final choice = await showDialog<_ColorChoice>(
-      context: context,
-      builder: (context) => _ColorPickerDialog(initialValue: colorValue),
-    );
-    if (choice != null) onChanged(choice.value);
+    final original = colorValue;
+    var dialogInitial = colorValue;
+    var finished = false;
+    onEditStart?.call();
+    while (!finished) {
+      if (!context.mounted) break;
+      final choice = await showDialog<_ColorChoice>(
+        context: context,
+        builder: (context) => _ColorPickerDialog(
+          initialValue: dialogInitial,
+          recentColorValues: recentColorValues,
+          favoriteColorValues: favoriteColorValues,
+          onPreview: onChanged,
+          onFavoriteColorsChanged: onFavoriteColorsChanged,
+          onSampleColor: onSampleColor != null
+              ? () => Navigator.pop(context, const _ColorChoice.sample())
+              : null,
+        ),
+      );
+      if (choice?.sample == true) {
+        final sampled = await onSampleColor?.call();
+        final value = sampled?.toARGB32();
+        onChanged(value ?? original);
+        if (value != null) onRecentColorAdded?.call(value);
+        finished = true;
+        continue;
+      }
+      if (choice == null) {
+        onChanged(original);
+      } else {
+        onChanged(choice.value);
+        final value = choice.value;
+        if (value != null) onRecentColorAdded?.call(value);
+      }
+      finished = true;
+    }
+    onEditEnd?.call();
   }
 
   @override
@@ -372,15 +441,30 @@ class _TextColorPicker extends StatelessWidget {
 }
 
 class _ColorChoice {
-  const _ColorChoice(this.value);
+  const _ColorChoice(this.value) : sample = false;
+
+  const _ColorChoice.sample() : value = null, sample = true;
 
   final int? value;
+  final bool sample;
 }
 
 class _ColorPickerDialog extends StatefulWidget {
-  const _ColorPickerDialog({this.initialValue});
+  const _ColorPickerDialog({
+    this.initialValue,
+    this.recentColorValues = const <int>[],
+    this.favoriteColorValues = const <int>{},
+    this.onPreview,
+    this.onFavoriteColorsChanged,
+    this.onSampleColor,
+  });
 
   final int? initialValue;
+  final List<int> recentColorValues;
+  final Set<int> favoriteColorValues;
+  final ValueChanged<int?>? onPreview;
+  final ValueChanged<Set<int>>? onFavoriteColorsChanged;
+  final VoidCallback? onSampleColor;
 
   @override
   State<_ColorPickerDialog> createState() => _ColorPickerDialogState();
@@ -402,8 +486,8 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
   late double _hue;
   late double _saturation;
   late double _value;
-  late final TextEditingController _hexController;
-  String? _hexError;
+  late double _alpha;
+  late Set<int> _favorites;
 
   @override
   void initState() {
@@ -416,17 +500,9 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
     _hue = hsv.hue;
     _saturation = hsv.saturation;
     _value = hsv.value;
-    _hexController = TextEditingController(text: _hex(_selected));
+    _alpha = hsv.alpha;
+    _favorites = {...widget.favoriteColorValues};
   }
-
-  @override
-  void dispose() {
-    _hexController.dispose();
-    super.dispose();
-  }
-
-  String _hex(Color color) =>
-      color.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase();
 
   void _setColor(Color color) {
     final hsv = HSVColor.fromColor(color);
@@ -435,28 +511,105 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
       _hue = hsv.hue;
       _saturation = hsv.saturation;
       _value = hsv.value;
-      _hexController.text = _hex(color);
-      _hexError = null;
     });
+    widget.onPreview?.call(color.toARGB32());
   }
 
   void _setHsv() =>
-      _setColor(HSVColor.fromAHSV(1, _hue, _saturation, _value).toColor());
+      _setColor(HSVColor.fromAHSV(_alpha, _hue, _saturation, _value).toColor());
 
-  void _parseHex(String value) {
-    final normalized = value.trim().replaceFirst('#', '');
-    final withAlpha = normalized.length == 6 ? 'FF$normalized' : normalized;
-    final parsed = int.tryParse(withAlpha, radix: 16);
-    if (parsed == null || withAlpha.length != 8) {
-      setState(() => _hexError = 'Enter 6 or 8 hexadecimal digits.');
-      return;
-    }
-    _setColor(Color(parsed));
+  void _setHue(Offset localPosition, Size size) {
+    final center = size.center(Offset.zero);
+    final offset = localPosition - center;
+    final distance = offset.distance;
+    final radius = math.min(size.width, size.height) / 2;
+    if (distance < radius - 34 || distance > radius + 4) return;
+    var hue = (math.atan2(offset.dy, offset.dx) * 180 / math.pi) + 90;
+    if (hue < 0) hue += 360;
+    _hue = hue % 360;
+    _setHsv();
+  }
+
+  void _setField(Offset localPosition, Size size) {
+    _saturation = (localPosition.dx / size.width).clamp(0.0, 1.0);
+    _value = (1 - localPosition.dy / size.height).clamp(0.0, 1.0);
+    _setHsv();
+  }
+
+  void _setOpacity(Offset localPosition, Size size) {
+    _alpha = (localPosition.dx / size.width).clamp(0.0, 1.0);
+    _setHsv();
+  }
+
+  void _toggleFavorite() {
+    final value = _selected.toARGB32();
+    setState(() {
+      if (!_favorites.add(value)) _favorites.remove(value);
+    });
+    widget.onFavoriteColorsChanged?.call(Set.unmodifiable(_favorites));
+  }
+
+  Widget _swatch({required String label, required Color color}) {
+    final selected = color.toARGB32() == _selected.toARGB32();
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: Tooltip(
+        message: label,
+        child: InkWell(
+          key: ValueKey('color-swatch-${color.toARGB32()}'),
+          onTap: () => _setColor(color),
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: selected ? Colors.white : Colors.black26,
+                width: selected ? 3 : 2,
+              ),
+              boxShadow: selected
+                  ? [const BoxShadow(color: Colors.black26, blurRadius: 2)]
+                  : null,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _swatchSection(String title, Iterable<int> values) {
+    final colors = values.map(Color.new).toList(growable: false);
+    if (colors.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var i = 0; i < colors.length; i++)
+                _swatch(label: '$title color ${i + 1}', color: colors[i]),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   bool get _lowContrast {
     final paper = const Color(0xFFF2E9D5).computeLuminance();
-    final ink = _selected.computeLuminance();
+    final ink = Color.alphaBlend(
+      _selected,
+      const Color(0xFFF2E9D5),
+    ).computeLuminance();
     final light = paper > ink ? paper : ink;
     final dark = paper > ink ? ink : paper;
     return (light + 0.05) / (dark + 0.05) < 4.5;
@@ -468,7 +621,18 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
         .clamp(240.0, 420.0)
         .toDouble();
     return AlertDialog(
-      title: const Text('Text color'),
+      title: Row(
+        children: [
+          const Expanded(child: Text('Text color')),
+          if (widget.onSampleColor != null)
+            IconButton(
+              key: const ValueKey('color-eyedropper'),
+              tooltip: 'Sample color from page',
+              onPressed: widget.onSampleColor,
+              icon: const Icon(Icons.colorize),
+            ),
+        ],
+      ),
       content: SingleChildScrollView(
         child: SizedBox(
           width: width,
@@ -476,102 +640,65 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   _Preview(label: 'Current', color: _initial),
-                  const SizedBox(width: 16),
                   _Preview(label: 'New', color: _selected),
+                  IconButton(
+                    key: const ValueKey('toggle-color-favorite'),
+                    tooltip: _favorites.contains(_selected.toARGB32())
+                        ? 'Remove from favorite colors'
+                        : 'Save to favorite colors',
+                    onPressed: _toggleFavorite,
+                    icon: Icon(
+                      _favorites.contains(_selected.toARGB32())
+                          ? Icons.star
+                          : Icons.star_border,
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 16),
-              const Text('Presets'),
+              const SizedBox(height: 14),
+              const Text('Palette'),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
                   for (final preset in _presets)
-                    Semantics(
-                      button: true,
-                      label: preset.label,
-                      child: Tooltip(
-                        message: preset.label,
-                        child: InkWell(
-                          onTap: () => _setColor(preset.color),
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: preset.color,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color:
-                                    _selected.toARGB32() ==
-                                        preset.color.toARGB32()
-                                    ? Colors.white
-                                    : Colors.black26,
-                                width: 2,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                    _swatch(label: preset.label, color: preset.color),
                 ],
               ),
+              _swatchSection('Favorite colors', _favorites),
+              _swatchSection('Recent colors', widget.recentColorValues),
               const SizedBox(height: 16),
-              Text('Hue ${_hue.round()}°'),
               Semantics(
-                label: 'Hue',
-                child: Slider(
-                  value: _hue,
-                  min: 0,
-                  max: 360,
-                  onChanged: (value) {
-                    _hue = value;
-                    _setHsv();
-                  },
+                label: 'Hue wheel',
+                child: _HueWheel(
+                  hue: _hue,
+                  onChanged: (position, size) => _setHue(position, size),
                 ),
               ),
-              Text('Saturation ${(_saturation * 100).round()}%'),
               Semantics(
-                label: 'Saturation',
-                child: Slider(
-                  value: _saturation,
-                  onChanged: (value) {
-                    _saturation = value;
-                    _setHsv();
-                  },
-                ),
-              ),
-              Text('Brightness ${(_value * 100).round()}%'),
-              Semantics(
-                label: 'Brightness',
-                child: Slider(
+                label: 'Color shade field',
+                child: _ColorField(
+                  hue: _hue,
+                  saturation: _saturation,
                   value: _value,
-                  onChanged: (value) {
-                    _value = value;
-                    _setHsv();
-                  },
+                  onChanged: (position, size) => _setField(position, size),
                 ),
               ),
-              TextField(
-                controller: _hexController,
-                textCapitalization: TextCapitalization.characters,
-                decoration: InputDecoration(
-                  labelText: 'Hex color',
-                  prefixText: '#',
-                  errorText: _hexError,
+              Semantics(
+                label: 'Opacity control',
+                child: _OpacityField(
+                  color: _selected,
+                  alpha: _alpha,
+                  onChanged: (position, size) => _setOpacity(position, size),
                 ),
-                onChanged: (value) {
-                  final normalized = value.replaceFirst('#', '');
-                  if (normalized.isEmpty) {
-                    setState(() => _hexError = null);
-                  } else {
-                    _parseHex(normalized);
-                  }
-                },
               ),
               if (_lowContrast)
                 const Padding(
@@ -595,14 +722,257 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _hexError == null
-              ? () => Navigator.pop(context, _ColorChoice(_selected.toARGB32()))
-              : null,
+          onPressed: () =>
+              Navigator.pop(context, _ColorChoice(_selected.toARGB32())),
           child: const Text('Apply'),
         ),
       ],
     );
   }
+}
+
+class _HueWheel extends StatelessWidget {
+  const _HueWheel({required this.hue, required this.onChanged});
+
+  final double hue;
+  final void Function(Offset position, Size size) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = math
+        .min((MediaQuery.sizeOf(context).width - 96).clamp(210.0, 280.0), 280.0)
+        .toDouble();
+    return SizedBox(
+      key: const ValueKey('color-wheel'),
+      width: size,
+      height: size,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wheelSize = Size(constraints.maxWidth, constraints.maxHeight);
+          return Stack(
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: (details) =>
+                    onChanged(details.localPosition, wheelSize),
+                onPanStart: (details) =>
+                    onChanged(details.localPosition, wheelSize),
+                onPanUpdate: (details) =>
+                    onChanged(details.localPosition, wheelSize),
+                child: CustomPaint(painter: _HueWheelPainter(hue)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ColorField extends StatelessWidget {
+  const _ColorField({
+    required this.hue,
+    required this.saturation,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final double hue;
+  final double saturation;
+  final double value;
+  final void Function(Offset position, Size size) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      key: const ValueKey('color-field'),
+      width: double.infinity,
+      height: 180,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final size = Size(constraints.maxWidth, constraints.maxHeight);
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (details) => onChanged(details.localPosition, size),
+            onPanStart: (details) => onChanged(details.localPosition, size),
+            onPanUpdate: (details) => onChanged(details.localPosition, size),
+            child: CustomPaint(
+              painter: _ColorFieldPainter(hue, saturation, value),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _OpacityField extends StatelessWidget {
+  const _OpacityField({
+    required this.color,
+    required this.alpha,
+    required this.onChanged,
+  });
+
+  final Color color;
+  final double alpha;
+  final void Function(Offset position, Size size) onChanged;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 14),
+    child: SizedBox(
+      key: const ValueKey('color-opacity'),
+      height: 32,
+      width: double.infinity,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final size = Size(constraints.maxWidth, constraints.maxHeight);
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (details) => onChanged(details.localPosition, size),
+            onPanStart: (details) => onChanged(details.localPosition, size),
+            onPanUpdate: (details) => onChanged(details.localPosition, size),
+            child: CustomPaint(painter: _OpacityPainter(color, alpha)),
+          );
+        },
+      ),
+    ),
+  );
+}
+
+class _HueWheelPainter extends CustomPainter {
+  const _HueWheelPainter(this.hue);
+
+  final double hue;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final radius = math.min(size.width, size.height) / 2 - 14;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    final colors = [
+      for (var i = 0; i <= 6; i++)
+        HSVColor.fromAHSV(1, i * 60 % 360, 1, 1).toColor(),
+    ];
+    final wheel = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 28
+      ..shader = SweepGradient(
+        startAngle: -math.pi / 2,
+        endAngle: math.pi * 1.5,
+        colors: colors,
+      ).createShader(rect);
+    canvas.drawCircle(center, radius, wheel);
+
+    final angle = (hue - 90) * math.pi / 180;
+    final marker = center + Offset(math.cos(angle), math.sin(angle)) * radius;
+    canvas
+      ..drawCircle(marker, 10, Paint()..color = Colors.white)
+      ..drawCircle(
+        marker,
+        8,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = Colors.black87,
+      );
+  }
+
+  @override
+  bool shouldRepaint(covariant _HueWheelPainter oldDelegate) =>
+      oldDelegate.hue != hue;
+}
+
+class _ColorFieldPainter extends CustomPainter {
+  const _ColorFieldPainter(this.hue, this.saturation, this.value);
+
+  final double hue;
+  final double saturation;
+  final double value;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final hueColor = HSVColor.fromAHSV(1, hue, 1, 1).toColor();
+    canvas.drawRect(rect, Paint()..color = hueColor);
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = const LinearGradient(
+          colors: [Colors.white, Colors.transparent],
+        ).createShader(rect),
+    );
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = const LinearGradient(
+          colors: [Colors.transparent, Colors.black],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ).createShader(rect),
+    );
+    final marker = Offset(saturation * size.width, (1 - value) * size.height);
+    canvas
+      ..drawCircle(marker, 9, Paint()..color = Colors.white)
+      ..drawCircle(
+        marker,
+        7,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = Colors.black87,
+      );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ColorFieldPainter oldDelegate) =>
+      oldDelegate.hue != hue ||
+      oldDelegate.saturation != saturation ||
+      oldDelegate.value != value;
+}
+
+class _OpacityPainter extends CustomPainter {
+  const _OpacityPainter(this.color, this.alpha);
+
+  final Color color;
+  final double alpha;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    const tile = 8.0;
+    final checker = Paint();
+    for (var y = 0.0; y < size.height; y += tile) {
+      for (var x = 0.0; x < size.width; x += tile) {
+        checker.color = ((x / tile).floor() + (y / tile).floor()).isEven
+            ? Colors.white
+            : const Color(0xFFD9D2C6);
+        canvas.drawRect(Rect.fromLTWH(x, y, tile, tile), checker);
+      }
+    }
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = LinearGradient(
+          colors: [color.withValues(alpha: 0), color.withValues(alpha: 1)],
+        ).createShader(rect),
+    );
+    final x = alpha * size.width;
+    canvas
+      ..drawCircle(Offset(x, size.height / 2), 9, Paint()..color = Colors.white)
+      ..drawCircle(
+        Offset(x, size.height / 2),
+        7,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = Colors.black87,
+      );
+  }
+
+  @override
+  bool shouldRepaint(covariant _OpacityPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.alpha != alpha;
 }
 
 class _Preview extends StatelessWidget {

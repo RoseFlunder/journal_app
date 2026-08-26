@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
@@ -133,6 +135,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   bool _titleFocused = false;
   String? _selectedId;
   String? _textEditingId;
+  String? _colorTransactionBlockId;
+  bool _samplingColor = false;
+  final GlobalKey _pageCaptureKey = GlobalKey();
+  Completer<Color?>? _colorSampleCompleter;
   late final TextEditingController _titleController = TextEditingController(
     text: widget.entry.title,
   );
@@ -178,6 +184,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _colorSampleCompleter?.complete(null);
+    _colorSampleCompleter = null;
     WidgetsBinding.instance.removeObserver(this);
     final flushHook = _flushHook;
     if (flushHook != null) widget.store.removeFlushHook(flushHook);
@@ -373,13 +381,98 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void _changeTextColor(int? value) {
     final block = _activeTextBlock;
     if (block != null) {
-      _editor.beginTransaction('Format text');
       _editor.updateBlock(block.id, (target) => target.textColorValue = value);
-      unawaited(_editor.commitTransaction());
     } else if (_titleFocused) {
       widget.onTitleTextColorChanged(value);
     }
     setState(() {});
+  }
+
+  void _beginTextColorEdit() {
+    final block = _activeTextBlock;
+    if (block == null) return;
+    _colorTransactionBlockId = block.id;
+    _editor.beginTransaction('Format text');
+  }
+
+  void _endTextColorEdit() {
+    if (_colorTransactionBlockId == null) return;
+    _colorTransactionBlockId = null;
+    unawaited(_editor.commitTransaction());
+  }
+
+  Future<Color?> _requestColorSample() {
+    final current = _colorSampleCompleter;
+    if (current != null) return current.future;
+    final completer = Completer<Color?>();
+    _colorSampleCompleter = completer;
+    setState(() => _samplingColor = true);
+    return completer.future;
+  }
+
+  Future<void> _completeColorSample(Offset globalPosition) async {
+    final completer = _colorSampleCompleter;
+    if (completer == null) return;
+    Color? sampled;
+    try {
+      final renderObject = _pageCaptureKey.currentContext?.findRenderObject();
+      if (renderObject is RenderRepaintBoundary) {
+        final box = renderObject;
+        final local = box.globalToLocal(globalPosition);
+        if ((Offset.zero & box.size).contains(local)) {
+          final image = await box.toImage(pixelRatio: 1);
+          final data = await image.toByteData(
+            format: ui.ImageByteFormat.rawRgba,
+          );
+          if (data != null && image.width > 0 && image.height > 0) {
+            final x = (local.dx * image.width / box.size.width)
+                .clamp(0, image.width - 1)
+                .floor();
+            final y = (local.dy * image.height / box.size.height)
+                .clamp(0, image.height - 1)
+                .floor();
+            final index = (y * image.width + x) * 4;
+            if (index + 3 < data.lengthInBytes) {
+              sampled = Color.fromARGB(
+                data.getUint8(index + 3),
+                data.getUint8(index),
+                data.getUint8(index + 1),
+                data.getUint8(index + 2),
+              );
+            }
+          }
+        }
+      }
+    } catch (_) {
+      sampled = null;
+    }
+    _colorSampleCompleter = null;
+    if (mounted) setState(() => _samplingColor = false);
+    if (sampled == null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not sample that page color.')),
+      );
+    }
+    if (!completer.isCompleted) completer.complete(sampled);
+  }
+
+  void _cancelColorSample() {
+    final completer = _colorSampleCompleter;
+    _colorSampleCompleter = null;
+    if (mounted) setState(() => _samplingColor = false);
+    if (completer != null && !completer.isCompleted) completer.complete(null);
+  }
+
+  void _addRecentColor(int value) {
+    final recent = [
+      value,
+      ...widget.store.recentColorValues.where((item) => item != value),
+    ].take(8).toList(growable: false);
+    unawaited(widget.store.updateColorPreferences(recent: recent));
+  }
+
+  void _updateFavoriteColors(Set<int> values) {
+    unawaited(widget.store.updateColorPreferences(favorites: values));
   }
 
   TextStyle _titleStyle(BuildContext context) =>
@@ -1879,147 +1972,205 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     !_resizeActive && !(_editing && _editor.hasSelection),
                 initialView: widget.entry.view,
                 onViewChanged: widget.onViewChanged,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Positioned.fill(
-                      child: PaperPage(child: const SizedBox.expand()),
-                    ),
-                    Positioned.fill(
-                      child: EntryCanvas(
-                        workspaceSize: _workspaceSize,
-                        worldOrigin: _worldOrigin,
-                        // Render from detached snapshots. EntryCanvas may
-                        // mutate a preview during pointer updates, but the
-                        // controller-owned document remains behind its
-                        // explicit snapshot command boundary.
-                        blocks: _blocks.map((block) => block.clone()).toList(),
-                        board: _editor.board,
-                        cameraScale: _cameraScale,
-                        editing: _editing,
-                        selectedId: _selectedId,
-                        selectedIds: _editor.selection,
-                        textEditingId: _textEditingId,
-                        onResizeActiveChanged: (active) {
-                          if (_resizeActive == active || !mounted) return;
-                          setState(() => _resizeActive = active);
-                        },
-                        onSelect: (id) {
-                          if (id == null) {
-                            FocusScope.of(context).unfocus();
-                            _editor.select(null);
+                child: RepaintBoundary(
+                  key: _pageCaptureKey,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Positioned.fill(
+                        child: PaperPage(child: const SizedBox.expand()),
+                      ),
+                      Positioned.fill(
+                        child: EntryCanvas(
+                          workspaceSize: _workspaceSize,
+                          worldOrigin: _worldOrigin,
+                          // Render from detached snapshots. EntryCanvas may
+                          // mutate a preview during pointer updates, but the
+                          // controller-owned document remains behind its
+                          // explicit snapshot command boundary.
+                          blocks: _blocks
+                              .map((block) => block.clone())
+                              .toList(),
+                          board: _editor.board,
+                          cameraScale: _cameraScale,
+                          editing: _editing,
+                          selectedId: _selectedId,
+                          selectedIds: _editor.selection,
+                          textEditingId: _textEditingId,
+                          onResizeActiveChanged: (active) {
+                            if (_resizeActive == active || !mounted) return;
+                            setState(() => _resizeActive = active);
+                          },
+                          onSelect: (id) {
+                            if (id == null) {
+                              FocusScope.of(context).unfocus();
+                              _editor.select(null);
+                              setState(() {
+                                _titleFocused = false;
+                                _textEditingId = null;
+                              });
+                              return;
+                            }
+                            final keys =
+                                HardwareKeyboard.instance.logicalKeysPressed;
+                            final additive =
+                                keys.contains(LogicalKeyboardKey.shiftLeft) ||
+                                keys.contains(LogicalKeyboardKey.shiftRight);
+                            _editor.select(id, additive: additive);
                             setState(() {
                               _titleFocused = false;
+                              _selectedId = id;
                               _textEditingId = null;
                             });
-                            return;
-                          }
-                          final keys =
-                              HardwareKeyboard.instance.logicalKeysPressed;
-                          final additive =
-                              keys.contains(LogicalKeyboardKey.shiftLeft) ||
-                              keys.contains(LogicalKeyboardKey.shiftRight);
-                          _editor.select(id, additive: additive);
-                          setState(() {
-                            _titleFocused = false;
-                            _selectedId = id;
-                            _textEditingId = null;
-                          });
-                        },
-                        onEditText: _beginTextEditing,
-                        onEditImage: (block) {
-                          _editor.select(block.id);
-                          setState(() => _selectedId = block.id);
-                          _showImageEditor();
-                        },
-                        onChanged: _changeBlock,
-                        onTextChanged: _editor.replaceText,
-                        onInteractionStart: () =>
-                            _editor.beginTransaction('Transform'),
-                        onInteractionEnd: () {
-                          _editor.snapSelection();
-                          unawaited(_editor.commitTransaction());
-                        },
-                        onMoveSelection: (delta) =>
-                            _editor.moveSelection(delta, snap: true),
-                        onRotateSelection: _editor.rotateSelection,
-                        onTouchRotateSelection: (blockIds, pivot, delta) =>
-                            _editor.rotateBlocksAround(blockIds, pivot, delta),
-                        selectMode: _selectMode,
-                        drawMode: _drawMode,
-                        inkColorValue: _inkColorValue,
-                        inkWidth: _inkWidth,
-                        inkOpacity: _inkOpacity,
-                        onLassoSelected: (ids) {
-                          _editor.selectMany(ids);
-                          setState(() {
-                            _selectedId = ids.isEmpty ? null : ids.last;
-                            _textEditingId = null;
-                          });
-                        },
-                        onInkCreated: (block) {
-                          _editor.add(block);
-                          setState(() => _selectedId = block.id);
-                        },
-                        imageBytes: widget.store.getAsset,
-                        imageProvider: _imageProvider,
-                        onOpenImage: _openImage,
-                      ),
-                    ),
-                    Positioned(
-                      left: _headerPosition.dx,
-                      top: _headerPosition.dy,
-                      width: PageViewport.pageSize.width,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(28, 18, 28, 24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _editing
-                                ? TextField(
-                                    key: const ValueKey('entry-title'),
-                                    controller: _titleController,
-                                    focusNode: _titleFocusNode,
-                                    maxLines: 1,
-                                    onTap: () {
-                                      setState(() {
-                                        _titleFocused = true;
-                                        _textEditingId = null;
-                                      });
-                                    },
-                                    onChanged: widget.onTitleChanged,
-                                    style: _titleStyle(context),
-                                    textAlign: TextAlign.center,
-                                    decoration: const InputDecoration(
-                                      hintText: 'Untitled page',
-                                      border: InputBorder.none,
-                                      isDense: true,
-                                    ),
-                                  )
-                                : Text(
-                                    widget.entry.title.isEmpty
-                                        ? 'Untitled page'
-                                        : widget.entry.title,
-                                    style: _titleStyle(context),
-                                    textAlign: TextAlign.center,
-                                  ),
-                            const SizedBox(height: 4),
-                            Text(
-                              DateFormat.yMMMMd().format(
-                                widget.entry.createdAt,
+                          },
+                          onEditText: _beginTextEditing,
+                          onEditImage: (block) {
+                            _editor.select(block.id);
+                            setState(() => _selectedId = block.id);
+                            _showImageEditor();
+                          },
+                          onChanged: _changeBlock,
+                          onTextChanged: _editor.replaceText,
+                          onInteractionStart: () =>
+                              _editor.beginTransaction('Transform'),
+                          onInteractionEnd: () {
+                            _editor.snapSelection();
+                            unawaited(_editor.commitTransaction());
+                          },
+                          onMoveSelection: (delta) =>
+                              _editor.moveSelection(delta, snap: true),
+                          onRotateSelection: _editor.rotateSelection,
+                          onTouchRotateSelection: (blockIds, pivot, delta) =>
+                              _editor.rotateBlocksAround(
+                                blockIds,
+                                pivot,
+                                delta,
                               ),
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: Colors.black54),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
+                          selectMode: _selectMode,
+                          drawMode: _drawMode,
+                          inkColorValue: _inkColorValue,
+                          inkWidth: _inkWidth,
+                          inkOpacity: _inkOpacity,
+                          onLassoSelected: (ids) {
+                            _editor.selectMany(ids);
+                            setState(() {
+                              _selectedId = ids.isEmpty ? null : ids.last;
+                              _textEditingId = null;
+                            });
+                          },
+                          onInkCreated: (block) {
+                            _editor.add(block);
+                            setState(() => _selectedId = block.id);
+                          },
+                          imageBytes: widget.store.getAsset,
+                          imageProvider: _imageProvider,
+                          onOpenImage: _openImage,
                         ),
                       ),
-                    ),
-                  ],
+                      Positioned(
+                        left: _headerPosition.dx,
+                        top: _headerPosition.dy,
+                        width: PageViewport.pageSize.width,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(28, 18, 28, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _editing
+                                  ? TextField(
+                                      key: const ValueKey('entry-title'),
+                                      controller: _titleController,
+                                      focusNode: _titleFocusNode,
+                                      maxLines: 1,
+                                      onTap: () {
+                                        setState(() {
+                                          _titleFocused = true;
+                                          _textEditingId = null;
+                                        });
+                                      },
+                                      onChanged: widget.onTitleChanged,
+                                      style: _titleStyle(context),
+                                      textAlign: TextAlign.center,
+                                      decoration: const InputDecoration(
+                                        hintText: 'Untitled page',
+                                        border: InputBorder.none,
+                                        isDense: true,
+                                      ),
+                                    )
+                                  : Text(
+                                      widget.entry.title.isEmpty
+                                          ? 'Untitled page'
+                                          : widget.entry.title,
+                                      style: _titleStyle(context),
+                                      textAlign: TextAlign.center,
+                                    ),
+                              const SizedBox(height: 4),
+                              Text(
+                                DateFormat.yMMMMd().format(
+                                  widget.entry.createdAt,
+                                ),
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: Colors.black54),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
+              if (_samplingColor)
+                Positioned.fill(
+                  child: Material(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTapUp: (details) => unawaited(
+                              _completeColorSample(details.globalPosition),
+                            ),
+                            child: const SizedBox.expand(),
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.topCenter,
+                          child: SafeArea(
+                            child: Card(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 8,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.colorize, size: 18),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'Tap the page to sample a color',
+                                    ),
+                                    TextButton(
+                                      key: const ValueKey(
+                                        'color-sample-cancel',
+                                      ),
+                                      onPressed: _cancelColorSample,
+                                      child: const Text('Cancel'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               if (!_editing)
                 Positioned(
                   right: 12,
@@ -2053,6 +2204,13 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       onFontFamilyChanged: _changeFontFamily,
                       textColorValue: _activeTextColor,
                       onTextColorChanged: _changeTextColor,
+                      onTextColorEditStart: _beginTextColorEdit,
+                      onTextColorEditEnd: _endTextColorEdit,
+                      recentColorValues: widget.store.recentColorValues,
+                      favoriteColorValues: widget.store.favoriteColorValues,
+                      onRecentColorAdded: _addRecentColor,
+                      onFavoriteColorsChanged: _updateFavoriteColors,
+                      onSampleColor: _requestColorSample,
                       onToggleBold: _toggleBold,
                       onToggleItalic: _toggleItalic,
                       bold: _activeBold,
@@ -2117,6 +2275,13 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       onFontFamilyChanged: _changeFontFamily,
                       textColorValue: _activeTextColor,
                       onTextColorChanged: _changeTextColor,
+                      onTextColorEditStart: _beginTextColorEdit,
+                      onTextColorEditEnd: _endTextColorEdit,
+                      recentColorValues: widget.store.recentColorValues,
+                      favoriteColorValues: widget.store.favoriteColorValues,
+                      onRecentColorAdded: _addRecentColor,
+                      onFavoriteColorsChanged: _updateFavoriteColors,
+                      onSampleColor: _requestColorSample,
                       onToggleBold: _toggleBold,
                       onToggleItalic: _toggleItalic,
                       bold: _activeBold,
