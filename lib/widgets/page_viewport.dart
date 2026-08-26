@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -171,9 +172,7 @@ class _PageViewportState extends State<PageViewport> {
         event is! PointerScrollEvent) {
       return;
     }
-    final isZoom = HardwareKeyboard.instance.logicalKeysPressed.contains(
-      LogicalKeyboardKey.control,
-    );
+    final isZoom = HardwareKeyboard.instance.isControlPressed;
     if (isZoom) {
       final box = context.findRenderObject() as RenderBox?;
       final focal = box?.globalToLocal(event.position);
@@ -183,6 +182,9 @@ class _PageViewportState extends State<PageViewport> {
     }
     _camera.panBy(event.scrollDelta);
   }
+
+  bool get _desktopWheelMode =>
+      kIsWeb || defaultTargetPlatform == TargetPlatform.windows;
 
   @override
   Widget build(BuildContext context) {
@@ -211,7 +213,13 @@ class _PageViewportState extends State<PageViewport> {
                   maxScale: maxScale > 0 ? maxScale : widget.maxZoom,
                   constrained: false,
                   panEnabled: widget.interactive && widget.gesturesEnabled,
-                  scaleEnabled: widget.interactive && widget.gesturesEnabled,
+                  // InteractiveViewer scales every mouse-wheel event by
+                  // default. Windows and Web use the explicit handler above
+                  // so only Ctrl+wheel zooms; plain wheel input pans.
+                  scaleEnabled:
+                      widget.interactive &&
+                      widget.gesturesEnabled &&
+                      !_desktopWheelMode,
                   boundaryMargin: const EdgeInsets.all(64),
                   child: SizedBox(
                     width: widget.canvasSize.width,

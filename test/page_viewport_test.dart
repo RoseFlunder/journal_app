@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/widgets/page_viewport.dart';
@@ -178,5 +181,62 @@ void main() {
     expect(transform.getMaxScaleOnAxis(), closeTo(expectedScale, 0.001));
     expect(translation.x, closeTo((800 - 1000 * expectedScale) / 2, 0.001));
     expect(translation.y, closeTo((600 - 1414 * expectedScale) / 2, 0.001));
+  });
+
+  testWidgets('Windows wheel pans without zooming unless Ctrl is pressed', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 800,
+          height: 600,
+          child: PageViewport(
+            initialView: const ViewState(zoom: 1),
+            child: const ColoredBox(color: Colors.amber),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    InteractiveViewer viewer() => tester.widget<InteractiveViewer>(
+      find.byType(InteractiveViewer),
+    );
+
+    final initial = viewer().transformationController!.value;
+    final initialScale = initial.getMaxScaleOnAxis();
+    final initialTranslation = initial.getTranslation();
+
+    await tester.sendEventToBinding(
+      const PointerScrollEvent(
+        kind: PointerDeviceKind.mouse,
+        position: Offset(400, 300),
+        scrollDelta: Offset(0, 20),
+      ),
+    );
+    await tester.pump();
+
+    final afterWheel = viewer().transformationController!.value;
+    expect(afterWheel.getMaxScaleOnAxis(), closeTo(initialScale, 0.001));
+    expect(afterWheel.getTranslation().y, isNot(initialTranslation.y));
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.control);
+    await tester.sendEventToBinding(
+      const PointerScrollEvent(
+        kind: PointerDeviceKind.mouse,
+        position: Offset(400, 300),
+        scrollDelta: Offset(0, -20),
+      ),
+    );
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.control);
+
+    final afterCtrlWheel = viewer().transformationController!.value;
+    expect(afterCtrlWheel.getMaxScaleOnAxis(), greaterThan(initialScale));
+    debugDefaultTargetPlatformOverride = null;
   });
 }
