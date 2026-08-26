@@ -9,7 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../editor/editor_toolbar.dart';
-import '../editor/editor_controller.dart';
+import '../editor/editor_state.dart';
 import '../editor/entry_canvas.dart';
 import '../models/document.dart';
 import '../models/entry.dart';

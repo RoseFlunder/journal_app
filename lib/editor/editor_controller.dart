@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/entry.dart';
+import 'editor_state.dart';
 import 'editor_history.dart';
 import 'geometry_services.dart';
 
@@ -53,6 +54,16 @@ class EditorController extends ChangeNotifier {
   bool get canUngroup =>
       _expandedSelectedBlocks.any((block) => block.groupId != null);
   EditorSaveState get saveState => _saveState;
+
+  EditorState get state => EditorState(
+    document: _snapshot(),
+    selection: _selection,
+    canUndo: canUndo,
+    canRedo: canRedo,
+    inTransaction: inTransaction,
+    canPaste: canPaste,
+    saveState: saveState,
+  );
 
   ContentBlock? get primarySelection {
     if (_selection.isEmpty) return null;
@@ -796,5 +807,3 @@ class EditorController extends ChangeNotifier {
   static List<ContentBlock> _cloneBlocks(List<ContentBlock> blocks) =>
       blocks.map((block) => block.clone()).toList();
 }
-
-enum EditorSaveState { saved, saving, failed }

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/editor/editor_controller.dart';
+import 'package:journal_app/editor/editor_state.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/document.dart';
 
@@ -29,6 +30,8 @@ void main() {
       addTearDown(controller.dispose);
 
       controller.select('text');
+      expect(controller.state.selection, contains('text'));
+      expect(controller.state.document.blocks.single.id, 'text');
       controller.beginTransaction('Transform');
       controller.moveSelection(const Offset(5, 3));
       controller.moveSelection(const Offset(2, -1));
@@ -38,6 +41,7 @@ void main() {
       expect(controller.blocks.single.y, 2);
       expect(saves, 1);
       expect(controller.canUndo, isTrue);
+      expect(controller.state.saveState, EditorSaveState.saved);
 
       await controller.undo();
       expect(controller.blocks.single.x, 0);
