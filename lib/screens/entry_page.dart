@@ -20,6 +20,7 @@ import '../services/image_source.dart';
 import '../services/journal_transfer_service.dart';
 import '../services/repositories.dart';
 import '../ui/features/editor/view_models/entry_editor_view_model.dart';
+import '../ui/features/editor/views/entry_editor_surface.dart';
 import '../widgets/entry_chrome.dart';
 import '../widgets/page_viewport.dart';
 import '../widgets/paper_page.dart';
@@ -2065,7 +2066,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         body: SafeArea(
           child: Stack(
             children: [
-              PageViewport(
+              EntryEditorSurface(
                 onScaleChanged: (scale) {
                   if (!mounted || (scale - _cameraScale).abs() < 0.001) {
                     return;
