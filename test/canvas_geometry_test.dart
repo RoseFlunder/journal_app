@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/editor/canvas_geometry.dart';
+import 'package:journal_app/editor/geometry_services.dart';
 import 'package:journal_app/models/entry.dart';
 
 void main() {
@@ -45,5 +46,31 @@ void main() {
       ),
       isFalse,
     );
+  });
+
+  test('bounds service includes rotated corners', () {
+    final block = ContentBlock(
+      id: 'rotated',
+      type: BlockType.text,
+      x: 10,
+      y: 20,
+      w: 40,
+      h: 20,
+      rotation: math.pi / 2,
+    );
+
+    final bounds = BoundsService.rotated([block]);
+
+    expect(bounds.width, closeTo(20, 0.0001));
+    expect(bounds.height, closeTo(40, 0.0001));
+  });
+
+  test('snapping service rounds independently on both axes', () {
+    final result = SnappingService.snapOffset(
+      const Offset(13, 22),
+      const BoardSettings(gridSize: 8),
+    );
+
+    expect(result, const Offset(16, 24));
   });
 }

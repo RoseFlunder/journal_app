@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/entry.dart';
 import 'editor_history.dart';
+import 'geometry_services.dart';
 
 /// Local, transactional editing state for one entry. Pointer updates mutate
 /// only this controller; persistence happens once when a transaction commits.
@@ -761,8 +762,7 @@ class EditorController extends ChangeNotifier {
   }
 
   double _snap(double value) {
-    final size = math.max(1, _board.gridSize);
-    return (value / size).roundToDouble() * size;
+    return SnappingService.snapValue(value, _board.gridSize);
   }
 
   EditorDocumentSnapshot _snapshot() => EditorDocumentSnapshot(_blocks, _board);

@@ -9,7 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../models/entry.dart';
 import '../widgets/page_viewport.dart';
 import 'block_widget.dart';
-import 'canvas_geometry.dart';
+import 'geometry_services.dart';
 
 typedef TouchSelectionRotation = void Function(
   Set<String> blockIds,
@@ -857,7 +857,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
   }
 
   Offset _rotate(Offset point, double angle) {
-    return CanvasGeometry.rotate(point, angle);
+    return TransformService.rotate(point, angle);
   }
 
   bool _containsResizeHandle(Offset point, ContentBlock block, double scale) {
@@ -899,7 +899,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
   }
 
   bool _containsBlock(Offset point, ContentBlock block, double scale) =>
-      CanvasGeometry.containsBlock(
+      HitTestService.containsBlock(
         point,
         block,
         worldOrigin: widget.worldOrigin,
