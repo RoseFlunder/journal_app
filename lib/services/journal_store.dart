@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/document.dart';
 import '../models/entry.dart';
 import '../models/template.dart';
 import 'journal_archive.dart';
+import 'hive_journal_data_source.dart';
 
 /// Kinds of binary assets stored in the `assets` box.
 enum AssetKind { image, audio }
@@ -86,27 +86,16 @@ class EntryCheckpoint {
 /// persisted before [notifyListeners] fires.
 class JournalStore extends ChangeNotifier {
   static const _kOrderKey = 'entryOrder';
-  static const _boxEntries = 'entries';
-  static const _boxAssets = 'assets';
-  static const _boxMeta = 'meta';
-  static const _boxCheckpoints = 'entryCheckpoints';
-  static const _boxTemplates = 'journalTemplates';
   static const _kRecentColorValues = 'colorPickerRecent';
   static const _kFavoriteColorValues = 'colorPickerFavorites';
 
   static const _uuid = Uuid();
 
-  late Box<dynamic> _entriesBox;
-  late Box<dynamic> _assetsBox;
-  late Box<dynamic> _metaBox;
-  late Box<dynamic> _checkpointsBox;
-  late Box<dynamic> _templatesBox;
-
+  final HiveJournalDataSource _storage = HiveJournalDataSource();
   List<Entry> _entries = [];
   List<int> _recentColorValues = <int>[];
   Set<int> _favoriteColorValues = <int>{};
   bool _loaded = false;
-  Future<void> _writeQueue = Future<void>.value();
   final Map<String, Timer> _checkpointTimers = {};
   final Set<Future<void> Function()> _flushHooks = {};
 
@@ -129,21 +118,17 @@ class JournalStore extends ChangeNotifier {
 
   /// Opens the Hive boxes and loads all entries.
   Future<void> init() async {
-    _entriesBox = await Hive.openBox(_boxEntries);
-    _assetsBox = await Hive.openBox(_boxAssets);
-    _metaBox = await Hive.openBox(_boxMeta);
-    _checkpointsBox = await Hive.openBox(_boxCheckpoints);
-    _templatesBox = await Hive.openBox(_boxTemplates);
+    await _storage.open();
     _loadColorPreferences();
     _load();
   }
 
   void _loadColorPreferences() {
-    final recent = _metaBox.get(_kRecentColorValues);
+    final recent = _storage.readMeta(_kRecentColorValues);
     _recentColorValues = recent is List
         ? recent.whereType<num>().map((value) => value.toInt()).take(8).toList()
         : <int>[];
-    final favorites = _metaBox.get(_kFavoriteColorValues);
+    final favorites = _storage.readMeta(_kFavoriteColorValues);
     _favoriteColorValues = favorites is List
         ? favorites
               .whereType<num>()
@@ -167,10 +152,10 @@ class JournalStore extends ChangeNotifier {
     }
     return _enqueue(() async {
       if (recent != null) {
-        await _metaBox.put(_kRecentColorValues, _recentColorValues);
+        await _storage.writeMeta(_kRecentColorValues, _recentColorValues);
       }
       if (favorites != null) {
-        await _metaBox.put(
+        await _storage.writeMeta(
           _kFavoriteColorValues,
           _favoriteColorValues.toList(growable: false),
         );
@@ -180,7 +165,7 @@ class JournalStore extends ChangeNotifier {
   }
 
   void _load() {
-    final rawOrder = _metaBox.get(_kOrderKey);
+    final rawOrder = _storage.readMeta(_kOrderKey);
     final order = rawOrder is List
         ? rawOrder.whereType<String>().toList()
         : <String>[];
@@ -196,7 +181,7 @@ class JournalStore extends ChangeNotifier {
 
     // Recover entries that survived while the order metadata did not.
     final unorderedIds =
-        _entriesBox.keys
+        _storage.entryKeys
             .whereType<String>()
             .where((id) => !loadedIds.contains(id))
             .toList()
@@ -210,7 +195,7 @@ class JournalStore extends ChangeNotifier {
   }
 
   Entry? _readEntry(String id) {
-    final raw = _entriesBox.get(id);
+    final raw = _storage.readEntry(id);
     if (raw is! Map) {
       debugPrint('Dropping dangling entry id $id (missing data)');
       return null;
@@ -231,8 +216,8 @@ class JournalStore extends ChangeNotifier {
     _entries.add(entry);
     final order = _entries.map((entry) => entry.id).toList();
     final write = _enqueue(() async {
-      await _entriesBox.put(entry.id, entry.toJson());
-      await _metaBox.put(_kOrderKey, order);
+      await _storage.writeEntry(entry.id, entry.toJson());
+      await _storage.writeMeta(_kOrderKey, order);
       notifyListeners();
     });
     return write.then((_) => entry);
@@ -247,7 +232,7 @@ class JournalStore extends ChangeNotifier {
     _entries[i].revision += 1;
     final json = _entries[i].toJson();
     return _enqueue(() async {
-      await _entriesBox.put(id, json);
+      await _storage.writeEntry(id, json);
       notifyListeners();
     });
   }
@@ -269,19 +254,14 @@ class JournalStore extends ChangeNotifier {
     _entries.removeAt(i);
     final order = _entries.map((entry) => entry.id).toList();
     return _enqueue(() async {
-      await _entriesBox.delete(id);
-      await _metaBox.put(_kOrderKey, order);
+      await _storage.deleteEntry(id);
+      await _storage.writeMeta(_kOrderKey, order);
       notifyListeners();
     }).then((_) => collectUnreferencedAssets());
   }
 
   Future<void> _enqueue(Future<void> Function() operation) {
-    final result = _writeQueue.then((_) => operation());
-    _writeQueue = result.then<void>(
-      (_) {},
-      onError: (Object error, StackTrace stackTrace) {},
-    );
-    return result;
+    return _storage.enqueue(operation);
   }
 
   /// Waits for all queued writes and Hive's pending disk operations.
@@ -289,12 +269,7 @@ class JournalStore extends ChangeNotifier {
     for (final hook in List<Future<void> Function()>.from(_flushHooks)) {
       await hook();
     }
-    await _writeQueue;
-    await _entriesBox.flush();
-    await _assetsBox.flush();
-    await _metaBox.flush();
-    await _checkpointsBox.flush();
-    await _templatesBox.flush();
+    await _storage.flush();
   }
 
   /// Schedules a five-minute dirty-session recovery point. The timer is
@@ -321,15 +296,15 @@ class JournalStore extends ChangeNotifier {
       entry: Entry.fromJson(_entries[index].toJson()),
     );
     return _enqueue(() async {
-      await _checkpointsBox.put(checkpoint.id, checkpoint.toJson());
+      await _storage.writeCheckpoint(checkpoint.id, checkpoint.toJson());
       await _pruneCheckpoints(entryId, now);
     });
   }
 
   List<EntryCheckpoint> checkpointsFor(String entryId) {
     final checkpoints = <EntryCheckpoint>[];
-    for (final key in _checkpointsBox.keys.whereType<String>()) {
-      final raw = _checkpointsBox.get(key);
+    for (final key in _storage.checkpointKeys.whereType<String>()) {
+      final raw = _storage.readCheckpoint(key);
       if (raw is! Map) continue;
       try {
         final checkpoint = EntryCheckpoint.fromJson(
@@ -346,7 +321,7 @@ class JournalStore extends ChangeNotifier {
   }
 
   Future<void> restoreCheckpoint(String checkpointId) {
-    final raw = _checkpointsBox.get(checkpointId);
+    final raw = _storage.readCheckpoint(checkpointId);
     if (raw is! Map) return Future<void>.value();
     final checkpoint = EntryCheckpoint.fromJson(
       checkpointId,
@@ -359,7 +334,7 @@ class JournalStore extends ChangeNotifier {
     _entries[index].revision += 1;
     final json = _entries[index].toJson();
     return _enqueue(() async {
-      await _entriesBox.put(checkpoint.entryId, json);
+      await _storage.writeEntry(checkpoint.entryId, json);
       notifyListeners();
     });
   }
@@ -370,7 +345,7 @@ class JournalStore extends ChangeNotifier {
     for (var index = 0; index < checkpoints.length; index++) {
       final checkpoint = checkpoints[index];
       if (index >= 20 && checkpoint.createdAt.isBefore(weekAgo)) {
-        await _checkpointsBox.delete(checkpoint.id);
+        await _storage.deleteCheckpoint(checkpoint.id);
       }
     }
   }
@@ -384,7 +359,7 @@ class JournalStore extends ChangeNotifier {
     List<int> data,
   ) async {
     final id = _uuid.v4();
-    await _assetsBox.put(
+    await _storage.writeAsset(
       id,
       AssetRecord(
         entryId: entryId,
@@ -398,7 +373,7 @@ class JournalStore extends ChangeNotifier {
 
   /// Returns the raw bytes of an asset, or null if it doesn't exist.
   Uint8List? getAsset(String id) {
-    final raw = _assetsBox.get(id);
+    final raw = _storage.readAsset(id);
     if (raw is Map) {
       return Uint8List.fromList(
         AssetRecord.fromJson(Map<String, dynamic>.from(raw)).data,
@@ -409,14 +384,14 @@ class JournalStore extends ChangeNotifier {
 
   /// The mime type of an asset, or null if it doesn't exist.
   String? getAssetMime(String id) {
-    final raw = _assetsBox.get(id);
+    final raw = _storage.readAsset(id);
     if (raw is Map) {
       return AssetRecord.fromJson(Map<String, dynamic>.from(raw)).mime;
     }
     return null;
   }
 
-  void removeAsset(String id) => _assetsBox.delete(id);
+  void removeAsset(String id) => _storage.deleteAsset(id);
 
   void removeAssetIfUnreferenced(
     String assetId,
@@ -443,8 +418,8 @@ class JournalStore extends ChangeNotifier {
     for (final entry in _entries) {
       collectBlocks(entry.blocks);
     }
-    for (final key in _checkpointsBox.keys) {
-      final raw = _checkpointsBox.get(key);
+    for (final key in _storage.checkpointKeys) {
+      final raw = _storage.readCheckpoint(key.toString());
       if (raw is! Map || raw['entry'] is! Map) continue;
       try {
         collectBlocks(
@@ -454,8 +429,8 @@ class JournalStore extends ChangeNotifier {
         // A corrupt checkpoint must not prevent cleanup of known-unused data.
       }
     }
-    for (final key in _templatesBox.keys) {
-      final raw = _templatesBox.get(key);
+    for (final key in _storage.templateKeys) {
+      final raw = _storage.readTemplate(key.toString());
       if (raw is! Map || raw['document'] is! Map) continue;
       try {
         collectBlocks(
@@ -467,15 +442,17 @@ class JournalStore extends ChangeNotifier {
         // Ignore a corrupt template record and leave its media in place.
       }
     }
-    for (final key in _assetsBox.keys.toList()) {
-      if (!referenced.contains(key)) await _assetsBox.delete(key);
+    for (final key in _storage.assetKeys.toList()) {
+      if (!referenced.contains(key)) {
+        await _storage.deleteAsset(key.toString());
+      }
     }
   }
 
   List<JournalTemplate> get templates {
     final result = <JournalTemplate>[];
-    for (final key in _templatesBox.keys.whereType<String>()) {
-      final raw = _templatesBox.get(key);
+    for (final key in _storage.templateKeys.whereType<String>()) {
+      final raw = _storage.readTemplate(key);
       if (raw is! Map) continue;
       try {
         result.add(JournalTemplate.fromJson(Map<String, dynamic>.from(raw)));
@@ -488,10 +465,10 @@ class JournalStore extends ChangeNotifier {
   }
 
   Future<void> saveTemplate(JournalTemplate template) =>
-      _enqueue(() => _templatesBox.put(template.id, template.toJson()));
+      _enqueue(() => _storage.writeTemplate(template.id, template.toJson()));
 
   Future<void> deleteTemplate(String id) =>
-      _enqueue(() => _templatesBox.delete(id));
+      _enqueue(() => _storage.deleteTemplate(id));
 
   /// Creates a portable `.cozyjournal` backup for one entry. The archive is
   /// self-contained: referenced media bytes, the document snapshot, and all
@@ -505,7 +482,7 @@ class JournalStore extends ChangeNotifier {
     }
     final assets = <ArchiveAsset>[];
     for (final id in referenced) {
-      final raw = _assetsBox.get(id);
+      final raw = _storage.readAsset(id);
       if (raw is! Map) continue;
       final asset = AssetRecord.fromJson(Map<String, dynamic>.from(raw));
       assets.add(
