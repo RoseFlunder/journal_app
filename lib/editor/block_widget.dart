@@ -68,11 +68,8 @@ class _BlockWidgetState extends State<BlockWidget> {
   String? _lastQuillDelta;
   bool _movingEdge = false;
   bool _movingBody = false;
-  bool _rotating = false;
   Offset? _panDownGlobalPosition;
   int? _moveEdgePointer;
-  final Map<int, Offset> _pointers = {};
-  double? _lastPointerAngle;
 
   @override
   void initState() {
@@ -152,160 +149,138 @@ class _BlockWidgetState extends State<BlockWidget> {
             ),
           );
 
-    return Listener(
+    return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onPointerDown: widget.editing && !widget.locked
-          ? _handlePointerDown
-          : null,
-      onPointerMove: widget.editing && !widget.locked
-          ? _handlePointerMove
-          : null,
-      onPointerUp: widget.editing && !widget.locked ? _handlePointerUp : null,
-      onPointerCancel: widget.editing && !widget.locked
-          ? _handlePointerUp
-          : null,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.editing ? widget.onTap : widget.onOpenImage,
-        onDoubleTap: widget.editing
-            ? () {
-                if (widget.locked) return;
-                if (widget.block.type == BlockType.text) {
-                  widget.onEditText();
-                } else if (_isVisualBlock) {
-                  widget.onEditImage?.call();
-                }
+      onTap: widget.editing ? widget.onTap : widget.onOpenImage,
+      onDoubleTap: widget.editing
+          ? () {
+              if (widget.locked) return;
+              if (widget.block.type == BlockType.text) {
+                widget.onEditText();
+              } else if (_isVisualBlock) {
+                widget.onEditImage?.call();
               }
-            : null,
-        onPanDown: widget.editing && !widget.locked
-            ? (details) => _panDownGlobalPosition = details.globalPosition
-            : null,
-        onPanStart: widget.editing && !widget.locked
-            ? (details) {
-                final size = context.size ?? Size.zero;
-                _movingEdge =
-                    details.localPosition.dx <= 20 ||
-                    details.localPosition.dy <= 20 ||
-                    details.localPosition.dx >= size.width - 20 ||
-                    details.localPosition.dy >= size.height - 20;
-                widget.onTap();
-                _movingBody =
-                    _moveEdgePointer == null && !_movingEdge && !_rotating;
-                if (_movingBody) {
-                  widget.onMoveStart(
-                    _panDownGlobalPosition ?? details.globalPosition,
-                  );
-                  widget.onMoveUpdate(details.globalPosition);
-                }
+            }
+          : null,
+      onPanDown: widget.editing && !widget.locked
+          ? (details) => _panDownGlobalPosition = details.globalPosition
+          : null,
+      onPanStart: widget.editing && !widget.locked
+          ? (details) {
+              final size = context.size ?? Size.zero;
+              _movingEdge =
+                  details.localPosition.dx <= 20 ||
+                  details.localPosition.dy <= 20 ||
+                  details.localPosition.dx >= size.width - 20 ||
+                  details.localPosition.dy >= size.height - 20;
+              widget.onTap();
+              _movingBody = _moveEdgePointer == null && !_movingEdge;
+              if (_movingBody) {
+                widget.onMoveStart(
+                  _panDownGlobalPosition ?? details.globalPosition,
+                );
+                widget.onMoveUpdate(details.globalPosition);
               }
-            : null,
-        onPanUpdate: widget.editing && !widget.locked
-            ? (details) {
-                if (_rotating) return;
-                if (_movingBody) {
-                  widget.onMoveUpdate(details.globalPosition);
-                }
+            }
+          : null,
+      onPanUpdate: widget.editing && !widget.locked
+          ? (details) {
+              if (_movingBody) {
+                widget.onMoveUpdate(details.globalPosition);
               }
-            : null,
-        onPanEnd: widget.editing && !widget.locked
-            ? (_) => _finishBodyGesture()
-            : null,
-        onPanCancel: widget.editing && !widget.locked
-            ? _finishBodyGesture
-            : null,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            border: widget.selected
-                ? Border.all(
-                    color: const Color(0xFFC97068),
-                    width: controlBorder,
-                  )
-                : null,
-            boxShadow: widget.selected
-                ? [
-                    BoxShadow(
-                      color: const Color(0xFF3B3226).withValues(alpha: 0.14),
-                      blurRadius: 8,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              content,
-              if (widget.editing && !widget.locked && widget.selected)
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  right: 0,
-                  height: 20,
-                  child: _buildMoveEdge(
-                    key: ValueKey('move-${widget.block.id}'),
+            }
+          : null,
+      onPanEnd: widget.editing && !widget.locked
+          ? (_) => _finishBodyGesture()
+          : null,
+      onPanCancel: widget.editing && !widget.locked ? _finishBodyGesture : null,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: widget.selected
+              ? Border.all(color: const Color(0xFFC97068), width: controlBorder)
+              : null,
+          boxShadow: widget.selected
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF3B3226).withValues(alpha: 0.14),
+                    blurRadius: 8,
+                    spreadRadius: 1,
                   ),
-                ),
-              if (widget.editing && !widget.locked && widget.selected)
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: 20,
-                  child: _buildMoveEdge(),
-                ),
-              if (widget.editing && !widget.locked && widget.selected)
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: 20,
-                  child: _buildMoveEdge(),
-                ),
-              if (widget.editing && !widget.locked && widget.selected)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: 20,
-                  child: _buildMoveEdge(),
-                ),
-              if (widget.editing &&
-                  !widget.locked &&
-                  widget.selected &&
-                  _isTransformable &&
-                  widget.showRotateHandle)
-                Positioned(
-                  top: -48,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      key: ValueKey('rotate-${widget.block.id}'),
-                      width: controlSize,
-                      height: controlSize,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF3B3226),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 3),
-                      ),
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onPanStart: (_) => widget.onTransformStart?.call(),
-                        onPanUpdate: (details) =>
-                            widget.onRotate(details.delta.dx / 100),
-                        onPanEnd: (_) => widget.onTransformEnd?.call(),
-                        onPanCancel: () => widget.onTransformEnd?.call(),
-                        child: Icon(
-                          Icons.rotate_right,
-                          size: controlSize * 0.48,
-                          color: Colors.white,
-                        ),
+                ]
+              : null,
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            content,
+            if (widget.editing && !widget.locked && widget.selected)
+              Positioned(
+                left: 0,
+                top: 0,
+                right: 0,
+                height: 20,
+                child: _buildMoveEdge(key: ValueKey('move-${widget.block.id}')),
+              ),
+            if (widget.editing && !widget.locked && widget.selected)
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 20,
+                child: _buildMoveEdge(),
+              ),
+            if (widget.editing && !widget.locked && widget.selected)
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: 20,
+                child: _buildMoveEdge(),
+              ),
+            if (widget.editing && !widget.locked && widget.selected)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 20,
+                child: _buildMoveEdge(),
+              ),
+            if (widget.editing &&
+                !widget.locked &&
+                widget.selected &&
+                _isTransformable &&
+                widget.showRotateHandle)
+              Positioned(
+                top: -48,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    key: ValueKey('rotate-${widget.block.id}'),
+                    width: controlSize,
+                    height: controlSize,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3B3226),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 3),
+                    ),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onPanStart: (_) => widget.onTransformStart?.call(),
+                      onPanUpdate: (details) =>
+                          widget.onRotate(details.delta.dx / 100),
+                      onPanEnd: (_) => widget.onTransformEnd?.call(),
+                      onPanCancel: () => widget.onTransformEnd?.call(),
+                      child: Icon(
+                        Icons.rotate_right,
+                        size: controlSize * 0.48,
+                        color: Colors.white,
                       ),
                     ),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
@@ -522,51 +497,6 @@ class _BlockWidgetState extends State<BlockWidget> {
     });
   }
 
-  void _handlePointerDown(PointerDownEvent event) {
-    _pointers[event.pointer] = event.localPosition;
-    if (_pointers.length == 2 && widget.selected && _isTransformable) {
-      if (_movingBody || _moveEdgePointer != null) {
-        widget.onMoveEnd();
-      }
-      _rotating = true;
-      widget.onTransformStart?.call();
-      _lastPointerAngle = _pointerAngle;
-      _movingEdge = false;
-      _movingBody = false;
-      _moveEdgePointer = null;
-    }
-  }
-
-  void _handlePointerMove(PointerMoveEvent event) {
-    if (!_pointers.containsKey(event.pointer)) return;
-    _pointers[event.pointer] = event.localPosition;
-    if (!_rotating || _pointers.length < 2) return;
-    final angle = _pointerAngle;
-    final previous = _lastPointerAngle;
-    if (angle == null || previous == null) return;
-    var delta = angle - previous;
-    if (delta > math.pi) delta -= math.pi * 2;
-    if (delta < -math.pi) delta += math.pi * 2;
-    widget.onRotate(delta);
-    _lastPointerAngle = angle;
-  }
-
-  void _handlePointerUp(PointerEvent event) {
-    _pointers.remove(event.pointer);
-    if (_pointers.length < 2) {
-      if (_rotating) widget.onTransformEnd?.call();
-      _rotating = false;
-      _lastPointerAngle = null;
-    }
-  }
-
-  double? get _pointerAngle {
-    if (_pointers.length < 2) return null;
-    final points = _pointers.values.toList();
-    final delta = points[1] - points[0];
-    return math.atan2(delta.dy, delta.dx);
-  }
-
   Widget _buildMoveEdge({Key? key}) {
     return Listener(
       key: key,
@@ -578,7 +508,7 @@ class _BlockWidgetState extends State<BlockWidget> {
         widget.onMoveStart(event.position);
       },
       onPointerMove: (event) {
-        if (_moveEdgePointer == event.pointer && !_rotating) {
+        if (_moveEdgePointer == event.pointer) {
           widget.onMoveUpdate(event.position);
         }
       },

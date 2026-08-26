@@ -179,6 +179,59 @@ class EditorController extends ChangeNotifier {
     }
   }
 
+  /// Rotates [blockIds] as a rigid selection around [pivot]. Group members are
+  /// expanded in the same way as other selection transforms.
+  ///
+  /// The pivot is expressed in page-local model coordinates and remains fixed
+  /// for the lifetime of the gesture. The caller owns the surrounding
+  /// transaction so all pointer updates become one undoable command.
+  void rotateBlocksAround(
+    Iterable<String> blockIds,
+    Offset pivot,
+    double delta,
+  ) {
+    final cosine = math.cos(delta);
+    final sine = math.sin(delta);
+    final requestedIds = blockIds.toSet();
+    final groupIds = _blocks
+        .where((block) => requestedIds.contains(block.id))
+        .expand(
+          (block) => [
+            block.groupId,
+            if (block.type == BlockType.group) block.id,
+          ],
+        )
+        .whereType<String>()
+        .toSet();
+    final targetIds = _blocks
+        .where(
+          (block) =>
+              requestedIds.contains(block.id) ||
+              (block.type != BlockType.group &&
+                  groupIds.contains(block.groupId)),
+        )
+        .map((block) => block.id);
+    var changed = false;
+    for (final id in targetIds) {
+      final block = _byId(id);
+      if (block == null || block.locked || block.hidden) continue;
+      final center = Offset(block.x + block.w / 2, block.y + block.h / 2);
+      final relative = center - pivot;
+      final rotatedCenter =
+          pivot +
+          Offset(
+            relative.dx * cosine - relative.dy * sine,
+            relative.dx * sine + relative.dy * cosine,
+          );
+      block
+        ..x = rotatedCenter.dx - block.w / 2
+        ..y = rotatedCenter.dy - block.h / 2
+        ..rotation += delta;
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
   /// Snaps the current selection once at the end of a gesture. Keeping raw
   /// pointer deltas during the gesture prevents small movements from being
   /// rounded away on every pointer event.

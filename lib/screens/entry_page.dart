@@ -1875,7 +1875,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                 ),
                 controlsBottomInset: _editing ? 88 : 12,
                 controlsVisible: widget.controlsVisible,
-                gesturesEnabled: !_resizeActive,
+                gesturesEnabled:
+                    !_resizeActive && !(_editing && _editor.hasSelection),
                 initialView: widget.entry.view,
                 onViewChanged: widget.onViewChanged,
                 child: Stack(
@@ -1942,6 +1943,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                         onMoveSelection: (delta) =>
                             _editor.moveSelection(delta, snap: true),
                         onRotateSelection: _editor.rotateSelection,
+                        onTouchRotateSelection: (blockIds, pivot, delta) =>
+                            _editor.rotateBlocksAround(blockIds, pivot, delta),
                         selectMode: _selectMode,
                         drawMode: _drawMode,
                         inkColorValue: _inkColorValue,

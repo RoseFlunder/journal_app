@@ -10,6 +10,12 @@ import '../models/entry.dart';
 import '../widgets/page_viewport.dart';
 import 'block_widget.dart';
 
+typedef TouchSelectionRotation = void Function(
+  Set<String> blockIds,
+  Offset pivot,
+  double delta,
+);
+
 class EntryCanvas extends StatefulWidget {
   const EntryCanvas({
     super.key,
@@ -28,6 +34,7 @@ class EntryCanvas extends StatefulWidget {
     this.onInteractionEnd,
     this.onMoveSelection,
     this.onRotateSelection,
+    this.onTouchRotateSelection,
     this.selectMode = false,
     this.drawMode = false,
     this.inkColorValue = 0xFF3B3226,
@@ -60,6 +67,7 @@ class EntryCanvas extends StatefulWidget {
   final VoidCallback? onInteractionEnd;
   final ValueChanged<Offset>? onMoveSelection;
   final ValueChanged<double>? onRotateSelection;
+  final TouchSelectionRotation? onTouchRotateSelection;
   final bool selectMode;
   final bool drawMode;
   final int inkColorValue;
@@ -98,9 +106,13 @@ class _EntryCanvasState extends State<EntryCanvas> {
   int? _inkPointer;
   final List<Offset> _inkPoints = <Offset>[];
   final Map<int, Offset> _selectionRotationPointers = <int, Offset>{};
-  bool _selectionRotationRejected = false;
+  List<int> _selectionRotationPointerIds = const <int>[];
+  Set<String> _selectionRotationTargetIds = const <String>{};
+  Offset? _selectionRotationPivot;
   bool _selectionRotating = false;
+  bool _selectionRotationAwaitingClear = false;
   double? _selectionRotationAngle;
+  int? _pendingClearSelectionPointer;
 
   @override
   void dispose() {
@@ -122,18 +134,31 @@ class _EntryCanvasState extends State<EntryCanvas> {
     };
     final resizeSelectionChanged =
         _resizeSession != null && _resizeSession!.blockId != widget.selectedId;
+    final rotationSelectionChanged =
+        _selectionRotating &&
+        !setEquals(
+          _selectionRotationTargetIds,
+          _rotationTargets().map((block) => block.id).toSet(),
+        );
     if (!widget.editing ||
         resizeSelectionChanged ||
+        rotationSelectionChanged ||
         activeBlockIds.any(
           (id) => !widget.blocks.any((block) => block.id == id),
         )) {
+      if (_selectionRotating) _finishSelectionRotation();
       _moveSession = null;
       _resizeSession = null;
       _resizeGlobalToCanvas = null;
       _resizePointer = null;
       _selectionRotationPointers.clear();
+      _selectionRotationPointerIds = const <int>[];
+      _selectionRotationTargetIds = const <String>{};
+      _selectionRotationPivot = null;
       _selectionRotating = false;
+      _selectionRotationAwaitingClear = false;
       _selectionRotationAngle = null;
+      _pendingClearSelectionPointer = null;
       if (_resizeActiveNotified) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _setResizeActive(false);
@@ -178,7 +203,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
                   onPointerDown: widget.editing
                       ? (event) {
                           final point = event.localPosition;
-                          _handleSelectionRotationDown(event, scale);
+                          _handleSelectionRotationDown(event);
                           if (widget.drawMode) {
                             _inkPointer = event.pointer;
                             _inkPoints
@@ -206,6 +231,11 @@ class _EntryCanvasState extends State<EntryCanvas> {
                               _lassoStart = point;
                               _lassoEnd = point;
                               setState(() {});
+                            } else if (_selectionRotating) {
+                              // The selected blocks own this page-wide touch
+                              // gesture until either rotation finger lifts.
+                            } else if (_shouldDeferTouchSelectionClear(event)) {
+                              _pendingClearSelectionPointer = event.pointer;
                             } else {
                               widget.onSelect(null);
                             }
@@ -384,77 +414,94 @@ class _EntryCanvasState extends State<EntryCanvas> {
     (block) => !block.hidden && _isSelected(block) && !block.locked,
   );
 
-  Set<String> _rotationHits(Offset point, double scale) => {
-    for (final block in _rotationTargets())
-      if (_containsBlock(point, block, scale)) block.id,
-  };
+  bool _shouldDeferTouchSelectionClear(PointerDownEvent event) =>
+      event.kind == PointerDeviceKind.touch && _rotationTargets().isNotEmpty;
 
-  void _handleSelectionRotationDown(PointerDownEvent event, double scale) {
+  void _handleSelectionRotationDown(PointerDownEvent event) {
     if (!widget.editing || widget.drawMode || widget.selectMode) return;
     if (_selectionRotationPointers.isEmpty) {
-      _selectionRotationRejected = false;
+      _selectionRotationAwaitingClear = false;
       _selectionRotating = false;
+      _selectionRotationPointerIds = const <int>[];
+      _selectionRotationTargetIds = const <String>{};
+      _selectionRotationPivot = null;
       _selectionRotationAngle = null;
     }
     _selectionRotationPointers[event.pointer] = event.localPosition;
     if (_selectionRotationPointers.length != 2 ||
-        _selectionRotationRejected ||
-        _rotationTargets().isEmpty) {
+        _selectionRotationAwaitingClear ||
+        _selectionRotating) {
       return;
     }
 
-    final points = _selectionRotationPointers.values.toList(growable: false);
-    final firstHits = _rotationHits(points[0], scale);
-    final secondHits = _rotationHits(points[1], scale);
-    if (firstHits.isEmpty || secondHits.isEmpty) {
-      _selectionRotationRejected = true;
-      return;
-    }
-
-    // When both fingers are inside one block, its existing pointer listener
-    // owns the gesture. This canvas-level path is for multi-selection fingers
-    // placed on different selected blocks.
-    if (firstHits.intersection(secondHits).isNotEmpty) {
-      _selectionRotationRejected = true;
-      return;
-    }
-
+    final targets = _rotationTargets().map((block) => block.id).toSet();
+    if (targets.isEmpty) return;
+    final pointerIds = _selectionRotationPointers.keys.take(2).toList();
+    final first = _selectionRotationPointers[pointerIds[0]]!;
+    final second = _selectionRotationPointers[pointerIds[1]]!;
+    _pendingClearSelectionPointer = null;
     if (_moveSession != null) {
       _moveSession = null;
-      _endInteraction();
+    } else {
+      _beginInteraction();
     }
     _selectionRotating = true;
-    _selectionRotationAngle = _pointerAngle(_selectionRotationPointers);
-    _beginInteraction();
+    _selectionRotationPointerIds = pointerIds;
+    _selectionRotationTargetIds = Set<String>.unmodifiable(targets);
+    _selectionRotationPivot = _localToModel((first + second) / 2);
+    _selectionRotationAngle = _pointerAngle(pointerIds);
   }
 
   void _handleSelectionRotationMove(PointerMoveEvent event) {
     if (!_selectionRotationPointers.containsKey(event.pointer)) return;
     _selectionRotationPointers[event.pointer] = event.localPosition;
-    if (!_selectionRotating || _selectionRotationPointers.length < 2) return;
-    final angle = _pointerAngle(_selectionRotationPointers);
+    if (!_selectionRotating) return;
+    final angle = _pointerAngle(_selectionRotationPointerIds);
     final previous = _selectionRotationAngle;
-    if (angle == null || previous == null) return;
+    final pivot = _selectionRotationPivot;
+    if (angle == null || previous == null || pivot == null) return;
     var delta = angle - previous;
     if (delta > math.pi) delta -= math.pi * 2;
     if (delta < -math.pi) delta += math.pi * 2;
-    widget.onRotateSelection?.call(delta);
+    widget.onTouchRotateSelection?.call(
+      _selectionRotationTargetIds,
+      pivot,
+      delta,
+    );
     _selectionRotationAngle = angle;
   }
 
   void _handleSelectionRotationUp(PointerEvent event) {
     _selectionRotationPointers.remove(event.pointer);
-    if (_selectionRotationPointers.isNotEmpty) return;
+    if (_selectionRotating &&
+        _selectionRotationPointerIds.contains(event.pointer)) {
+      _finishSelectionRotation();
+      _selectionRotationAwaitingClear = _selectionRotationPointers.isNotEmpty;
+    }
+    if (_pendingClearSelectionPointer == event.pointer) {
+      _pendingClearSelectionPointer = null;
+      widget.onSelect(null);
+    }
+    if (_selectionRotationPointers.isEmpty) {
+      _selectionRotationAwaitingClear = false;
+      _selectionRotationPointerIds = const <int>[];
+    }
+  }
+
+  void _finishSelectionRotation() {
     if (_selectionRotating) _endInteraction();
     _selectionRotating = false;
-    _selectionRotationRejected = false;
+    _selectionRotationTargetIds = const <String>{};
+    _selectionRotationPivot = null;
     _selectionRotationAngle = null;
   }
 
-  double? _pointerAngle(Map<int, Offset> pointers) {
-    if (pointers.length < 2) return null;
-    final points = pointers.values.take(2).toList(growable: false);
-    final delta = points[1] - points[0];
+  double? _pointerAngle(List<int> pointerIds) {
+    if (pointerIds.length < 2) return null;
+    final first = _selectionRotationPointers[pointerIds[0]];
+    final second = _selectionRotationPointers[pointerIds[1]];
+    if (first == null || second == null) return null;
+    final delta = second - first;
     return math.atan2(delta.dy, delta.dx);
   }
 

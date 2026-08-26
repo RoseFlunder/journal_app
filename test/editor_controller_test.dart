@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/editor/editor_controller.dart';
 import 'package:journal_app/models/entry.dart';
@@ -66,43 +68,53 @@ void main() {
     expect(controller.canUndo, isFalse);
   });
 
-  test(
-    'selection rotation updates unlocked blocks in one transaction',
-    () async {
-      var saves = 0;
-      final controller = EditorController(
-        blocks: [
-          _text(id: 'one'),
-          _text(id: 'two', x: 50),
-          _text(id: 'locked', x: 100)..locked = true,
-        ],
-        initialBoard: const BoardSettings(),
-        persistDocument: (_, _) async => saves++,
-      );
-      addTearDown(controller.dispose);
+  test('touch rotation orbits unlocked blocks around a fixed pivot in one transaction', () async {
+    var saves = 0;
+    final controller = EditorController(
+      blocks: [
+        _text(id: 'one'),
+        _text(id: 'two', x: 50),
+        _text(id: 'locked', x: 100)..locked = true,
+      ],
+      initialBoard: const BoardSettings(),
+      persistDocument: (_, _) async => saves++,
+    );
+    addTearDown(controller.dispose);
 
-      controller.selectMany(['one', 'two', 'locked']);
-      controller.beginTransaction('Transform');
-      controller.rotateSelection(0.5);
-      controller.rotateSelection(0.25);
-      await controller.commitTransaction();
+    controller.selectMany(['one', 'two', 'locked']);
+    controller.beginTransaction('Transform');
+    controller.rotateBlocksAround(
+      {'one', 'two', 'locked'},
+      const Offset(20, 10),
+      math.pi / 2,
+    );
+    controller.rotateBlocksAround(
+      {'one', 'two', 'locked'},
+      const Offset(20, 10),
+      math.pi / 2,
+    );
+    await controller.commitTransaction();
 
-      expect(
-        controller.blocks.firstWhere((block) => block.id == 'one').rotation,
-        closeTo(0.75, 0.001),
-      );
-      expect(
-        controller.blocks.firstWhere((block) => block.id == 'two').rotation,
-        closeTo(0.75, 0.001),
-      );
-      expect(
-        controller.blocks.firstWhere((block) => block.id == 'locked').rotation,
-        0,
-      );
-      expect(saves, 1);
-      expect(controller.canUndo, isTrue);
-    },
-  );
+    final one = controller.blocks.firstWhere((block) => block.id == 'one');
+    final two = controller.blocks.firstWhere((block) => block.id == 'two');
+    final locked = controller.blocks.firstWhere(
+      (block) => block.id == 'locked',
+    );
+    expect(one.x, closeTo(0, 0.001));
+    expect(one.y, closeTo(0, 0.001));
+    expect(one.rotation, closeTo(math.pi, 0.001));
+    expect(two.x, closeTo(-50, 0.001));
+    expect(two.y, closeTo(0, 0.001));
+    expect(two.rotation, closeTo(math.pi, 0.001));
+    expect(locked.x, 100);
+    expect(locked.y, 0);
+    expect(locked.rotation, 0);
+    expect(saves, 1);
+    expect(controller.canUndo, isTrue);
+
+    await controller.undo();
+    expect(controller.blocks.firstWhere((block) => block.id == 'two').x, 50);
+  });
 
   test('additive selection keeps both blocks selected', () {
     final controller = EditorController(

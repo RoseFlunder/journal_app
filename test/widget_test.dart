@@ -358,6 +358,18 @@ void main() {
     expect(store.entries.single.blocks.single.fontSize, 26);
     expect(find.byKey(ValueKey('block-text-$blockId')), findsOneWidget);
     expect(tester.testTextInput.isVisible, isTrue);
+    expect(
+      tester
+          .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+          .panEnabled,
+      isFalse,
+    );
+    expect(
+      tester
+          .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+          .scaleEnabled,
+      isFalse,
+    );
 
     await tester.tap(find.byTooltip('Edit text'));
     await tester.pump();
@@ -446,10 +458,11 @@ void main() {
     await tester.pump();
     expect(find.byKey(ValueKey('block-text-$blockId')), findsNothing);
 
+    final panBeforeSelectedDrag = store.entries.single.view?.panX;
     final canvasCenter = tester.getCenter(find.byType(EntryCanvas));
     await tester.dragFrom(canvasCenter, const Offset(40, 0));
     await tester.pump(const Duration(milliseconds: 300));
-    expect(store.entries.single.view?.panX, isNot(0));
+    expect(store.entries.single.view?.panX, panBeforeSelectedDrag);
 
     expect(find.byTooltip('Fit content'), findsOneWidget);
     await tester.tap(find.byTooltip('Fit content'));
@@ -474,6 +487,12 @@ void main() {
     await tester.tap(find.byIcon(Icons.delete_outline).last);
     await tester.pump();
     expect(store.entries.single.blocks, isEmpty);
+    expect(
+      tester
+          .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+          .panEnabled,
+      isTrue,
+    );
   });
 
   testWidgets('grid switches update immediately and persist their state', (
@@ -1073,7 +1092,7 @@ void main() {
   });
 
   testWidgets(
-    'two fingers on separate selected blocks rotate the selection once',
+    'two fingers anywhere rotate selected blocks around their initial midpoint',
     (tester) async {
       final first = ContentBlock(
         id: 'rotation-first',
@@ -1094,6 +1113,8 @@ void main() {
         h: 10,
       );
       final deltas = <double>[];
+      final pivots = <Offset>[];
+      final targetSets = <Set<String>>[];
       var starts = 0;
       var ends = 0;
 
@@ -1109,7 +1130,11 @@ void main() {
             onSelect: (_) {},
             onEditText: (_) {},
             onChanged: (_) {},
-            onRotateSelection: deltas.add,
+            onTouchRotateSelection: (blockIds, pivot, delta) {
+              targetSets.add(blockIds);
+              pivots.add(pivot);
+              deltas.add(delta);
+            },
             onInteractionStart: () => starts++,
             onInteractionEnd: () => ends++,
             imageBytes: (_) => null,
@@ -1120,7 +1145,7 @@ void main() {
       await tester.pump();
 
       final oneFinger = await tester.startGesture(
-        const Offset(200, 150),
+        const Offset(40, 40),
         pointer: 3,
       );
       await oneFinger.moveBy(const Offset(0, 40));
@@ -1138,30 +1163,15 @@ void main() {
       );
       await outsideSecond.moveBy(const Offset(0, -40));
       await tester.pump();
-      expect(deltas, isEmpty);
-      await outsideSecond.up();
-      await outsideFirst.up();
-      starts = 0;
-      ends = 0;
-
-      final firstFinger = await tester.startGesture(
-        const Offset(200, 150),
-        pointer: 1,
-      );
-      final secondFinger = await tester.startGesture(
-        const Offset(600, 150),
-        pointer: 2,
-      );
-      await secondFinger.moveBy(const Offset(0, 100));
-      await tester.pump();
-
       expect(deltas, isNotEmpty);
       expect(starts, 1);
+      expect(targetSets, everyElement({first.id, second.id}));
+      expect(pivots, everyElement(const Offset(40, 20)));
       expect(first.x, 10);
       expect(second.x, 50);
 
-      await secondFinger.up();
-      await firstFinger.up();
+      await outsideSecond.up();
+      await outsideFirst.up();
       await tester.pump();
       expect(ends, 1);
     },
