@@ -2115,6 +2115,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                 controlsVisible: widget.controlsVisible,
                 gesturesEnabled:
                     !_resizeActive &&
+                    !_drawMode &&
                     (!(_editing && _editor.hasSelection) ||
                         kIsWeb ||
                         defaultTargetPlatform == TargetPlatform.windows),

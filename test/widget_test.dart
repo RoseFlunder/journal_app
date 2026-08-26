@@ -802,11 +802,32 @@ void main() {
     await tester.pumpAndSettle();
 
     final canvas = tester.getRect(find.byType(EntryCanvas));
-    final gesture = await tester.startGesture(canvas.center);
+    final viewerBeforeDrawing = tester
+        .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+        .transformationController!
+        .value
+        .clone();
+    final gesture = await tester.startGesture(
+      canvas.center,
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
     await gesture.moveBy(const Offset(36, 24));
     await gesture.moveBy(const Offset(24, 18));
     await gesture.up();
     await tester.pumpAndSettle();
+    final viewerAfterDrawing = tester
+        .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+        .transformationController!
+        .value;
+    expect(
+      viewerAfterDrawing.getTranslation().x,
+      closeTo(viewerBeforeDrawing.getTranslation().x, 0.001),
+    );
+    expect(
+      viewerAfterDrawing.getTranslation().y,
+      closeTo(viewerBeforeDrawing.getTranslation().y, 0.001),
+    );
     var ink = store.entries.single.blocks.lastWhere(
       (block) => block.type == BlockType.ink,
     );
