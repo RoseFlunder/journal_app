@@ -166,6 +166,7 @@ class _JournalLifecycleState extends State<_JournalLifecycle>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.dependencies.dispose();
     super.dispose();
   }
 

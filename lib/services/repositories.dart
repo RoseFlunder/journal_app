@@ -110,14 +110,17 @@ class JournalRepositories {
     required this.archiveRepository,
   });
 
-  factory JournalRepositories.from(JournalRepository repository) =>
+  factory JournalRepositories.from(
+    JournalRepository repository, {
+    PersistenceRepository? persistence,
+  }) =>
       JournalRepositories(
         documentRepository: repository,
         assetRepository: repository,
         checkpointRepository: repository,
         templateRepository: repository,
         preferenceRepository: repository,
-        persistence: repository,
+        persistence: persistence ?? repository,
         archiveRepository: repository,
       );
 
