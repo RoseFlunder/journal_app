@@ -9,10 +9,11 @@ import '../models/page_music.dart';
 import '../services/audio_playback.dart';
 import '../services/repositories.dart';
 import '../ui/features/journal/view_models/journal_view_model.dart';
+import '../ui/features/editor/view_models/entry_editor_view_model.dart';
 import '../ui/features/music/view_models/page_music_controller.dart';
 import '../widgets/entry_chrome.dart';
-import 'contents_page.dart';
-import 'entry_page.dart';
+import '../ui/features/journal/views/contents_page.dart';
+import '../ui/features/editor/views/entry_page.dart';
 
 /// Root of the journal: a [PageView] over
 /// `[table of contents, ...one page per entry]`.
@@ -22,11 +23,13 @@ class JournalScreen extends StatefulWidget {
     required this.repositories,
     required this.musicCatalog,
     required this.audioPlaybackFactory,
+    required this.editorViewModelFactory,
   });
 
   final JournalRepositories repositories;
   final MusicCatalogRepository musicCatalog;
   final AudioPlaybackFactory audioPlaybackFactory;
+  final EntryEditorViewModelFactory editorViewModelFactory;
 
   @override
   State<JournalScreen> createState() => _JournalScreenState();
@@ -186,7 +189,7 @@ class _JournalScreenState extends State<JournalScreen> {
   Widget _buildEntryPage(EntryDocument document) {
     return EntryPage(
       document: document,
-      repository: widget.repositories,
+      editorViewModelFactory: widget.editorViewModelFactory,
       controlsVisible: _entryChromeVisible,
       active: document.id == _activeEntryId,
       musicCatalog: widget.musicCatalog,
@@ -278,7 +281,7 @@ class _JournalScreenState extends State<JournalScreen> {
                             assetRepository:
                                 widget.repositories.assetRepository,
                             onOpenPage: goToEntry,
-                            onNewPage: _createPage,
+                            onCreatePage: _createPage,
                             onDeletePage: _journal.deletePage,
                           ),
                           for (final document in _journal.documents)

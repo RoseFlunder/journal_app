@@ -67,4 +67,45 @@ void main() {
     expect(command.revert(after).toJson(), before.toJson());
     expect(command.apply(before).toJson(), after.toJson());
   });
+
+  test('classifies board, node, and structural changes by intent', () {
+    final before = EditorDocumentSnapshot([
+      ContentBlock(id: 'block', type: BlockType.text, text: 'Before'),
+    ], const BoardSettings());
+    final styled = EditorDocumentSnapshot([
+      ContentBlock(id: 'block', type: BlockType.text, text: 'After'),
+    ], const BoardSettings());
+    final board = EditorDocumentSnapshot([
+      ContentBlock(id: 'block', type: BlockType.text, text: 'Before'),
+    ], const BoardSettings(gridVisible: true));
+    final inserted = EditorDocumentSnapshot([
+      ContentBlock(id: 'block', type: BlockType.text, text: 'Before'),
+      ContentBlock(id: 'new', type: BlockType.text),
+    ], const BoardSettings());
+
+    expect(
+      EditorCommand.fromStates(
+        label: 'Style',
+        before: before,
+        after: styled,
+      ),
+      isA<NodeEditorCommand>(),
+    );
+    expect(
+      EditorCommand.fromStates(
+        label: 'Grid',
+        before: before,
+        after: board,
+      ),
+      isA<BoardEditorCommand>(),
+    );
+    expect(
+      EditorCommand.fromStates(
+        label: 'Insert',
+        before: before,
+        after: inserted,
+      ),
+      isA<StructuralEditorCommand>(),
+    );
+  });
 }

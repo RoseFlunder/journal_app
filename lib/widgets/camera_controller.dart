@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../models/entry.dart';
+import '../models/view_state.dart';
 
 /// Pure camera calculations shared by the page viewport and camera tests.
 class ViewportMath {

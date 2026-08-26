@@ -25,7 +25,7 @@ void main() {
       final controller = EditorController(
         blocks: [_text()],
         initialBoard: const BoardSettings(),
-        persistDocument: (_, _) async => saves++,
+        persistDocument: (EntryDocument _) async => saves++,
       );
       addTearDown(controller.dispose);
 
@@ -57,7 +57,7 @@ void main() {
     final controller = EditorController(
       blocks: [_text()..locked = true],
       initialBoard: const BoardSettings(),
-      persistDocument: (_, _) async {},
+      persistDocument: (EntryDocument _) async {},
     );
     addTearDown(controller.dispose);
 
@@ -106,7 +106,7 @@ void main() {
           _text(id: 'text'),
         ],
         initialBoard: const BoardSettings(),
-        persistDocument: (_, _) async => saves++,
+        persistDocument: (EntryDocument _) async => saves++,
       );
       addTearDown(controller.dispose);
 
@@ -153,7 +153,7 @@ void main() {
         _text(id: 'locked', x: 100)..locked = true,
       ],
       initialBoard: const BoardSettings(),
-      persistDocument: (_, _) async => saves++,
+      persistDocument: (EntryDocument _) async => saves++,
     );
     addTearDown(controller.dispose);
 
@@ -199,7 +199,7 @@ void main() {
         _text(id: 'two', x: 50),
       ],
       initialBoard: const BoardSettings(),
-      persistDocument: (_, _) async {},
+      persistDocument: (EntryDocument _) async {},
     );
     addTearDown(controller.dispose);
 
@@ -217,7 +217,7 @@ void main() {
         _text(id: 'two', x: 50),
       ],
       initialBoard: const BoardSettings(),
-      persistDocument: (_, _) async {},
+      persistDocument: (EntryDocument _) async {},
     );
     addTearDown(controller.dispose);
 
@@ -263,7 +263,7 @@ void main() {
         _text(id: 'two', x: 50),
       ],
       initialBoard: const BoardSettings(),
-      persistDocument: (_, _) async {},
+      persistDocument: (EntryDocument _) async {},
     );
     addTearDown(controller.dispose);
 
@@ -305,7 +305,7 @@ void main() {
         _text(id: 'top', x: 90),
       ],
       initialBoard: const BoardSettings(),
-      persistDocument: (_, _) async {},
+      persistDocument: (EntryDocument _) async {},
     );
     addTearDown(controller.dispose);
 
@@ -332,7 +332,7 @@ void main() {
       final controller = EditorController(
         blocks: const [],
         initialBoard: const BoardSettings(),
-        persistDocument: (_, _) async {},
+        persistDocument: (EntryDocument _) async {},
       );
       addTearDown(controller.dispose);
       final group = ContentBlock(
@@ -442,6 +442,9 @@ void main() {
     expect(document.nodes, hasLength(1));
     expect(document.nodes.single.type, BlockType.group);
     expect(document.nodes.single.children, hasLength(2));
+    expect(document.nodes.single.children.first.transform.x, 0);
+    expect(document.nodes.single.children.first.transform.y, 0);
+    expect(document.nodes.single.children.last.transform.x, 40);
 
     final restored = document.toEntry();
     expect(restored.blocks, hasLength(3));
@@ -451,5 +454,44 @@ void main() {
       restored.blocks.skip(1).every((block) => block.groupId == 'group'),
       isTrue,
     );
+  });
+
+  test('immutable editor APIs detach legacy adapters and persist documents', () async {
+    final document = EntryDocument(
+      id: 'immutable-editor',
+      title: 'Immutable',
+      createdAt: DateTime.utc(2026),
+      modifiedAt: DateTime.utc(2026),
+      nodes: [
+        CanvasNode(
+          id: 'node',
+          type: BlockType.text,
+          transform: const Transform2D(x: 2, y: 3, width: 40, height: 20),
+          payload: const {'text': 'Hello'},
+        ),
+      ],
+    );
+    final saved = <EntryDocument>[];
+    final controller = EditorController(
+      document: document,
+      persistDocument: (EntryDocument next) async => saved.add(next),
+    );
+    addTearDown(controller.dispose);
+
+    final detached = controller.blocks.single;
+    detached.x = 999;
+    expect(controller.document.nodes.single.transform.x, 2);
+    expect(
+      () => controller.state.document.nodes.add(controller.state.document.nodes.single),
+      throwsUnsupportedError,
+    );
+
+    controller.select('node');
+    controller.beginTransaction('Move');
+    controller.moveSelection(const Offset(4, 0));
+    await controller.commitTransaction();
+
+    expect(saved, hasLength(1));
+    expect(saved.single.nodes.single.transform.x, 6);
   });
 }

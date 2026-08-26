@@ -1,12 +1,8 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:journal_app/models/document.dart';
-import 'package:journal_app/models/template.dart';
-import 'package:journal_app/services/journal_archive.dart';
-import 'package:journal_app/services/journal_store.dart';
 import 'package:journal_app/services/repositories.dart';
 import 'package:journal_app/ui/features/journal/view_models/journal_view_model.dart';
 
@@ -46,7 +42,7 @@ EntryDocument _document(String id) => EntryDocument(
   modifiedAt: DateTime.utc(2026),
 );
 
-class _FakeJournalRepository implements JournalRepository {
+class _FakeJournalRepository implements DocumentRepository {
   final StreamController<void> _changes = StreamController<void>.broadcast();
   final List<EntryDocument> _documents = <EntryDocument>[];
   int _nextId = 0;
@@ -97,70 +93,4 @@ class _FakeJournalRepository implements JournalRepository {
     _changes.add(null);
   }
 
-  @override
-  Future<void> flush() async {}
-
-  @override
-  JournalArchive? archiveForDocument(String id) => null;
-
-  @override
-  Future<EntryDocument> importArchive(JournalArchive archive) async =>
-      archive.document;
-
-  @override
-  void addFlushHook(Future<void> Function() hook) {}
-
-  @override
-  void removeFlushHook(Future<void> Function() hook) {}
-
-  @override
-  List<int> get recentColorValues => const <int>[];
-
-  @override
-  Set<int> get favoriteColorValues => const <int>{};
-
-  @override
-  Future<void> updateColorPreferences({
-    List<int>? recent,
-    Set<int>? favorites,
-  }) async {}
-
-  @override
-  Future<String> putAsset(
-    String ownerId,
-    AssetKind kind,
-    String mime,
-    List<int> bytes,
-  ) async => 'asset';
-
-  @override
-  Uint8List? readAsset(String id) => null;
-
-  @override
-  String? assetMime(String id) => null;
-
-  @override
-  Future<void> collectUnreferencedAssets() async {}
-
-  @override
-  List<EntryCheckpoint> checkpointsFor(String documentId) =>
-      const <EntryCheckpoint>[];
-
-  @override
-  void scheduleCheckpoint(String documentId) {}
-
-  @override
-  Future<void> createCheckpoint(String documentId) async {}
-
-  @override
-  Future<void> restoreCheckpoint(String checkpointId) async {}
-
-  @override
-  List<JournalTemplate> get templates => const <JournalTemplate>[];
-
-  @override
-  Future<void> saveTemplate(JournalTemplate template) async {}
-
-  @override
-  Future<void> deleteTemplate(String id) async {}
 }

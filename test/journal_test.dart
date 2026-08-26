@@ -12,7 +12,7 @@ import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/template.dart';
 import 'package:journal_app/services/image_source.dart';
 import 'package:journal_app/services/journal_store.dart';
-import 'package:journal_app/services/repositories.dart';
+import 'package:journal_app/services/hive_repositories.dart';
 
 void main() {
   group('Entry JSON', () {
@@ -285,14 +285,16 @@ void main() {
     }
 
     test(
-      'repository facade round-trips documents, assets, and templates',
+      'repository capabilities round-trip documents, assets, and templates',
       () async {
         final store = await freshStore();
-        final repository = HiveJournalRepository(store);
-        final document = await repository.createDocument(
+        final documents = HiveDocumentRepository(store);
+        final assets = HiveAssetRepository(store);
+        final templates = HiveTemplateRepository(store);
+        final document = await documents.createDocument(
           title: 'Repository page',
         );
-        expect(repository.documents.single.title, 'Repository page');
+        expect(documents.documents.single.title, 'Repository page');
 
         final node = CanvasNode.fromBlock(
           ContentBlock(
@@ -313,17 +315,17 @@ void main() {
           nodes: [node],
           board: const BoardSettings(gridVisible: true),
         );
-        await repository.saveDocument(updated);
-        expect(repository.documents.single.nodes.single.transform.x, -12);
-        expect(repository.documents.single.board.gridVisible, isTrue);
+        await documents.saveDocument(updated);
+        expect(documents.documents.single.nodes.single.transform.x, -12);
+        expect(documents.documents.single.board.gridVisible, isTrue);
 
-        final asset = await repository.putAsset(
+        final asset = await assets.putAsset(
           document.id,
           AssetKind.image,
           'image/png',
           [1, 2, 3],
         );
-        expect(repository.readAsset(asset), [1, 2, 3]);
+        expect(assets.readAsset(asset), [1, 2, 3]);
 
         final template = JournalTemplate(
           id: 'template-1',
@@ -331,12 +333,12 @@ void main() {
           document: updated,
           createdAt: DateTime.utc(2026),
         );
-        await repository.saveTemplate(template);
-        expect(repository.templates.single.name, 'Starter');
-        await repository.deleteTemplate(template.id);
-        expect(repository.templates, isEmpty);
-        await repository.deleteDocument(document.id);
-        expect(repository.documents, isEmpty);
+        await templates.saveTemplate(template);
+        expect(templates.templates.single.name, 'Starter');
+        await templates.deleteTemplate(template.id);
+        expect(templates.templates, isEmpty);
+        await documents.deleteDocument(document.id);
+        expect(documents.documents, isEmpty);
       },
     );
 

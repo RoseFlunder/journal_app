@@ -6,8 +6,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'app/app_dependencies.dart';
 import 'services/audio_playback.dart';
 import 'ui/features/journal/views/journal_screen.dart';
+import 'ui/features/editor/view_models/entry_editor_view_model.dart';
 import 'services/repositories.dart';
-import 'services/journal_store.dart';
 import 'widgets/paper_page.dart';
 
 Future<void> main() async {
@@ -200,35 +200,43 @@ class JournalApp extends StatelessWidget {
   JournalApp({
     super.key,
     JournalRepositories? repositories,
-    JournalRepository? repository,
-    JournalStore? store,
     AppDependencies? dependencies,
     MusicCatalogRepository? musicCatalog,
     AudioPlaybackFactory? audioPlaybackFactory,
+    EntryEditorViewModelFactory? editorViewModelFactory,
   }) : assert(
-         repositories != null ||
-             repository != null ||
-             store != null ||
-             dependencies != null,
+         repositories != null || dependencies != null,
+         'Provide AppDependencies or JournalRepositories.',
        ),
-       repositories =
-           dependencies?.repositories ??
-           repositories ??
-           JournalRepositories.from(
-             repository ?? HiveJournalRepository(store!),
-           ),
+       repositories = repositories ?? dependencies!.repositories,
        musicCatalog =
-           dependencies?.musicCatalog ??
            musicCatalog ??
+           dependencies?.musicCatalog ??
            const DisabledMusicCatalogRepository(),
-       audioPlaybackFactory =
-           dependencies?.audioPlaybackFactory ??
-           audioPlaybackFactory ??
-           _disabledAudioFactory;
+       audioPlaybackFactory = audioPlaybackFactory ?? _disabledAudioFactory,
+       editorViewModelFactory = editorViewModelFactory ??
+           ((document) => EntryEditorViewModel(
+             document: document,
+             documentRepository: (repositories ?? dependencies!.repositories)
+                 .documentRepository,
+             checkpointRepository: (repositories ?? dependencies!.repositories)
+                 .checkpointRepository,
+             assetRepository: (repositories ?? dependencies!.repositories)
+                 .assetRepository,
+             templateRepository: (repositories ?? dependencies!.repositories)
+                 .templateRepository,
+             preferenceRepository: (repositories ?? dependencies!.repositories)
+                 .preferenceRepository,
+             persistenceRepository: (repositories ?? dependencies!.repositories)
+                 .persistence,
+             archiveRepository: (repositories ?? dependencies!.repositories)
+                 .archiveRepository,
+           ));
 
   final JournalRepositories repositories;
   final MusicCatalogRepository musicCatalog;
   final AudioPlaybackFactory audioPlaybackFactory;
+  final EntryEditorViewModelFactory editorViewModelFactory;
 
   @override
   Widget build(BuildContext context) {
@@ -283,6 +291,7 @@ class JournalApp extends StatelessWidget {
         repositories: repositories,
         musicCatalog: musicCatalog,
         audioPlaybackFactory: audioPlaybackFactory,
+        editorViewModelFactory: editorViewModelFactory,
       ),
     );
   }

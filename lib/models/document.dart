@@ -1,4 +1,6 @@
 import 'dart:collection';
+import 'dart:math' as math;
+import 'dart:ui';
 
 import 'entry.dart';
 import 'page_music.dart';
@@ -18,6 +20,20 @@ class Transform2D {
   final double width;
   final double height;
   final double rotation;
+
+  Transform2D copyWith({
+    double? x,
+    double? y,
+    double? width,
+    double? height,
+    double? rotation,
+  }) => Transform2D(
+    x: x ?? this.x,
+    y: y ?? this.y,
+    width: width ?? this.width,
+    height: height ?? this.height,
+    rotation: rotation ?? this.rotation,
+  );
 
   Map<String, dynamic> toJson() => {
     'x': x,
@@ -40,6 +56,8 @@ class Transform2D {
 /// RichText Delta, image adjustments, ink strokes, and future node types can
 /// evolve without changing the common transform contract.
 class CanvasNode {
+  static const _unset = Object();
+
   CanvasNode({
     required this.id,
     required this.type,
@@ -63,6 +81,30 @@ class CanvasNode {
   final String? accessibilityLabel;
   final List<CanvasNode> children;
 
+  CanvasNode copyWith({
+    String? id,
+    BlockType? type,
+    Transform2D? transform,
+    Map<String, dynamic>? payload,
+    double? opacity,
+    bool? locked,
+    bool? visible,
+    Object? accessibilityLabel = _unset,
+    Iterable<CanvasNode>? children,
+  }) => CanvasNode(
+    id: id ?? this.id,
+    type: type ?? this.type,
+    transform: transform ?? this.transform,
+    payload: payload ?? this.payload,
+    opacity: opacity ?? this.opacity,
+    locked: locked ?? this.locked,
+    visible: visible ?? this.visible,
+    accessibilityLabel: identical(accessibilityLabel, _unset)
+        ? this.accessibilityLabel
+        : accessibilityLabel as String?,
+    children: children ?? this.children,
+  );
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'type': type.name,
@@ -78,16 +120,19 @@ class CanvasNode {
   factory CanvasNode.fromBlock(
     ContentBlock block, {
     Iterable<CanvasNode> children = const [],
+    Transform2D? transform,
   }) => CanvasNode(
     id: block.id,
     type: block.type,
-    transform: Transform2D(
-      x: block.x,
-      y: block.y,
-      width: block.w,
-      height: block.h,
-      rotation: block.rotation,
-    ),
+    transform:
+        transform ??
+        Transform2D(
+          x: block.x,
+          y: block.y,
+          width: block.w,
+          height: block.h,
+          rotation: block.rotation,
+        ),
     payload: block.toJson(),
     opacity: block.opacity,
     locked: block.locked,
@@ -131,11 +176,12 @@ class CanvasNode {
     );
   }
 
-  ContentBlock toBlock() {
+  ContentBlock toBlock({Transform2D? worldTransform}) {
+    final resolvedTransform = worldTransform ?? transform;
     final json = Map<String, dynamic>.from(payload)
       ..['id'] = id
       ..['type'] = type.name
-      ..addAll(transform.toJson())
+      ..addAll(resolvedTransform.toJson())
       ..['opacity'] = opacity
       ..['locked'] = locked
       ..['hidden'] = !visible
@@ -183,6 +229,13 @@ class EntryDocument {
   final bool titleItalic;
   final int revision;
   final int schemaVersion;
+
+  /// Compatibility view for the legacy canvas and storage adapters.
+  ///
+  /// New code should use [nodes]. The returned blocks are detached mutable
+  /// adapters, so mutating one cannot mutate this document.
+  @Deprecated('Use immutable nodes instead.')
+  List<ContentBlock> get blocks => toEntry().blocks;
 
   EntryDocument copyWith({
     String? title,
@@ -307,7 +360,7 @@ class EntryDocument {
   static List<CanvasNode> _topLevelNodes(List<ContentBlock> blocks) {
     final byId = {for (final block in blocks) block.id: block};
     final building = <String>{};
-    CanvasNode build(ContentBlock block) {
+    CanvasNode build(ContentBlock block, ContentBlock? parent) {
       if (!building.add(block.id)) {
         return CanvasNode.fromBlock(block);
       }
@@ -315,10 +368,14 @@ class EntryDocument {
           ? (block.childIds ?? const <String>[])
                 .map((id) => byId[id])
                 .whereType<ContentBlock>()
-                .map(build)
+                .map((child) => build(child, block))
           : const <CanvasNode>[];
       building.remove(block.id);
-      return CanvasNode.fromBlock(block, children: children);
+      return CanvasNode.fromBlock(
+        block,
+        transform: _localTransform(block, parent),
+        children: children,
+      );
     }
 
     return blocks
@@ -327,24 +384,107 @@ class EntryDocument {
               block.groupId == null &&
               (block.type != BlockType.group || block.childIds != null),
         )
-        .map(build)
+        .map((block) => build(block, null))
         .toList(growable: false);
   }
 
-  static Iterable<ContentBlock> _flattenNode(CanvasNode node) sync* {
+  static Iterable<ContentBlock> _flattenNode(
+    CanvasNode node, {
+    String? parentId,
+  }) sync* {
     final block = node.toBlock();
+    if (parentId != null) block.groupId = parentId;
     if (node.children.isNotEmpty) {
       block.childIds = node.children.map((child) => child.id).toList();
       block.hidden = true;
     }
     yield block;
     for (final child in node.children) {
-      final descendants = _flattenNode(child).toList();
-      for (final descendant in descendants) {
-        if (descendant.type != BlockType.group) descendant.groupId = node.id;
-        yield descendant;
-      }
+      yield* _flattenNode(
+        child.copyWith(
+          transform: _worldTransform(child.transform, node.transform),
+        ),
+        parentId: node.id,
+      );
     }
+  }
+
+  static Transform2D _localTransform(
+    ContentBlock block,
+    ContentBlock? parent,
+  ) {
+    final world = Transform2D(
+      x: block.x,
+      y: block.y,
+      width: block.w,
+      height: block.h,
+      rotation: block.rotation,
+    );
+    if (parent == null) return world;
+    return _toLocal(
+      world,
+      Transform2D(
+        x: parent.x,
+        y: parent.y,
+        width: parent.w,
+        height: parent.h,
+        rotation: parent.rotation,
+      ),
+    );
+  }
+
+  static Transform2D _toLocal(Transform2D world, Transform2D parent) {
+    final parentCenter = Offset(parent.width / 2, parent.height / 2);
+    final worldParentCenter = Offset(
+      parent.x + parentCenter.dx,
+      parent.y + parentCenter.dy,
+    );
+    final worldCenter = Offset(
+      world.x + world.width / 2,
+      world.y + world.height / 2,
+    );
+    final localCenter = parentCenter +
+        _rotate(worldCenter - worldParentCenter, -parent.rotation);
+    return Transform2D(
+      x: localCenter.dx - world.width / 2,
+      y: localCenter.dy - world.height / 2,
+      width: world.width,
+      height: world.height,
+      rotation: world.rotation - parent.rotation,
+    );
+  }
+
+  static Transform2D _worldTransform(
+    Transform2D local,
+    Transform2D parent,
+  ) {
+    final parentCenter = Offset(parent.width / 2, parent.height / 2);
+    final localCenter = Offset(
+      local.x + local.width / 2,
+      local.y + local.height / 2,
+    );
+    final worldParentCenter = Offset(
+      parent.x + parentCenter.dx,
+      parent.y + parentCenter.dy,
+    );
+    final worldCenter = worldParentCenter +
+        _rotate(localCenter - parentCenter, parent.rotation);
+    return Transform2D(
+      x: worldCenter.dx - local.width / 2,
+      y: worldCenter.dy - local.height / 2,
+      width: local.width,
+      height: local.height,
+      rotation: parent.rotation + local.rotation,
+    );
+  }
+
+  static Offset _rotate(Offset point, double angle) {
+    final cosine = math.cos(angle);
+    final sine = math.sin(angle);
+    return Offset(
+      point.dx * cosine - point.dy * sine,
+      point.dx * sine + point.dy * cosine,
+    );
   }
 }
 

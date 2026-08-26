@@ -82,12 +82,33 @@ sealed class EditorCommand {
       before: before,
       after: after,
     );
-    return transform ??
-        DocumentReplacementCommand(
-          label: label,
-          before: before,
-          after: after,
-        );
+    if (transform != null) return transform;
+    final board = BoardEditorCommand.tryCreate(
+      label: label,
+      before: before,
+      after: after,
+    );
+    if (board != null) return board;
+    final nodes = NodeEditorCommand.tryCreate(
+      label: label,
+      before: before,
+      after: after,
+    );
+    if (nodes != null) return nodes;
+    final beforeIds = before.blocks.map((block) => block.id).toSet();
+    final afterIds = after.blocks.map((block) => block.id).toSet();
+    if (!setEquals(beforeIds, afterIds)) {
+      return StructuralEditorCommand(
+        label: label,
+        before: before,
+        after: after,
+      );
+    }
+    return DocumentReplacementCommand(
+      label: label,
+      before: before,
+      after: after,
+    );
   }
 }
 
@@ -161,6 +182,113 @@ final class TransformEditorCommand extends EditorCommand {
           ),
         ),
       );
+}
+
+/// Typed command for a board-only change such as grid visibility or snapping.
+final class BoardEditorCommand extends EditorCommand {
+  BoardEditorCommand({
+    required super.label,
+    required this.before,
+    required this.after,
+  }) : super(affectedIds: const <String>{});
+
+  final EditorDocumentSnapshot before;
+  final EditorDocumentSnapshot after;
+
+  static BoardEditorCommand? tryCreate({
+    required String label,
+    required EditorDocumentSnapshot before,
+    required EditorDocumentSnapshot after,
+  }) {
+    if (jsonEncode(before.blocks.map((block) => block.toJson()).toList()) !=
+        jsonEncode(after.blocks.map((block) => block.toJson()).toList())) {
+      return null;
+    }
+    if (jsonEncode(before.board.toJson()) == jsonEncode(after.board.toJson())) {
+      return null;
+    }
+    return BoardEditorCommand(label: label, before: before, after: after);
+  }
+
+  @override
+  EditorDocumentSnapshot apply(EditorDocumentSnapshot state) => after;
+
+  @override
+  EditorDocumentSnapshot revert(EditorDocumentSnapshot state) => before;
+}
+
+/// Typed command for a style, content, visibility, or other node payload edit.
+final class NodeEditorCommand extends EditorCommand {
+  NodeEditorCommand({
+    required super.label,
+    required super.affectedIds,
+    required this.before,
+    required this.after,
+  });
+
+  final EditorDocumentSnapshot before;
+  final EditorDocumentSnapshot after;
+
+  static NodeEditorCommand? tryCreate({
+    required String label,
+    required EditorDocumentSnapshot before,
+    required EditorDocumentSnapshot after,
+  }) {
+    final beforeById = {for (final block in before.blocks) block.id: block};
+    final afterById = {for (final block in after.blocks) block.id: block};
+    if (beforeById.length != afterById.length ||
+        !beforeById.keys.toSet().containsAll(afterById.keys) ||
+        jsonEncode(before.board.toJson()) != jsonEncode(after.board.toJson())) {
+      return null;
+    }
+    final changed = <String>{};
+    for (final id in beforeById.keys) {
+      final left = beforeById[id]!;
+      final right = afterById[id]!;
+      if (jsonEncode(_withoutTransform(left)) !=
+              jsonEncode(_withoutTransform(right)) &&
+          jsonEncode(_transformOf(left).toJson()) ==
+              jsonEncode(_transformOf(right).toJson())) {
+        changed.add(id);
+      }
+    }
+    if (changed.isEmpty) return null;
+    return NodeEditorCommand(
+      label: label,
+      affectedIds: changed,
+      before: before,
+      after: after,
+    );
+  }
+
+  @override
+  EditorDocumentSnapshot apply(EditorDocumentSnapshot state) => after;
+
+  @override
+  EditorDocumentSnapshot revert(EditorDocumentSnapshot state) => before;
+}
+
+/// Typed command for insertion, deletion, grouping, and layer reordering.
+final class StructuralEditorCommand extends EditorCommand {
+  StructuralEditorCommand({
+    required super.label,
+    required this.before,
+    required this.after,
+  }) : super(
+         affectedIds: {
+           ...before.blocks.map((block) => block.id),
+           ...after.blocks.map((block) => block.id),
+         },
+       );
+
+  final EditorDocumentSnapshot before;
+  final EditorDocumentSnapshot after;
+
+  @override
+  EditorDocumentSnapshot apply(EditorDocumentSnapshot state) => after;
+
+  @override
+  EditorDocumentSnapshot revert(EditorDocumentSnapshot state) => before;
 }
 
 /// Transitional command for insertions, deletions, styles, and board edits.

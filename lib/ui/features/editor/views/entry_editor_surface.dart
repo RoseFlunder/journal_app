@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../models/entry.dart';
+import '../../../../models/view_state.dart';
 import '../../../../widgets/page_viewport.dart';
 
 /// Shared paper, camera, and page-header composition for an entry editor.

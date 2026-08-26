@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import '../models/document.dart';
-import '../models/storage_records.dart';
 import '../models/template.dart';
 import 'journal_archive.dart';
+import 'journal_store.dart';
 import 'repositories.dart';
 
 /// Explicit capability repositories for the current Hive-backed store.
@@ -16,37 +16,69 @@ import 'repositories.dart';
 class HiveDocumentRepository implements DocumentRepository {
   const HiveDocumentRepository(this._source);
 
-  final JournalRepository _source;
+  final JournalStore _source;
 
   @override
   Future<void> init() => _source.init();
 
   @override
-  List<EntryDocument> get documents => _source.documents;
+  List<EntryDocument> get documents =>
+      _source.entries.map(EntryDocument.fromEntry).toList(growable: false);
 
   @override
   Stream<void> get changes => _source.changes;
 
   @override
   Future<EntryDocument> createDocument({String title = ''}) =>
-      _source.createDocument(title: title);
+      _source.addEntry(title: title).then(EntryDocument.fromEntry);
 
   @override
-  Future<void> saveDocument(EntryDocument document) =>
-      _source.saveDocument(document);
+  Future<void> saveDocument(EntryDocument document) => _source.updateEntry(
+    document.id,
+    (entry) {
+      final next = document.toEntry();
+      entry
+        ..title = next.title
+        ..blocks = next.blocks
+        ..board = next.board
+        ..view = next.view
+        ..music = next.music
+        ..titleFontSize = next.titleFontSize
+        ..titleFontFamily = next.titleFontFamily
+        ..titleTextColorValue = next.titleTextColorValue
+        ..titleBold = next.titleBold
+        ..titleItalic = next.titleItalic
+        ..revision = next.revision
+        ..schemaVersion = next.schemaVersion;
+    },
+  );
 
   @override
-  void previewDocument(EntryDocument document) =>
-      _source.previewDocument(document);
+  void previewDocument(EntryDocument document) {
+    final next = document.toEntry();
+    _source.previewEntry(document.id, (entry) {
+      entry
+        ..title = next.title
+        ..blocks = next.blocks
+        ..board = next.board
+        ..view = next.view
+        ..music = next.music
+        ..titleFontSize = next.titleFontSize
+        ..titleFontFamily = next.titleFontFamily
+        ..titleTextColorValue = next.titleTextColorValue
+        ..titleBold = next.titleBold
+        ..titleItalic = next.titleItalic;
+    });
+  }
 
   @override
-  Future<void> deleteDocument(String id) => _source.deleteDocument(id);
+  Future<void> deleteDocument(String id) => _source.deleteEntry(id);
 }
 
 class HiveAssetRepository implements AssetRepository {
   const HiveAssetRepository(this._source);
 
-  final JournalRepository _source;
+  final JournalStore _source;
 
   @override
   Future<String> putAsset(
@@ -54,13 +86,13 @@ class HiveAssetRepository implements AssetRepository {
     AssetKind kind,
     String mime,
     List<int> bytes,
-  ) => _source.putAsset(ownerId, kind, mime, bytes);
+  ) => _source.addAsset(ownerId, kind, mime, bytes);
 
   @override
-  Uint8List? readAsset(String id) => _source.readAsset(id);
+  Uint8List? readAsset(String id) => _source.getAsset(id);
 
   @override
-  String? assetMime(String id) => _source.assetMime(id);
+  String? assetMime(String id) => _source.getAssetMime(id);
 
   @override
   Future<void> collectUnreferencedAssets() =>
@@ -70,7 +102,7 @@ class HiveAssetRepository implements AssetRepository {
 class HiveCheckpointRepository implements CheckpointRepository {
   const HiveCheckpointRepository(this._source);
 
-  final JournalRepository _source;
+  final JournalStore _source;
 
   @override
   List<EntryCheckpoint> checkpointsFor(String documentId) =>
@@ -92,7 +124,7 @@ class HiveCheckpointRepository implements CheckpointRepository {
 class HiveTemplateRepository implements TemplateRepository {
   const HiveTemplateRepository(this._source);
 
-  final JournalRepository _source;
+  final JournalStore _source;
 
   @override
   List<JournalTemplate> get templates => _source.templates;
@@ -108,7 +140,7 @@ class HiveTemplateRepository implements TemplateRepository {
 class HivePreferencesRepository implements PreferencesRepository {
   const HivePreferencesRepository(this._source);
 
-  final JournalRepository _source;
+  final JournalStore _source;
 
   @override
   List<int> get recentColorValues => _source.recentColorValues;
@@ -126,21 +158,21 @@ class HivePreferencesRepository implements PreferencesRepository {
 class HiveArchiveRepository implements ArchiveRepository {
   const HiveArchiveRepository(this._source);
 
-  final JournalRepository _source;
+  final JournalStore _source;
 
   @override
   JournalArchive? archiveForDocument(String id) =>
-      _source.archiveForDocument(id);
+      _source.archiveForEntry(id);
 
   @override
   Future<EntryDocument> importArchive(JournalArchive archive) =>
-      _source.importArchive(archive);
+      _source.importArchive(archive).then(EntryDocument.fromEntry);
 }
 
 class HivePersistenceRepository implements PersistenceRepository {
   const HivePersistenceRepository(this._source);
 
-  final JournalRepository _source;
+  final JournalStore _source;
 
   @override
   void addFlushHook(Future<void> Function() hook) =>
@@ -158,7 +190,7 @@ class HivePersistenceRepository implements PersistenceRepository {
 /// for application-level lifecycle disposal.
 class HiveRepositorySet {
   HiveRepositorySet(
-    JournalRepository source, {
+    JournalStore source, {
     PersistenceRepository? persistence,
   }) {
     final persistenceRepository =

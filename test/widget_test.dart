@@ -12,6 +12,7 @@ import 'package:journal_app/main.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/sticker.dart';
 import 'package:journal_app/services/journal_store.dart';
+import 'package:journal_app/services/hive_repositories.dart';
 import 'package:journal_app/editor/block_widget.dart';
 import 'package:journal_app/editor/editor_toolbar.dart';
 import 'package:journal_app/editor/entry_canvas.dart';
@@ -150,7 +151,9 @@ void main() {
     (tester) async {
       store = JournalStore();
       await store.init();
-      await tester.pumpWidget(JournalApp(store: store));
+      await tester.pumpWidget(
+        JournalApp(repositories: HiveRepositorySet(store).repositories),
+      );
       await tester.pumpAndSettle();
 
       expect(
@@ -269,7 +272,9 @@ void main() {
     await store.addEntry();
     await store.addEntry();
     await store.addEntry();
-    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpWidget(
+      JournalApp(repositories: HiveRepositorySet(store).repositories),
+    );
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Previous page'), findsNothing);
@@ -333,7 +338,9 @@ void main() {
   ) async {
     store = JournalStore();
     await store.init();
-    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpWidget(
+      JournalApp(repositories: HiveRepositorySet(store).repositories),
+    );
     await tester.pumpAndSettle();
 
     expect(find.byType(PaperPage), findsOneWidget);
@@ -436,7 +443,9 @@ void main() {
     for (final existing in store.entries.toList()) {
       await store.deleteEntry(existing.id);
     }
-    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpWidget(
+      JournalApp(repositories: HiveRepositorySet(store).repositories),
+    );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
 
@@ -609,7 +618,9 @@ void main() {
     for (final existing in store.entries.toList()) {
       await store.deleteEntry(existing.id);
     }
-    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpWidget(
+      JournalApp(repositories: HiveRepositorySet(store).repositories),
+    );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
 
@@ -775,7 +786,9 @@ void main() {
     for (final existing in store.entries.toList()) {
       await store.deleteEntry(existing.id);
     }
-    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpWidget(
+      JournalApp(repositories: HiveRepositorySet(store).repositories),
+    );
     await tester.pumpAndSettle();
     await createPageFromFab(tester, title: 'Sketches');
     await tester.tap(find.byTooltip('Edit page'));
@@ -794,9 +807,14 @@ void main() {
     await tester.tap(find.byTooltip('Ink color'));
     await tester.pumpAndSettle();
     expect(find.text('Ink color'), findsOneWidget);
-    expect(find.byKey(const ValueKey('color-wheel')), findsOneWidget);
     expect(find.byKey(const ValueKey('color-field')), findsOneWidget);
+    expect(find.byKey(const ValueKey('color-preview')), findsOneWidget);
+    expect(find.byKey(const ValueKey('color-value')), findsOneWidget);
     expect(find.byKey(const ValueKey('color-opacity')), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('color-field'))).aspectRatio,
+      closeTo(1, 0.01),
+    );
     await tester.tap(find.bySemanticsLabel('Berry'));
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
@@ -849,17 +867,8 @@ void main() {
       (block) => block.type == BlockType.ink,
     );
     expect(ink.strokeColorValue, 0xFF873F4D);
-
-    await tester.tap(find.byTooltip('Stroke color'));
-    await tester.pumpAndSettle();
-    expect(find.text('Stroke color'), findsOneWidget);
-    await tester.tap(find.bySemanticsLabel('Moss'));
-    await tester.tap(find.text('Apply'));
-    await tester.pumpAndSettle();
-    ink = store.entries.single.blocks.lastWhere(
-      (block) => block.type == BlockType.ink,
-    );
-    expect(ink.strokeColorValue, 0xFF4E684A);
+    expect(find.byTooltip('Ink color'), findsOneWidget);
+    expect(find.byTooltip('Stroke color'), findsNothing);
 
     await tester.tap(find.byTooltip('More editing tools'));
     await tester.pumpAndSettle();
@@ -886,7 +895,9 @@ void main() {
       for (final existing in store.entries.toList()) {
         await store.deleteEntry(existing.id);
       }
-      await tester.pumpWidget(JournalApp(store: store));
+      await tester.pumpWidget(
+        JournalApp(repositories: HiveRepositorySet(store).repositories),
+      );
       await tester.pumpAndSettle();
       await createPageFromFab(tester);
       await tester.tap(find.byTooltip('Edit page'));
@@ -902,8 +913,9 @@ void main() {
       await tester.tap(find.byTooltip('Text color'));
       await tester.pumpAndSettle();
       expect(find.text('Text color'), findsOneWidget);
-      expect(find.byKey(const ValueKey('color-wheel')), findsOneWidget);
       expect(find.byKey(const ValueKey('color-field')), findsOneWidget);
+      expect(find.byKey(const ValueKey('color-preview')), findsOneWidget);
+      expect(find.byKey(const ValueKey('color-value')), findsOneWidget);
       expect(find.byKey(const ValueKey('color-opacity')), findsOneWidget);
       expect(find.byType(Slider), findsNothing);
       expect(find.textContaining('Hue '), findsNothing);
@@ -965,11 +977,11 @@ void main() {
 
       await tester.tap(find.byTooltip('Text color'));
       await tester.pumpAndSettle();
-      final wheelFinder = find.byKey(const ValueKey('color-wheel'));
-      await tester.ensureVisible(wheelFinder);
+      final customField = find.byKey(const ValueKey('color-field'));
+      await tester.ensureVisible(customField);
       await tester.pump();
-      final wheel = tester.getRect(wheelFinder);
-      await tester.tapAt(wheel.center + Offset(0, -wheel.height / 2 + 14));
+      final customFieldRect = tester.getRect(customField);
+      await tester.tapAt(customFieldRect.topCenter + const Offset(0, 14));
       await tester.pump();
       expect(store.entries.single.titleTextColorValue, isNot(liveTitleColor));
       final opacity = find.byKey(const ValueKey('color-opacity'));
@@ -1099,7 +1111,9 @@ void main() {
     for (final existing in store.entries.toList()) {
       await store.deleteEntry(existing.id);
     }
-    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpWidget(
+      JournalApp(repositories: HiveRepositorySet(store).repositories),
+    );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
 
@@ -1163,7 +1177,9 @@ void main() {
     for (final existing in store.entries.toList()) {
       await store.deleteEntry(existing.id);
     }
-    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpWidget(
+      JournalApp(repositories: HiveRepositorySet(store).repositories),
+    );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
     final entry = store.entries.single;
@@ -1191,7 +1207,9 @@ void main() {
       await store.deleteEntry(existing.id);
     }
     await store.addEntry();
-    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpWidget(
+      JournalApp(repositories: HiveRepositorySet(store).repositories),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Untitled page'));
     await tester.pumpAndSettle();

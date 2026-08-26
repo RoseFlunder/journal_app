@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
+import '../models/document.dart';
 import '../models/entry.dart';
 import 'editor_state.dart';
 import 'editor_history.dart';
@@ -15,18 +16,24 @@ import 'geometry_services.dart';
 /// only this controller; persistence happens once when a transaction commits.
 class EditorController extends ChangeNotifier {
   EditorController({
-    required List<ContentBlock> blocks,
-    required BoardSettings initialBoard,
-    required Future<void> Function(List<ContentBlock>, BoardSettings)
-    persistDocument,
+    EntryDocument? document,
+    List<ContentBlock>? blocks,
+    BoardSettings? initialBoard,
+    required Future<void> Function(EntryDocument) persistDocument,
     this.maxHistory = 100,
-  }) : _blocks = _cloneBlocks(blocks),
-       _board = initialBoard,
+  }) : assert(
+         document != null || (blocks != null && initialBoard != null),
+         'Provide either document or the legacy blocks/initialBoard pair.',
+       ),
+       _baseDocument = document ?? _legacyDocument(blocks!, initialBoard!),
+       _blocks = _cloneBlocks(document?.blocks ?? blocks!),
+       _board = document?.board ?? initialBoard!,
        _onSave = persistDocument;
 
   static const _uuid = Uuid();
 
-  final Future<void> Function(List<ContentBlock>, BoardSettings) _onSave;
+  final Future<void> Function(EntryDocument) _onSave;
+  EntryDocument _baseDocument;
   final int maxHistory;
   late final EditorHistory _history = EditorHistory(maxLength: maxHistory);
   final Set<String> _selection = <String>{};
@@ -37,13 +44,19 @@ class EditorController extends ChangeNotifier {
   Timer? _textTimer;
   EditorSaveState _saveState = EditorSaveState.saved;
 
-  List<ContentBlock> get blocks => List.unmodifiable(_blocks);
+  /// Detached legacy block adapters for the current canvas implementation.
+  /// New feature code should consume [document] and [nodes].
+  @Deprecated('Use document.nodes or nodes instead.')
+  List<ContentBlock> get blocks => _cloneBlocks(_blocks);
+  List<CanvasNode> get nodes => document.nodes;
+  EntryDocument get document => _currentDocument();
   BoardSettings get board => _board;
   Set<String> get selection => Set.unmodifiable(_selection);
   List<ContentBlock> get selectedDrawableBlocks => _expandedSelectedBlocks
       .where(
         (block) => block.type == BlockType.ink || block.type == BlockType.shape,
       )
+      .map((block) => block.clone())
       .toList(growable: false);
   bool get hasSelection => _selection.isNotEmpty;
   bool get canUndo => _history.canUndo;
@@ -56,7 +69,7 @@ class EditorController extends ChangeNotifier {
   EditorSaveState get saveState => _saveState;
 
   EditorState get state => EditorState(
-    document: _snapshot(),
+    document: document,
     selection: _selection,
     canUndo: canUndo,
     canRedo: canRedo,
@@ -68,8 +81,30 @@ class EditorController extends ChangeNotifier {
   ContentBlock? get primarySelection {
     if (_selection.isEmpty) return null;
     final id = _selection.last;
-    return _byId(id);
+    final block = _byId(id);
+    return block?.clone();
   }
+
+  /// Replaces one immutable node at the editor boundary.
+  void replaceNode(CanvasNode node, {String label = 'Edit node'}) {
+    replaceBlockSnapshot(node.toBlock(), label: label);
+  }
+
+  /// Applies an immutable update to one node without exposing the mutable
+  /// compatibility adapter to callers.
+  void updateNode(
+    String id,
+    CanvasNode Function(CanvasNode node) update, {
+    String label = 'Edit node',
+  }) {
+    final block = _byId(id);
+    if (block == null || block.locked) return;
+    replaceNode(update(CanvasNode.fromBlock(block)), label: label);
+  }
+
+  /// Inserts a node through the immutable editor boundary.
+  void addNode(CanvasNode node, {bool select = true}) =>
+      add(node.toBlock(), select: select);
 
   void select(String? id, {bool additive = false}) {
     if (id == null) {
@@ -665,6 +700,24 @@ class EditorController extends ChangeNotifier {
     _textTimer?.cancel();
     _blocks = _cloneBlocks(blocks);
     _board = board;
+    _baseDocument = _baseDocument.copyWith(
+      nodes: EntryDocument.fromEntry(
+        _baseDocument.toEntry()..blocks = _cloneBlocks(blocks),
+      ).nodes,
+      board: board,
+    );
+    _selection.clear();
+    _history.reset();
+    _saveState = EditorSaveState.saved;
+    notifyListeners();
+  }
+
+  /// Replaces the immutable working document after recovery or import.
+  void replaceDocumentModel(EntryDocument next) {
+    _textTimer?.cancel();
+    _baseDocument = next;
+    _blocks = _cloneBlocks(next.toEntry().blocks);
+    _board = next.board;
     _selection.clear();
     _history.reset();
     _saveState = EditorSaveState.saved;
@@ -691,7 +744,7 @@ class EditorController extends ChangeNotifier {
     _saveState = EditorSaveState.saving;
     notifyListeners();
     try {
-      await _onSave(snapshotBlocks(), _board);
+      await _onSave(document);
       _saveState = EditorSaveState.saved;
     } catch (_) {
       _saveState = EditorSaveState.failed;
@@ -778,6 +831,13 @@ class EditorController extends ChangeNotifier {
 
   EditorDocumentSnapshot _snapshot() => EditorDocumentSnapshot(_blocks, _board);
 
+  EntryDocument _currentDocument() {
+    final entry = _baseDocument.toEntry()
+      ..blocks = _cloneBlocks(_blocks)
+      ..board = _board;
+    return EntryDocument.fromEntry(entry);
+  }
+
   void _restore(EditorDocumentSnapshot snapshot) {
     _blocks = _cloneBlocks(snapshot.blocks);
     _board = snapshot.board;
@@ -806,4 +866,14 @@ class EditorController extends ChangeNotifier {
 
   static List<ContentBlock> _cloneBlocks(List<ContentBlock> blocks) =>
       blocks.map((block) => block.clone()).toList();
+}
+
+EntryDocument _legacyDocument(
+  List<ContentBlock> blocks,
+  BoardSettings board,
+) {
+  final entry = Entry.newPage()
+    ..blocks = EditorController._cloneBlocks(blocks)
+    ..board = board;
+  return EntryDocument.fromEntry(entry);
 }

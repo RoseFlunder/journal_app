@@ -3,9 +3,9 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-26 on top of commit `f70a1c3` (`refactor: extract page
-camera controller`). The architecture slices analyze cleanly and the focused
-editor, repository, geometry, and viewport suites pass.
+Last audited: 2026-08-26 on top of commit `f08470d` (`Add Jamendo page music
+and external build defines`). The architecture slices analyze cleanly and the
+full Flutter test suite passes.
 
 Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
@@ -14,8 +14,9 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 ### Foundation and persistence
 
 - [~] Immutable `EntryDocument`, `CanvasNode`, `Transform2D`, and
-  `EditorDocumentSnapshot` boundaries exist. The active canvas still uses
-  mutable `Entry` and `ContentBlock` adapters at the widget/controller edge.
+  `EditorDocumentSnapshot` boundaries exist. `EditorController` now exposes
+  immutable documents and detached legacy blocks; the active canvas still uses
+  mutable adapters at the compatibility edge.
 - [x] Fresh-data startup; legacy migration is out of scope.
 - [x] `EditorController` owns selection, transactions, clipboard, 100-step
   undo/redo, text coalescing, and save state.
@@ -28,10 +29,10 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [~] Saving and retryable failure UI exists; Saved feedback, error details,
   and failure integration coverage are missing.
 - [x] Journal, asset, checkpoint, and template repository interfaces have Hive
-  implementations.
-- [x] Screens receive narrow document, asset, checkpoint, template,
-  preference, persistence, and archive repository contracts through the
-  composition root; `JournalStore` is kept behind the Hive adapter.
+  implementations backed by direct capability adapters.
+- [x] Screens receive configured editor view-model factories and narrow
+  capability contracts through the composition root; `JournalStore` is kept
+  behind Hive adapters.
 - [~] Asset collection protects live documents, checkpoints, and templates,
   but not undo/redo or clipboard references.
 - [x] Serialize final text commit, background checkpoint, and storage flush to
@@ -81,8 +82,8 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [x] Structural groups preserve move, align, lock, hide, delete, duplicate,
   clipboard, template insertion, and reorder semantics.
 - [~] The immutable adapter nests group children and remaps graph IDs.
-- [!] Nested children still retain world coordinates. Convert them to true
-  group-local transforms and correct the misleading local-coordinate test.
+- [~] Group children are serialized as local transforms and flattened back to
+  world coordinates; active manipulation still uses the legacy flat adapter.
 - [!] Groups remain hidden structural blocks without bounding-box resize,
   rotation, or reliable nested-group behavior.
 - [x] Layers support selection, rename, visibility, locking, drag reorder,
@@ -160,9 +161,9 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
    - Replace snapshot commands with typed immutable commands.
 
 2. **True document and group model**
-   - Make immutable documents the editor's working state rather than using
+   - Make immutable nodes the editor’s working state rather than using
      mutable compatibility adapters in the active controller.
-   - Convert groups to nested local-coordinate nodes.
+   - Keep group serialization local and migrate manipulation to nested nodes.
    - Account for undo and clipboard during asset retention.
 
 3. **Complete page interaction overlay**
@@ -188,6 +189,8 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
   and `SnappingService`.
 - Make `EntryDocument` and `CanvasNode` immutable across UI, undo, repository,
   archive, and clipboard boundaries.
+- Keep `JournalRepositories` as the only UI-facing repository bundle; concrete
+  Hive adapters and `JournalStore` remain data-layer details.
 - Every completed gesture produces exactly one command and one save;
   cancellation restores the exact previous document.
 - No supported operation is exclusively drag- or mouse-driven.

@@ -5,7 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../models/entry.dart';
+import '../models/view_state.dart';
 import 'camera_controller.dart';
 import 'entry_chrome.dart';
 

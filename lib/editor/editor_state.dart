@@ -1,4 +1,4 @@
-import 'editor_history.dart';
+import '../models/document.dart';
 
 enum EditorSaveState { saved, saving, failed }
 
@@ -14,7 +14,8 @@ class EditorState {
     required this.saveState,
   }) : selection = Set.unmodifiable(selection);
 
-  final EditorDocumentSnapshot document;
+  /// The immutable document currently exposed to the editor view.
+  final EntryDocument document;
   final Set<String> selection;
   final bool canUndo;
   final bool canRedo;

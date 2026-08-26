@@ -214,7 +214,9 @@ class EditorToolbar extends StatelessWidget {
                     selected: italic,
                   ),
                 ],
-                if (strokeColorAvailable)
+                // A newly drawn ink block becomes selected, but draw mode
+                // already exposes the ink color control.
+                if (strokeColorAvailable && !inkColorAvailable)
                   _ColorPickerButton(
                     compact: compact,
                     colorValue: strokeColorValue,
@@ -650,20 +652,13 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
   void _setHsv() =>
       _setColor(HSVColor.fromAHSV(_alpha, _hue, _saturation, _value).toColor());
 
-  void _setHue(Offset localPosition, Size size) {
-    final center = size.center(Offset.zero);
-    final offset = localPosition - center;
-    final distance = offset.distance;
-    final radius = math.min(size.width, size.height) / 2;
-    if (distance < radius - 34 || distance > radius + 4) return;
-    var hue = (math.atan2(offset.dy, offset.dx) * 180 / math.pi) + 90;
-    if (hue < 0) hue += 360;
-    _hue = hue % 360;
+  void _setField(Offset localPosition, Size size) {
+    _hue = (localPosition.dx / size.width).clamp(0.0, 1.0) * 360;
+    _saturation = (1 - localPosition.dy / size.height).clamp(0.0, 1.0);
     _setHsv();
   }
 
-  void _setField(Offset localPosition, Size size) {
-    _saturation = (localPosition.dx / size.width).clamp(0.0, 1.0);
+  void _setValue(Offset localPosition, Size size) {
     _value = (1 - localPosition.dy / size.height).clamp(0.0, 1.0);
     _setHsv();
   }
@@ -808,21 +803,57 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
               _swatchSection('Favorite colors', _favorites),
               _swatchSection('Recent colors', widget.recentColorValues),
               const SizedBox(height: 16),
-              Semantics(
-                label: 'Hue wheel',
-                child: _HueWheel(
-                  hue: _hue,
-                  onChanged: (position, size) => _setHue(position, size),
-                ),
-              ),
-              Semantics(
-                label: 'Color shade field',
-                child: _ColorField(
-                  hue: _hue,
-                  saturation: _saturation,
-                  value: _value,
-                  onChanged: (position, size) => _setField(position, size),
-                ),
+              const Text('Custom color'),
+              const SizedBox(height: 8),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final fieldSize = math.min(
+                    260.0,
+                    math.max(140.0, constraints.maxWidth - 96),
+                  );
+                  return SizedBox(
+                    height: fieldSize,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox.square(
+                          dimension: fieldSize,
+                          child: Semantics(
+                            label: 'Color field',
+                            child: _ColorField(
+                              hue: _hue,
+                              saturation: _saturation,
+                              onChanged: (position, size) =>
+                                  _setField(position, size),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: DecoratedBox(
+                            key: const ValueKey('color-preview'),
+                            decoration: BoxDecoration(
+                              color: _selected,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.black26),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Semantics(
+                          label: 'Brightness',
+                          child: _ValueField(
+                            hue: _hue,
+                            saturation: _saturation,
+                            value: _value,
+                            onChanged: (position, size) =>
+                                _setValue(position, size),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
               Semantics(
                 label: 'Opacity control',
@@ -863,37 +894,32 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
   }
 }
 
-class _HueWheel extends StatelessWidget {
-  const _HueWheel({required this.hue, required this.onChanged});
+class _ColorField extends StatelessWidget {
+  const _ColorField({
+    required this.hue,
+    required this.saturation,
+    required this.onChanged,
+  });
 
   final double hue;
+  final double saturation;
   final void Function(Offset position, Size size) onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final size = math
-        .min((MediaQuery.sizeOf(context).width - 96).clamp(210.0, 280.0), 280.0)
-        .toDouble();
     return SizedBox(
-      key: const ValueKey('color-wheel'),
-      width: size,
-      height: size,
+      key: const ValueKey('color-field'),
+      width: double.infinity,
+      height: double.infinity,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final wheelSize = Size(constraints.maxWidth, constraints.maxHeight);
-          return Stack(
-            children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapDown: (details) =>
-                    onChanged(details.localPosition, wheelSize),
-                onPanStart: (details) =>
-                    onChanged(details.localPosition, wheelSize),
-                onPanUpdate: (details) =>
-                    onChanged(details.localPosition, wheelSize),
-                child: CustomPaint(painter: _HueWheelPainter(hue)),
-              ),
-            ],
+          final size = Size(constraints.maxWidth, constraints.maxHeight);
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (details) => onChanged(details.localPosition, size),
+            onPanStart: (details) => onChanged(details.localPosition, size),
+            onPanUpdate: (details) => onChanged(details.localPosition, size),
+            child: CustomPaint(painter: _ColorFieldPainter(hue, saturation)),
           );
         },
       ),
@@ -901,8 +927,8 @@ class _HueWheel extends StatelessWidget {
   }
 }
 
-class _ColorField extends StatelessWidget {
-  const _ColorField({
+class _ValueField extends StatelessWidget {
+  const _ValueField({
     required this.hue,
     required this.saturation,
     required this.value,
@@ -915,27 +941,24 @@ class _ColorField extends StatelessWidget {
   final void Function(Offset position, Size size) onChanged;
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      key: const ValueKey('color-field'),
-      width: double.infinity,
-      height: 180,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final size = Size(constraints.maxWidth, constraints.maxHeight);
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (details) => onChanged(details.localPosition, size),
-            onPanStart: (details) => onChanged(details.localPosition, size),
-            onPanUpdate: (details) => onChanged(details.localPosition, size),
-            child: CustomPaint(
-              painter: _ColorFieldPainter(hue, saturation, value),
-            ),
-          );
-        },
-      ),
-    );
-  }
+  Widget build(BuildContext context) => SizedBox(
+    key: const ValueKey('color-value'),
+    width: 28,
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final size = Size(constraints.maxWidth, constraints.maxHeight);
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (details) => onChanged(details.localPosition, size),
+          onPanStart: (details) => onChanged(details.localPosition, size),
+          onPanUpdate: (details) => onChanged(details.localPosition, size),
+          child: CustomPaint(
+            painter: _ValueFieldPainter(hue, saturation, value),
+          ),
+        );
+      },
+    ),
+  );
 }
 
 class _OpacityField extends StatelessWidget {
@@ -972,51 +995,66 @@ class _OpacityField extends StatelessWidget {
   );
 }
 
-class _HueWheelPainter extends CustomPainter {
-  const _HueWheelPainter(this.hue);
+class _ColorFieldPainter extends CustomPainter {
+  const _ColorFieldPainter(this.hue, this.saturation);
 
   final double hue;
+  final double saturation;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero);
-    final radius = math.min(size.width, size.height) / 2 - 14;
-    final rect = Rect.fromCircle(center: center, radius: radius);
+    final rect = Offset.zero & size;
+    final roundedRect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
     final colors = [
       for (var i = 0; i <= 6; i++)
         HSVColor.fromAHSV(1, i * 60 % 360, 1, 1).toColor(),
     ];
-    final wheel = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 28
-      ..shader = SweepGradient(
-        startAngle: -math.pi / 2,
-        endAngle: math.pi * 1.5,
-        colors: colors,
-      ).createShader(rect);
-    canvas.drawCircle(center, radius, wheel);
-
-    final angle = (hue - 90) * math.pi / 180;
-    final marker = center + Offset(math.cos(angle), math.sin(angle)) * radius;
     canvas
-      ..drawCircle(marker, 10, Paint()..color = Colors.white)
+      ..save()
+      ..clipRRect(roundedRect)
+      ..drawRect(
+        rect,
+        Paint()..shader = LinearGradient(colors: colors).createShader(rect),
+      )
+      ..drawRect(
+        rect,
+        Paint()
+          ..shader = const LinearGradient(
+            colors: [Colors.transparent, Colors.white],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ).createShader(rect),
+      )
+      ..restore()
+      ..drawRRect(
+        roundedRect,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..color = Colors.black26,
+      );
+    final marker = Offset(
+      (hue / 360 * size.width).clamp(9.0, size.width - 9),
+      ((1 - saturation) * size.height).clamp(9.0, size.height - 9),
+    );
+    canvas
+      ..drawCircle(marker, 9, Paint()..color = Colors.white)
       ..drawCircle(
         marker,
-        8,
+        7,
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2
-          ..color = Colors.black87,
+          ..color = Colors.black54,
       );
   }
 
   @override
-  bool shouldRepaint(covariant _HueWheelPainter oldDelegate) =>
-      oldDelegate.hue != hue;
+  bool shouldRepaint(covariant _ColorFieldPainter oldDelegate) =>
+      oldDelegate.hue != hue || oldDelegate.saturation != saturation;
 }
 
-class _ColorFieldPainter extends CustomPainter {
-  const _ColorFieldPainter(this.hue, this.saturation, this.value);
+class _ValueFieldPainter extends CustomPainter {
+  const _ValueFieldPainter(this.hue, this.saturation, this.value);
 
   final double hue;
   final double saturation;
@@ -1025,25 +1063,26 @@ class _ColorFieldPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    final hueColor = HSVColor.fromAHSV(1, hue, 1, 1).toColor();
-    canvas.drawRect(rect, Paint()..color = hueColor);
-    canvas.drawRect(
+    final roundedRect = RRect.fromRectAndRadius(
       rect,
-      Paint()
-        ..shader = const LinearGradient(
-          colors: [Colors.white, Colors.transparent],
-        ).createShader(rect),
+      Radius.circular(size.width / 2),
     );
-    canvas.drawRect(
-      rect,
+    canvas.drawRRect(
+      roundedRect,
       Paint()
-        ..shader = const LinearGradient(
-          colors: [Colors.transparent, Colors.black],
+        ..shader = LinearGradient(
+          colors: [
+            HSVColor.fromAHSV(1, hue, saturation, 1).toColor(),
+            Colors.black,
+          ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ).createShader(rect),
     );
-    final marker = Offset(saturation * size.width, (1 - value) * size.height);
+    final marker = Offset(
+      size.width / 2,
+      ((1 - value) * size.height).clamp(9.0, size.height - 9),
+    );
     canvas
       ..drawCircle(marker, 9, Paint()..color = Colors.white)
       ..drawCircle(
@@ -1057,7 +1096,7 @@ class _ColorFieldPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _ColorFieldPainter oldDelegate) =>
+  bool shouldRepaint(covariant _ValueFieldPainter oldDelegate) =>
       oldDelegate.hue != hue ||
       oldDelegate.saturation != saturation ||
       oldDelegate.value != value;

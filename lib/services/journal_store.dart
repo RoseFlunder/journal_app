@@ -31,6 +31,8 @@ class JournalStore extends ChangeNotifier {
   static const _uuid = Uuid();
 
   final HiveJournalDataSource _storage = HiveJournalDataSource();
+  final StreamController<void> _changes =
+      StreamController<void>.broadcast();
   List<Entry> _entries = [];
   List<int> _recentColorValues = <int>[];
   Set<int> _favoriteColorValues = <int>{};
@@ -46,6 +48,9 @@ class JournalStore extends ChangeNotifier {
   Set<int> get favoriteColorValues => Set.unmodifiable(_favoriteColorValues);
 
   bool get isLoaded => _loaded;
+
+  /// Emits after an in-memory store mutation has been published.
+  Stream<void> get changes => _changes.stream;
 
   /// Registers an in-memory editor flush that must complete before storage
   /// is flushed. This keeps app lifecycle persistence ordered when the app
@@ -477,6 +482,13 @@ class JournalStore extends ChangeNotifier {
       timer.cancel();
     }
     _checkpointTimers.clear();
+    _changes.close();
     super.dispose();
+  }
+
+  @override
+  void notifyListeners() {
+    super.notifyListeners();
+    if (!_changes.isClosed) _changes.add(null);
   }
 }
