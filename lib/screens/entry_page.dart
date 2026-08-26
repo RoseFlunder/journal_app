@@ -5,7 +5,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
@@ -18,7 +17,7 @@ import '../models/sticker.dart';
 import '../models/storage_records.dart';
 import '../models/template.dart';
 import '../services/image_source.dart';
-import '../services/journal_archive.dart';
+import '../services/journal_transfer_service.dart';
 import '../services/repositories.dart';
 import '../view_models/entry_editor_view_model.dart';
 import '../widgets/entry_chrome.dart';
@@ -43,6 +42,7 @@ class EntryPage extends StatefulWidget {
     this.controlsVisible = true,
     this.imageSource,
     this.imageProcessor = const ImageProcessor(),
+    this.archiveService = const JournalTransferService(),
   });
 
   final Entry entry;
@@ -60,6 +60,7 @@ class EntryPage extends StatefulWidget {
 
   final ImageSourceService? imageSource;
   final ImageProcessor imageProcessor;
+  final JournalTransferService archiveService;
 
   @override
   State<EntryPage> createState() => _EntryPageState();
@@ -1149,16 +1150,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   Future<void> _exportArchive() async {
     final archive = widget.repository.archiveForDocument(widget.entry.id);
     if (archive == null || !mounted) return;
-    final uri = await FilePicker.saveFile(
+    final exported = await widget.archiveService.exportArchive(
+      archive,
       fileName:
           '${widget.entry.title.trim().isEmpty ? 'journal' : widget.entry.title.trim()}.cozyjournal',
-      bytes: archive.encode(),
-      mimeType: 'application/x-cozyjournal',
-      dialogTitle: 'Export journal backup',
-      type: FileType.custom,
-      allowedExtensions: ['cozyjournal'],
     );
-    if (mounted && uri != null) {
+    if (mounted && exported) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Journal backup exported')));
@@ -1166,15 +1163,9 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   Future<void> _importArchive() async {
-    final picked = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['cozyjournal'],
-    );
-    if (!mounted || picked.isEmpty) return;
-    final file = picked.single;
-    final bytes = await file.readAsBytes();
+    final archive = await widget.archiveService.importArchive();
+    if (!mounted || archive == null) return;
     try {
-      final archive = JournalArchive.decode(bytes);
       await widget.repository.importArchive(archive);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
