@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/entry.dart';
+import 'editor_history.dart';
 
 /// Local, transactional editing state for one entry. Pointer updates mutate
 /// only this controller; persistence happens once when a transaction commits.
@@ -25,15 +26,12 @@ class EditorController extends ChangeNotifier {
 
   final Future<void> Function(List<ContentBlock>, BoardSettings) _onSave;
   final int maxHistory;
-  final List<_EditorCommand> _undo = [];
-  final List<_EditorCommand> _redo = [];
+  late final EditorHistory _history = EditorHistory(maxLength: maxHistory);
   final Set<String> _selection = <String>{};
   List<ContentBlock> _clipboard = <ContentBlock>[];
   Set<String> _clipboardSelection = <String>{};
   List<ContentBlock> _blocks;
   BoardSettings _board;
-  _EditorSnapshot? _transactionStart;
-  String? _transactionLabel;
   Timer? _textTimer;
   EditorSaveState _saveState = EditorSaveState.saved;
 
@@ -46,9 +44,9 @@ class EditorController extends ChangeNotifier {
       )
       .toList(growable: false);
   bool get hasSelection => _selection.isNotEmpty;
-  bool get canUndo => _undo.isNotEmpty;
-  bool get canRedo => _redo.isNotEmpty;
-  bool get inTransaction => _transactionStart != null;
+  bool get canUndo => _history.canUndo;
+  bool get canRedo => _history.canRedo;
+  bool get inTransaction => _history.inTransaction;
   bool get canPaste => _clipboard.isNotEmpty;
   bool get canGroup => _expandedSelectedBlocks.length > 1;
   bool get canUngroup =>
@@ -100,26 +98,19 @@ class EditorController extends ChangeNotifier {
 
   void beginTransaction(String label) {
     _textTimer?.cancel();
-    if (_transactionStart != null) return;
-    _transactionStart = _snapshot();
-    _transactionLabel = label;
+    _history.begin(_snapshot(), label);
   }
 
   Future<void> commitTransaction() async {
     _textTimer?.cancel();
-    final before = _transactionStart;
-    final label = _transactionLabel;
-    _transactionStart = null;
-    _transactionLabel = null;
-    if (before == null || label == null) return;
-    await _commit(before, label);
+    final transaction = _history.takeTransaction();
+    if (transaction == null) return;
+    await _commit(transaction.before, transaction.label);
   }
 
   void cancelTransaction() {
     _textTimer?.cancel();
-    final before = _transactionStart;
-    _transactionStart = null;
-    _transactionLabel = null;
+    final before = _history.cancelTransaction();
     if (before == null) return;
     _restore(before);
     notifyListeners();
@@ -160,7 +151,7 @@ class EditorController extends ChangeNotifier {
   void replaceBlockSnapshot(ContentBlock next, {String label = 'Edit block'}) {
     final index = _blocks.indexWhere((block) => block.id == next.id);
     if (index < 0 || _blocks[index].locked) return;
-    if (_transactionStart == null) beginTransaction(label);
+    if (!_history.inTransaction) beginTransaction(label);
     _blocks[index] = next.clone();
     _blocks[index].opacity = _blocks[index].opacity.clamp(0.0, 1.0).toDouble();
     notifyListeners();
@@ -610,7 +601,7 @@ class EditorController extends ChangeNotifier {
   /// Starts/extends a coalesced text transaction. Call [flushText] when a
   /// text field loses focus so typing never writes once per keystroke.
   void replaceText(String id, String text, {List<dynamic>? delta}) {
-    if (_transactionStart == null) beginTransaction('Edit text');
+    if (!_history.inTransaction) beginTransaction('Edit text');
     updateBlock(id, (block) {
       block.text = text;
       block.richTextDelta = delta == null
@@ -632,9 +623,8 @@ class EditorController extends ChangeNotifier {
 
   Future<void> undo() async {
     await commitTransaction();
-    if (_undo.isEmpty) return;
-    final command = _undo.removeLast();
-    _redo.add(command);
+    final command = _history.takeUndo();
+    if (command == null) return;
     _restore(command.before);
     notifyListeners();
     await _persist();
@@ -642,9 +632,8 @@ class EditorController extends ChangeNotifier {
 
   Future<void> redo() async {
     await commitTransaction();
-    if (_redo.isEmpty) return;
-    final command = _redo.removeLast();
-    _undo.add(command);
+    final command = _history.takeRedo();
+    if (command == null) return;
     _restore(command.after);
     notifyListeners();
     await _persist();
@@ -662,13 +651,10 @@ class EditorController extends ChangeNotifier {
   /// import. History intentionally starts fresh at the restored version.
   void replaceDocument(List<ContentBlock> blocks, BoardSettings board) {
     _textTimer?.cancel();
-    _transactionStart = null;
-    _transactionLabel = null;
     _blocks = _cloneBlocks(blocks);
     _board = board;
     _selection.clear();
-    _undo.clear();
-    _redo.clear();
+    _history.reset();
     _saveState = EditorSaveState.saved;
     notifyListeners();
   }
@@ -679,14 +665,10 @@ class EditorController extends ChangeNotifier {
     super.dispose();
   }
 
-  Future<void> _commit(_EditorSnapshot before, String label) async {
+  Future<void> _commit(EditorDocumentSnapshot before, String label) async {
     final after = _snapshot();
     if (_same(before, after)) return;
-    _undo.add(_EditorCommand(label, before, after));
-    if (_undo.length > maxHistory) {
-      _undo.removeAt(0);
-    }
-    _redo.clear();
+    _history.record(EditorCommand(label: label, before: before, after: after));
     notifyListeners();
     await _persist();
   }
@@ -781,9 +763,9 @@ class EditorController extends ChangeNotifier {
     return (value / size).roundToDouble() * size;
   }
 
-  _EditorSnapshot _snapshot() => _EditorSnapshot(_cloneBlocks(_blocks), _board);
+  EditorDocumentSnapshot _snapshot() => EditorDocumentSnapshot(_blocks, _board);
 
-  void _restore(_EditorSnapshot snapshot) {
+  void _restore(EditorDocumentSnapshot snapshot) {
     _blocks = _cloneBlocks(snapshot.blocks);
     _board = snapshot.board;
     _selection.removeWhere((id) => _byId(id) == null);
@@ -804,31 +786,13 @@ class EditorController extends ChangeNotifier {
     return bounds;
   }
 
-  static bool _same(_EditorSnapshot left, _EditorSnapshot right) =>
-      jsonEncode(left.toJson()) == jsonEncode(right.toJson());
+  static bool _same(
+    EditorDocumentSnapshot left,
+    EditorDocumentSnapshot right,
+  ) => jsonEncode(left.toJson()) == jsonEncode(right.toJson());
 
   static List<ContentBlock> _cloneBlocks(List<ContentBlock> blocks) =>
       blocks.map((block) => block.clone()).toList();
 }
 
 enum EditorSaveState { saved, saving, failed }
-
-class _EditorCommand {
-  const _EditorCommand(this.label, this.before, this.after);
-
-  final String label;
-  final _EditorSnapshot before;
-  final _EditorSnapshot after;
-}
-
-class _EditorSnapshot {
-  const _EditorSnapshot(this.blocks, this.board);
-
-  final List<ContentBlock> blocks;
-  final BoardSettings board;
-
-  Map<String, dynamic> toJson() => {
-    'blocks': blocks.map((block) => block.toJson()).toList(),
-    'board': board.toJson(),
-  };
-}
