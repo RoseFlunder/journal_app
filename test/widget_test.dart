@@ -483,7 +483,9 @@ void main() {
     await tester.pump();
     expect(store.entries.single.blocks.single.richTextDelta, isNotNull);
     expect(
-      store.entries.single.blocks.single.richTextDelta!.whereType<Map>().any(
+      store.entries.single.blocks.single.richTextDelta!
+          .whereType<Map<Object?, Object?>>()
+          .any(
         (operation) => operation['insert'] == 'A first note',
       ),
       isTrue,

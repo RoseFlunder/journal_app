@@ -265,7 +265,7 @@ class ContentBlock {
     fillColorValue: (json['fillColorValue'] as num?)?.toInt(),
     strokeWidth: (json['strokeWidth'] as num?)?.toDouble() ?? 1,
     inkPoints: (json['inkPoints'] as List<dynamic>?)
-        ?.whereType<Map>()
+        ?.whereType<Map<Object?, Object?>>()
         .map((point) => Map<String, dynamic>.from(point))
         .toList(),
     childIds: (json['childIds'] as List<dynamic>?)
@@ -418,6 +418,10 @@ class Entry {
     );
   }
 
-  static Map<String, dynamic> _stringMap(Object value) =>
-      Map<String, dynamic>.from(value as Map);
+  static Map<String, dynamic> _stringMap(Object? value) {
+    if (value is! Map<Object?, Object?>) {
+      throw const FormatException('Expected a JSON object');
+    }
+    return Map<String, dynamic>.from(value);
+  }
 }

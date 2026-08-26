@@ -96,11 +96,11 @@ class JournalStore extends ChangeNotifier {
 
   static const _uuid = Uuid();
 
-  late Box _entriesBox;
-  late Box _assetsBox;
-  late Box _metaBox;
-  late Box _checkpointsBox;
-  late Box _templatesBox;
+  late Box<dynamic> _entriesBox;
+  late Box<dynamic> _assetsBox;
+  late Box<dynamic> _metaBox;
+  late Box<dynamic> _checkpointsBox;
+  late Box<dynamic> _templatesBox;
 
   List<Entry> _entries = [];
   List<int> _recentColorValues = <int>[];

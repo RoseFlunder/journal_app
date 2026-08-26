@@ -64,11 +64,11 @@ class JournalArchive {
       throw const FormatException('Archive is missing its document');
     }
     final assets = (raw['assets'] as List<dynamic>? ?? const [])
-        .whereType<Map>()
+        .whereType<Map<Object?, Object?>>()
         .map((asset) => ArchiveAsset.fromJson(Map<String, dynamic>.from(asset)))
         .toList(growable: false);
     final templates = (raw['templates'] as List<dynamic>? ?? const [])
-        .whereType<Map>()
+        .whereType<Map<Object?, Object?>>()
         .map(
           (template) =>
               JournalTemplate.fromJson(Map<String, dynamic>.from(template)),

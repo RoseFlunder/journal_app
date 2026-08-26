@@ -235,11 +235,11 @@ void main() {
       final store = JournalStore();
       await store.init();
       // Start every run from an empty journal.
-      await Hive.box('entries').clear();
-      await Hive.box('assets').clear();
-      await Hive.box('meta').clear();
-      await Hive.box('entryCheckpoints').clear();
-      await Hive.box('journalTemplates').clear();
+      await Hive.box<dynamic>('entries').clear();
+      await Hive.box<dynamic>('assets').clear();
+      await Hive.box<dynamic>('meta').clear();
+      await Hive.box<dynamic>('entryCheckpoints').clear();
+      await Hive.box<dynamic>('journalTemplates').clear();
       return store;
     }
 
@@ -341,9 +341,9 @@ void main() {
 
       // Close everything and reopen: data must come back from disk,
       // in the right order.
-      await Hive.box('entries').close();
-      await Hive.box('assets').close();
-      await Hive.box('meta').close();
+      await Hive.box<dynamic>('entries').close();
+      await Hive.box<dynamic>('assets').close();
+      await Hive.box<dynamic>('meta').close();
       store = await freshStore();
 
       expect(store.entries.map((e) => e.id).toList(), [a.id]);
@@ -355,9 +355,9 @@ void main() {
       final entry = await store.addEntry();
       await store.updateEntry(entry.id, (entry) => entry.title = 'Persisted');
 
-      await Hive.box('entries').close();
-      await Hive.box('assets').close();
-      await Hive.box('meta').close();
+      await Hive.box<dynamic>('entries').close();
+      await Hive.box<dynamic>('assets').close();
+      await Hive.box<dynamic>('meta').close();
 
       store = JournalStore();
       await store.init();
@@ -373,7 +373,7 @@ void main() {
         createdAt: DateTime.utc(2025),
         title: 'Recovered',
       );
-      await Hive.box('entries').put(entry.id, entry.toJson());
+      await Hive.box<dynamic>('entries').put(entry.id, entry.toJson());
 
       final store = JournalStore();
       await store.init();
@@ -392,16 +392,16 @@ void main() {
         ],
         view: ViewState(zoom: 2, panX: 4, panY: 5),
       );
-      await Hive.box('entries').put(entry.id, <String, dynamic>{
+      await Hive.box<dynamic>('entries').put(entry.id, <String, dynamic>{
         ...entry.toJson(),
         'blocks': [
           <dynamic, dynamic>{...entry.blocks.single.toJson()},
         ],
         'view': <dynamic, dynamic>{...entry.view!.toJson()},
       });
-      await Hive.box('meta').put('entryOrder', [entry.id]);
-      await Hive.box('entries').flush();
-      await Hive.box('meta').flush();
+      await Hive.box<dynamic>('meta').put('entryOrder', [entry.id]);
+      await Hive.box<dynamic>('entries').flush();
+      await Hive.box<dynamic>('meta').flush();
 
       final reloaded = JournalStore();
       await reloaded.init();

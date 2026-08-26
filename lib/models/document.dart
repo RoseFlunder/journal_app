@@ -123,7 +123,7 @@ class CanvasNode {
       visible: json['visible'] as bool? ?? true,
       accessibilityLabel: json['accessibilityLabel'] as String?,
       children: (json['children'] as List<dynamic>? ?? const [])
-          .whereType<Map>()
+          .whereType<Map<Object?, Object?>>()
           .map(
             (child) => CanvasNode.fromJson(Map<String, dynamic>.from(child)),
           ),
@@ -191,7 +191,9 @@ class EntryDocument {
     modifiedAt: DateTime.parse(
       json['modifiedAt'] as String? ?? json['createdAt'] as String,
     ),
-    nodes: (json['nodes'] as List<dynamic>? ?? const []).whereType<Map>().map(
+    nodes: (json['nodes'] as List<dynamic>? ?? const [])
+        .whereType<Map<Object?, Object?>>()
+        .map(
       (node) => CanvasNode.fromJson(Map<String, dynamic>.from(node)),
     ),
     board: BoardSettings.fromJson(
