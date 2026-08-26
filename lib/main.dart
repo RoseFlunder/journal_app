@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import 'app/app_dependencies.dart';
 import 'screens/journal_screen.dart';
 import 'services/repositories.dart';
 import 'services/journal_store.dart';
@@ -23,7 +24,7 @@ class CozyBloomBootstrap extends StatefulWidget {
 }
 
 class _CozyBloomBootstrapState extends State<CozyBloomBootstrap> {
-  JournalRepository? _repository;
+  AppDependencies? _dependencies;
   Object? _error;
   bool _hiveInitialized = false;
   DateTime? _startedAt;
@@ -42,13 +43,13 @@ class _CozyBloomBootstrapState extends State<CozyBloomBootstrap> {
         await Hive.initFlutter();
         _hiveInitialized = true;
       }
-      final repository = HiveJournalRepository(JournalStore());
-      await repository.init();
+      final dependencies = AppDependencies.hive();
+      await dependencies.init();
       final elapsed = DateTime.now().difference(_startedAt!);
       const minimum = Duration(milliseconds: 3500);
       if (elapsed < minimum) await Future<void>.delayed(minimum - elapsed);
       if (!mounted) return;
-      setState(() => _repository = repository);
+      setState(() => _dependencies = dependencies);
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = error);
@@ -57,16 +58,16 @@ class _CozyBloomBootstrapState extends State<CozyBloomBootstrap> {
 
   @override
   Widget build(BuildContext context) {
-    final repository = _repository;
+    final dependencies = _dependencies;
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 420),
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
-      child: repository == null
+      child: dependencies == null
           ? CozyBloomSplash(error: _error, onRetry: _boot)
           : _JournalLifecycle(
-              key: ValueKey(repository),
-              repository: repository,
+              key: ValueKey(dependencies),
+              dependencies: dependencies,
             ),
     );
   }
@@ -146,9 +147,9 @@ class CozyBloomSplash extends StatelessWidget {
 }
 
 class _JournalLifecycle extends StatefulWidget {
-  const _JournalLifecycle({super.key, required this.repository});
+  const _JournalLifecycle({super.key, required this.dependencies});
 
-  final JournalRepository repository;
+  final AppDependencies dependencies;
 
   @override
   State<_JournalLifecycle> createState() => _JournalLifecycleState();
@@ -179,7 +180,7 @@ class _JournalLifecycleState extends State<_JournalLifecycle>
 
   Future<void> _flushStore() async {
     try {
-      await widget.repository.flush();
+      await widget.dependencies.flush();
     } catch (error) {
       debugPrint('Could not flush journal storage: $error');
     }
@@ -187,13 +188,20 @@ class _JournalLifecycleState extends State<_JournalLifecycle>
 
   @override
   Widget build(BuildContext context) =>
-      JournalApp(repository: widget.repository);
+      JournalApp(repository: widget.dependencies.journalRepository);
 }
 
 class JournalApp extends StatelessWidget {
-  JournalApp({super.key, JournalRepository? repository, JournalStore? store})
-    : assert(repository != null || store != null),
-      repository = repository ?? HiveJournalRepository(store!);
+  JournalApp({
+    super.key,
+    JournalRepository? repository,
+    JournalStore? store,
+    AppDependencies? dependencies,
+  }) : assert(repository != null || store != null || dependencies != null),
+       repository =
+           dependencies?.journalRepository ??
+           repository ??
+           HiveJournalRepository(store!);
 
   final JournalRepository repository;
 
