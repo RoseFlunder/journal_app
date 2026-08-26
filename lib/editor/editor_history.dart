@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
+import '../models/document.dart';
 import '../models/entry.dart';
 
 /// A detached, deeply immutable document state used by one editor command.
@@ -19,20 +22,165 @@ class EditorDocumentSnapshot {
     Map<String, dynamic>.from(_data['board'] as Map<Object?, Object?>),
   );
 
+  /// Returns a new snapshot with only node transforms changed.
+  EditorDocumentSnapshot withTransforms(
+    Iterable<NodeTransformChange> changes,
+  ) {
+    final next = blocks;
+    final byId = <String, ContentBlock>{
+      for (final block in next) block.id: block,
+    };
+    for (final change in changes) {
+      final block = byId[change.id];
+      if (block == null) continue;
+      block
+        ..x = change.after.x
+        ..y = change.after.y
+        ..w = change.after.width
+        ..h = change.after.height
+        ..rotation = change.after.rotation;
+    }
+    return EditorDocumentSnapshot(next, board);
+  }
+
   Map<String, dynamic> toJson() => _copyMap(_data);
 }
 
-/// One labeled editor transaction with its before and after states.
-class EditorCommand {
-  const EditorCommand({
-    required this.label,
+/// Immutable transform delta for one node in a typed transform command.
+class NodeTransformChange {
+  const NodeTransformChange({
+    required this.id,
     required this.before,
     required this.after,
   });
 
+  final String id;
+  final Transform2D before;
+  final Transform2D after;
+}
+
+/// Typed editor command contract used by undo and redo.
+sealed class EditorCommand {
+  EditorCommand({required this.label, required Set<String> affectedIds})
+    : affectedIds = Set.unmodifiable(affectedIds);
+
   final String label;
+  final Set<String> affectedIds;
+
+  EditorDocumentSnapshot apply(EditorDocumentSnapshot state);
+
+  EditorDocumentSnapshot revert(EditorDocumentSnapshot state);
+
+  /// Selects the narrowest command representation available for two states.
+  factory EditorCommand.fromStates({
+    required String label,
+    required EditorDocumentSnapshot before,
+    required EditorDocumentSnapshot after,
+  }) {
+    final transform = TransformEditorCommand.tryCreate(
+      label: label,
+      before: before,
+      after: after,
+    );
+    return transform ??
+        DocumentReplacementCommand(
+          label: label,
+          before: before,
+          after: after,
+        );
+  }
+}
+
+/// Compact command for a gesture that changes only node transforms.
+final class TransformEditorCommand extends EditorCommand {
+  TransformEditorCommand({
+    required super.label,
+    required super.affectedIds,
+    required this.changes,
+  });
+
+  final List<NodeTransformChange> changes;
+
+  static TransformEditorCommand? tryCreate({
+    required String label,
+    required EditorDocumentSnapshot before,
+    required EditorDocumentSnapshot after,
+  }) {
+    if (jsonEncode(before.board.toJson()) !=
+        jsonEncode(after.board.toJson())) {
+      return null;
+    }
+    final beforeById = {for (final block in before.blocks) block.id: block};
+    final afterById = {for (final block in after.blocks) block.id: block};
+    if (beforeById.length != afterById.length ||
+        !beforeById.keys.toSet().containsAll(afterById.keys)) {
+      return null;
+    }
+
+    final changes = <NodeTransformChange>[];
+    for (final id in beforeById.keys) {
+      final left = beforeById[id]!;
+      final right = afterById[id]!;
+      if (jsonEncode(_withoutTransform(left)) !=
+          jsonEncode(_withoutTransform(right))) {
+        return null;
+      }
+      final leftTransform = _transformOf(left);
+      final rightTransform = _transformOf(right);
+      if (jsonEncode(leftTransform.toJson()) !=
+          jsonEncode(rightTransform.toJson())) {
+        changes.add(
+          NodeTransformChange(
+            id: id,
+            before: leftTransform,
+            after: rightTransform,
+          ),
+        );
+      }
+    }
+    if (changes.isEmpty) return null;
+    return TransformEditorCommand(
+      label: label,
+      affectedIds: changes.map((change) => change.id).toSet(),
+      changes: List.unmodifiable(changes),
+    );
+  }
+
+  @override
+  EditorDocumentSnapshot apply(EditorDocumentSnapshot state) =>
+      state.withTransforms(changes);
+
+  @override
+  EditorDocumentSnapshot revert(EditorDocumentSnapshot state) =>
+      state.withTransforms(
+        changes.map(
+          (change) => NodeTransformChange(
+            id: change.id,
+            before: change.after,
+            after: change.before,
+          ),
+        ),
+      );
+}
+
+/// Transitional command for insertions, deletions, styles, and board edits.
+/// It keeps the command API typed while those operations gain specialized
+/// deltas in later editor slices.
+final class DocumentReplacementCommand extends EditorCommand {
+  DocumentReplacementCommand({
+    required super.label,
+    required this.before,
+    required this.after,
+  }) : super(affectedIds: const <String>{});
+
   final EditorDocumentSnapshot before;
   final EditorDocumentSnapshot after;
+
+  @override
+  EditorDocumentSnapshot apply(EditorDocumentSnapshot state) => after;
+
+  @override
+  EditorDocumentSnapshot revert(EditorDocumentSnapshot state) => before;
 }
 
 /// Undo/redo and open-transaction state for an editor session.
@@ -103,6 +251,22 @@ class EditorHistory {
 
   @visibleForTesting
   int get redoLength => _redo.length;
+}
+
+Transform2D _transformOf(ContentBlock block) => Transform2D(
+  x: block.x,
+  y: block.y,
+  width: block.w,
+  height: block.h,
+  rotation: block.rotation,
+);
+
+Map<String, dynamic> _withoutTransform(ContentBlock block) {
+  final json = Map<String, dynamic>.from(block.toJson());
+  for (final key in const <String>['x', 'y', 'w', 'h', 'rotation']) {
+    json.remove(key);
+  }
+  return json;
 }
 
 List<ContentBlock> _blocksFrom(Object? raw) {

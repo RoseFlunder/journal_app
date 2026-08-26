@@ -625,7 +625,7 @@ class EditorController extends ChangeNotifier {
     await commitTransaction();
     final command = _history.takeUndo();
     if (command == null) return;
-    _restore(command.before);
+    _restore(command.revert(_snapshot()));
     notifyListeners();
     await _persist();
   }
@@ -634,7 +634,7 @@ class EditorController extends ChangeNotifier {
     await commitTransaction();
     final command = _history.takeRedo();
     if (command == null) return;
-    _restore(command.after);
+    _restore(command.apply(_snapshot()));
     notifyListeners();
     await _persist();
   }
@@ -668,7 +668,9 @@ class EditorController extends ChangeNotifier {
   Future<void> _commit(EditorDocumentSnapshot before, String label) async {
     final after = _snapshot();
     if (_same(before, after)) return;
-    _history.record(EditorCommand(label: label, before: before, after: after));
+    _history.record(
+      EditorCommand.fromStates(label: label, before: before, after: after),
+    );
     notifyListeners();
     await _persist();
   }
