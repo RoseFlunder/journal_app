@@ -20,6 +20,7 @@ import '../services/image_source.dart';
 import '../services/journal_archive.dart';
 import '../services/journal_store.dart';
 import '../services/repositories.dart';
+import '../view_models/entry_editor_view_model.dart';
 import '../widgets/entry_chrome.dart';
 import '../widgets/page_viewport.dart';
 import '../widgets/paper_page.dart';
@@ -33,7 +34,6 @@ class EntryPage extends StatefulWidget {
     required this.entry,
     required this.repository,
     required this.onViewChanged,
-    required this.onDocumentChanged,
     this.onDocumentPreviewChanged,
     required this.onTitleChanged,
     required this.onTitleStyleChanged,
@@ -48,8 +48,6 @@ class EntryPage extends StatefulWidget {
   final Entry entry;
   final JournalRepository repository;
   final ValueChanged<ViewState> onViewChanged;
-  final Future<void> Function(List<ContentBlock>, BoardSettings)
-  onDocumentChanged;
   final void Function(List<ContentBlock>, BoardSettings)?
   onDocumentPreviewChanged;
   final ValueChanged<String> onTitleChanged;
@@ -154,7 +152,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   bool _pickingImage = false;
   final Map<String, ImageProvider<Object>> _imageProviders = {};
   final Map<String, ImageProvider<Object>> _stickerProviders = {};
-  late final EditorController _editor;
+  late final EntryEditorViewModel _editor;
   Future<void> Function()? _flushHook;
 
   List<ContentBlock> get _blocks => _editor.blocks;
@@ -196,16 +194,9 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _editor = EditorController(
-      blocks: widget.entry.blocks,
-      initialBoard: widget.entry.board,
-      persistDocument: (blocks, board) async {
-        widget.entry
-          ..blocks = blocks
-          ..board = board;
-        await widget.onDocumentChanged(blocks, board);
-        widget.repository.scheduleCheckpoint(widget.entry.id);
-      },
+    _editor = EntryEditorViewModel(
+      document: EntryDocument.fromEntry(widget.entry),
+      repository: widget.repository,
     )..addListener(_handleEditorChanged);
     _flushHook = _editor.flushText;
     widget.repository.addFlushHook(_flushHook!);

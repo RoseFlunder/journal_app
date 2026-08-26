@@ -199,12 +199,6 @@ class _JournalScreenState extends State<JournalScreen> {
       controlsVisible: _entryChromeVisible,
       onViewChanged: (view) =>
           _saveEntryMutation(document, (entry) => entry.view = view),
-      onDocumentChanged: (blocks, board) =>
-          _saveEntryMutation(document, (entry) {
-            entry
-              ..blocks = blocks
-              ..board = board;
-          }),
       onDocumentPreviewChanged: (blocks, board) =>
           _previewEntryMutation(document, blocks, board),
       onTitleChanged: (title) =>
