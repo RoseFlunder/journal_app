@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../models/entry.dart';
 import '../models/sticker.dart';
-import '../services/journal_store.dart';
+import '../services/repositories.dart';
 import '../widgets/paper_page.dart';
 
 /// Botanical home/contents page. It intentionally stays focused on the
@@ -11,12 +11,12 @@ import '../widgets/paper_page.dart';
 class ContentsPage extends StatelessWidget {
   const ContentsPage({
     super.key,
-    required this.store,
+    required this.repository,
     required this.onOpenPage,
     required this.onNewPage,
   });
 
-  final JournalStore store;
+  final JournalRepository repository;
   final ValueChanged<int> onOpenPage;
   final VoidCallback onNewPage;
 
@@ -42,13 +42,15 @@ class ContentsPage extends StatelessWidget {
       ),
     );
     if (confirmed == true && context.mounted) {
-      await store.deleteEntry(entry.id);
+      await repository.deleteDocument(entry.id);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final entries = store.entries;
+    final entries = repository.documents
+        .map((document) => document.toEntry())
+        .toList();
     final dateFormat = DateFormat.yMMMMd();
 
     return Scaffold(
@@ -157,7 +159,7 @@ class ContentsPage extends StatelessWidget {
         if (sticker != null) return AssetImage(sticker.assetPath);
       }
       if (block.type == BlockType.image && block.assetId != null) {
-        final bytes = store.getAsset(block.assetId!);
+        final bytes = repository.readAsset(block.assetId!);
         if (bytes != null) return MemoryImage(bytes);
       }
     }

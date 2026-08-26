@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import '../models/document.dart';
@@ -5,28 +6,6 @@ import '../models/template.dart';
 import 'journal_archive.dart';
 import 'journal_store.dart';
 
-/// Repository boundary used by the editor. UI code can depend on this
-/// contract while a future sync implementation replaces the Hive adapter.
-abstract interface class JournalRepository {
-  Future<void> init();
-
-  List<EntryDocument> get documents;
-
-  Future<EntryDocument> createDocument({String title});
-
-  Future<void> saveDocument(EntryDocument document);
-
-  Future<void> deleteDocument(String id);
-
-  Future<void> flush();
-
-  JournalArchive? archiveForDocument(String id);
-
-  Future<EntryDocument> importArchive(JournalArchive archive);
-}
-
-/// Immutable asset storage boundary. Asset bytes are never modified in
-/// place; image editing stores crop/adjustment metadata on the node instead.
 abstract interface class AssetRepository {
   Future<String> putAsset(
     String ownerId,
@@ -45,6 +24,8 @@ abstract interface class AssetRepository {
 abstract interface class CheckpointRepository {
   List<EntryCheckpoint> checkpointsFor(String documentId);
 
+  void scheduleCheckpoint(String documentId);
+
   Future<void> createCheckpoint(String documentId);
 
   Future<void> restoreCheckpoint(String checkpointId);
@@ -58,18 +39,67 @@ abstract interface class TemplateRepository {
   Future<void> deleteTemplate(String id);
 }
 
+abstract interface class PreferencesRepository {
+  List<int> get recentColorValues;
+
+  Set<int> get favoriteColorValues;
+
+  Future<void> updateColorPreferences({List<int>? recent, Set<int>? favorites});
+}
+
+/// Repository boundary used by the journal and editor views. It composes the
+/// aggregate contracts needed by the current editor while the Hive adapter is
+/// migrated behind smaller data services.
+abstract interface class JournalRepository
+    implements
+        AssetRepository,
+        CheckpointRepository,
+        TemplateRepository,
+        PreferencesRepository {
+  Future<void> init();
+
+  List<EntryDocument> get documents;
+
+  Stream<void> get changes;
+
+  void addFlushHook(Future<void> Function() hook);
+
+  void removeFlushHook(Future<void> Function() hook);
+
+  Future<EntryDocument> createDocument({String title});
+
+  Future<void> saveDocument(EntryDocument document);
+
+  void previewDocument(EntryDocument document);
+
+  Future<void> deleteDocument(String id);
+
+  Future<void> flush();
+
+  JournalArchive? archiveForDocument(String id);
+
+  Future<EntryDocument> importArchive(JournalArchive archive);
+}
+
 /// Hive-backed repository facade. [JournalStore] remains available to the
 /// existing navigation shell, while new editor features can depend only on
 /// these repository interfaces.
-class HiveJournalRepository
-    implements
-        JournalRepository,
-        AssetRepository,
-        CheckpointRepository,
-        TemplateRepository {
-  HiveJournalRepository(this.store);
+class HiveJournalRepository implements JournalRepository {
+  HiveJournalRepository(this.store) {
+    store.addListener(_handleStoreChanged);
+  }
 
   final JournalStore store;
+  final StreamController<void> _changes = StreamController<void>.broadcast();
+
+  void _handleStoreChanged() {
+    if (!_changes.isClosed) _changes.add(null);
+  }
+
+  void dispose() {
+    store.removeListener(_handleStoreChanged);
+    _changes.close();
+  }
 
   @override
   Future<void> init() => store.init();
@@ -77,6 +107,28 @@ class HiveJournalRepository
   @override
   List<EntryDocument> get documents =>
       store.entries.map(EntryDocument.fromEntry).toList(growable: false);
+
+  @override
+  Stream<void> get changes => _changes.stream;
+
+  @override
+  List<int> get recentColorValues => store.recentColorValues;
+
+  @override
+  Set<int> get favoriteColorValues => store.favoriteColorValues;
+
+  @override
+  Future<void> updateColorPreferences({
+    List<int>? recent,
+    Set<int>? favorites,
+  }) => store.updateColorPreferences(recent: recent, favorites: favorites);
+
+  @override
+  void addFlushHook(Future<void> Function() hook) => store.addFlushHook(hook);
+
+  @override
+  void removeFlushHook(Future<void> Function() hook) =>
+      store.removeFlushHook(hook);
 
   @override
   Future<EntryDocument> createDocument({String title = ''}) async =>
@@ -92,9 +144,32 @@ class HiveJournalRepository
           ..board = next.board
           ..view = next.view
           ..music = next.music
+          ..titleFontSize = next.titleFontSize
+          ..titleFontFamily = next.titleFontFamily
+          ..titleTextColorValue = next.titleTextColorValue
+          ..titleBold = next.titleBold
+          ..titleItalic = next.titleItalic
           ..revision = next.revision
           ..schemaVersion = next.schemaVersion;
       });
+
+  @override
+  void previewDocument(EntryDocument document) {
+    final next = document.toEntry();
+    store.previewEntry(document.id, (entry) {
+      entry
+        ..title = next.title
+        ..blocks = next.blocks
+        ..board = next.board
+        ..view = next.view
+        ..music = next.music
+        ..titleFontSize = next.titleFontSize
+        ..titleFontFamily = next.titleFontFamily
+        ..titleTextColorValue = next.titleTextColorValue
+        ..titleBold = next.titleBold
+        ..titleItalic = next.titleItalic;
+    });
+  }
 
   @override
   Future<void> deleteDocument(String id) => store.deleteEntry(id);
@@ -137,6 +212,10 @@ class HiveJournalRepository
   @override
   Future<void> restoreCheckpoint(String checkpointId) =>
       store.restoreCheckpoint(checkpointId);
+
+  @override
+  void scheduleCheckpoint(String documentId) =>
+      store.scheduleCheckpoint(documentId);
 
   @override
   List<JournalTemplate> get templates => store.templates;

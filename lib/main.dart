@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'screens/journal_screen.dart';
+import 'services/repositories.dart';
 import 'services/journal_store.dart';
 import 'widgets/paper_page.dart';
 
@@ -22,7 +23,7 @@ class CozyBloomBootstrap extends StatefulWidget {
 }
 
 class _CozyBloomBootstrapState extends State<CozyBloomBootstrap> {
-  JournalStore? _store;
+  JournalRepository? _repository;
   Object? _error;
   bool _hiveInitialized = false;
   DateTime? _startedAt;
@@ -41,13 +42,13 @@ class _CozyBloomBootstrapState extends State<CozyBloomBootstrap> {
         await Hive.initFlutter();
         _hiveInitialized = true;
       }
-      final store = JournalStore();
-      await store.init();
+      final repository = HiveJournalRepository(JournalStore());
+      await repository.init();
       final elapsed = DateTime.now().difference(_startedAt!);
       const minimum = Duration(milliseconds: 3500);
       if (elapsed < minimum) await Future<void>.delayed(minimum - elapsed);
       if (!mounted) return;
-      setState(() => _store = store);
+      setState(() => _repository = repository);
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = error);
@@ -56,14 +57,17 @@ class _CozyBloomBootstrapState extends State<CozyBloomBootstrap> {
 
   @override
   Widget build(BuildContext context) {
-    final store = _store;
+    final repository = _repository;
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 420),
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
-      child: store == null
+      child: repository == null
           ? CozyBloomSplash(error: _error, onRetry: _boot)
-          : _JournalLifecycle(key: ValueKey(store), store: store),
+          : _JournalLifecycle(
+              key: ValueKey(repository),
+              repository: repository,
+            ),
     );
   }
 }
@@ -142,9 +146,9 @@ class CozyBloomSplash extends StatelessWidget {
 }
 
 class _JournalLifecycle extends StatefulWidget {
-  const _JournalLifecycle({super.key, required this.store});
+  const _JournalLifecycle({super.key, required this.repository});
 
-  final JournalStore store;
+  final JournalRepository repository;
 
   @override
   State<_JournalLifecycle> createState() => _JournalLifecycleState();
@@ -175,20 +179,23 @@ class _JournalLifecycleState extends State<_JournalLifecycle>
 
   Future<void> _flushStore() async {
     try {
-      await widget.store.flush();
+      await widget.repository.flush();
     } catch (error) {
       debugPrint('Could not flush journal storage: $error');
     }
   }
 
   @override
-  Widget build(BuildContext context) => JournalApp(store: widget.store);
+  Widget build(BuildContext context) =>
+      JournalApp(repository: widget.repository);
 }
 
 class JournalApp extends StatelessWidget {
-  const JournalApp({super.key, required this.store});
+  JournalApp({super.key, JournalRepository? repository, JournalStore? store})
+    : assert(repository != null || store != null),
+      repository = repository ?? HiveJournalRepository(store!);
 
-  final JournalStore store;
+  final JournalRepository repository;
 
   @override
   Widget build(BuildContext context) {
@@ -239,7 +246,7 @@ class JournalApp extends StatelessWidget {
           ),
         ),
       ),
-      home: JournalScreen(store: store),
+      home: JournalScreen(repository: repository),
     );
   }
 }

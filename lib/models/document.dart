@@ -156,6 +156,11 @@ class EntryDocument {
     this.board = const BoardSettings(),
     this.view,
     this.music,
+    this.titleFontSize = 28,
+    this.titleFontFamily,
+    this.titleTextColorValue,
+    this.titleBold = true,
+    this.titleItalic = false,
     this.revision = 0,
     this.schemaVersion = 1,
   }) : nodes = UnmodifiableListView(List<CanvasNode>.from(nodes));
@@ -168,8 +173,45 @@ class EntryDocument {
   final BoardSettings board;
   final ViewState? view;
   final String? music;
+  final double titleFontSize;
+  final String? titleFontFamily;
+  final int? titleTextColorValue;
+  final bool titleBold;
+  final bool titleItalic;
   final int revision;
   final int schemaVersion;
+
+  EntryDocument copyWith({
+    String? title,
+    DateTime? modifiedAt,
+    Iterable<CanvasNode>? nodes,
+    BoardSettings? board,
+    ViewState? view,
+    String? music,
+    double? titleFontSize,
+    String? titleFontFamily,
+    int? titleTextColorValue,
+    bool? titleBold,
+    bool? titleItalic,
+    int? revision,
+    int? schemaVersion,
+  }) => EntryDocument(
+    id: id,
+    title: title ?? this.title,
+    createdAt: createdAt,
+    modifiedAt: modifiedAt ?? this.modifiedAt,
+    nodes: nodes ?? this.nodes,
+    board: board ?? this.board,
+    view: view ?? this.view,
+    music: music ?? this.music,
+    titleFontSize: titleFontSize ?? this.titleFontSize,
+    titleFontFamily: titleFontFamily ?? this.titleFontFamily,
+    titleTextColorValue: titleTextColorValue ?? this.titleTextColorValue,
+    titleBold: titleBold ?? this.titleBold,
+    titleItalic: titleItalic ?? this.titleItalic,
+    revision: revision ?? this.revision,
+    schemaVersion: schemaVersion ?? this.schemaVersion,
+  );
 
   factory EntryDocument.fromEntry(Entry entry) => EntryDocument(
     id: entry.id,
@@ -180,6 +222,11 @@ class EntryDocument {
     board: entry.board,
     view: entry.view,
     music: entry.music,
+    titleFontSize: entry.titleFontSize,
+    titleFontFamily: entry.titleFontFamily,
+    titleTextColorValue: entry.titleTextColorValue,
+    titleBold: entry.titleBold,
+    titleItalic: entry.titleItalic,
     revision: entry.revision,
     schemaVersion: entry.schemaVersion,
   );
@@ -193,9 +240,7 @@ class EntryDocument {
     ),
     nodes: (json['nodes'] as List<dynamic>? ?? const [])
         .whereType<Map<Object?, Object?>>()
-        .map(
-      (node) => CanvasNode.fromJson(Map<String, dynamic>.from(node)),
-    ),
+        .map((node) => CanvasNode.fromJson(Map<String, dynamic>.from(node))),
     board: BoardSettings.fromJson(
       json['board'] is Map
           ? Map<String, dynamic>.from(json['board'] as Map)
@@ -205,6 +250,11 @@ class EntryDocument {
         ? ViewState.fromJson(Map<String, dynamic>.from(json['view'] as Map))
         : null,
     music: json['music'] as String?,
+    titleFontSize: (json['titleFontSize'] as num?)?.toDouble() ?? 28,
+    titleFontFamily: json['titleFontFamily'] as String?,
+    titleTextColorValue: (json['titleTextColorValue'] as num?)?.toInt(),
+    titleBold: json['titleBold'] as bool? ?? true,
+    titleItalic: json['titleItalic'] as bool? ?? false,
     revision: (json['revision'] as num?)?.toInt() ?? 0,
     schemaVersion: (json['schemaVersion'] as num?)?.toInt() ?? 1,
   );
@@ -218,6 +268,11 @@ class EntryDocument {
     board: board,
     view: view,
     music: music,
+    titleFontSize: titleFontSize,
+    titleFontFamily: titleFontFamily,
+    titleTextColorValue: titleTextColorValue,
+    titleBold: titleBold,
+    titleItalic: titleItalic,
     revision: revision,
     schemaVersion: schemaVersion,
   );
@@ -231,6 +286,11 @@ class EntryDocument {
     'board': board.toJson(),
     'view': view?.toJson(),
     'music': music,
+    'titleFontSize': titleFontSize,
+    'titleFontFamily': titleFontFamily,
+    'titleTextColorValue': titleTextColorValue,
+    'titleBold': titleBold,
+    'titleItalic': titleItalic,
     'revision': revision,
     'schemaVersion': schemaVersion,
   };

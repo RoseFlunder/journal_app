@@ -252,6 +252,16 @@ class JournalStore extends ChangeNotifier {
     });
   }
 
+  /// Updates the in-memory entry without enqueueing a disk write.
+  ///
+  /// Editors use this for responsive previews between transaction commits.
+  /// The next normal update persists the complete current entry.
+  void previewEntry(String id, void Function(Entry e) mutate) {
+    final index = indexOfEntry(id);
+    if (index < 0) return;
+    mutate(_entries[index]);
+  }
+
   /// Deletes an entry and all of its assets.
   Future<void> deleteEntry(String id) {
     final i = indexOfEntry(id);

@@ -19,6 +19,7 @@ import '../models/template.dart';
 import '../services/image_source.dart';
 import '../services/journal_archive.dart';
 import '../services/journal_store.dart';
+import '../services/repositories.dart';
 import '../widgets/entry_chrome.dart';
 import '../widgets/page_viewport.dart';
 import '../widgets/paper_page.dart';
@@ -30,9 +31,10 @@ class EntryPage extends StatefulWidget {
   const EntryPage({
     super.key,
     required this.entry,
-    required this.store,
+    required this.repository,
     required this.onViewChanged,
     required this.onDocumentChanged,
+    this.onDocumentPreviewChanged,
     required this.onTitleChanged,
     required this.onTitleStyleChanged,
     required this.onTitleFontFamilyChanged,
@@ -44,10 +46,12 @@ class EntryPage extends StatefulWidget {
   });
 
   final Entry entry;
-  final JournalStore store;
+  final JournalRepository repository;
   final ValueChanged<ViewState> onViewChanged;
   final Future<void> Function(List<ContentBlock>, BoardSettings)
   onDocumentChanged;
+  final void Function(List<ContentBlock>, BoardSettings)?
+  onDocumentPreviewChanged;
   final ValueChanged<String> onTitleChanged;
   final void Function(double fontSize, bool bold, bool italic)
   onTitleStyleChanged;
@@ -180,9 +184,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         .toARGB32();
   }
 
-  int get _inkPickerValue => Color(_inkColorValue)
-      .withValues(alpha: _inkOpacity.clamp(0.0, 1.0).toDouble())
-      .toARGB32();
+  int get _inkPickerValue =>
+      Color(_inkColorValue)
+          .withValues(alpha: _inkOpacity.clamp(0.0, 1.0).toDouble())
+          .toARGB32();
 
   bool _isDrawable(ContentBlock block) =>
       block.type == BlockType.ink || block.type == BlockType.shape;
@@ -199,11 +204,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
           ..blocks = blocks
           ..board = board;
         await widget.onDocumentChanged(blocks, board);
-        widget.store.scheduleCheckpoint(widget.entry.id);
+        widget.repository.scheduleCheckpoint(widget.entry.id);
       },
     )..addListener(_handleEditorChanged);
     _flushHook = _editor.flushText;
-    widget.store.addFlushHook(_flushHook!);
+    widget.repository.addFlushHook(_flushHook!);
   }
 
   void _handleEditorChanged() {
@@ -212,6 +217,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     widget.entry
       ..blocks = _editor.snapshotBlocks()
       ..board = _editor.board;
+    widget.onDocumentPreviewChanged?.call(
+      _editor.snapshotBlocks(),
+      _editor.board,
+    );
     if (mounted) setState(() {});
   }
 
@@ -221,7 +230,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     _colorSampleCompleter = null;
     WidgetsBinding.instance.removeObserver(this);
     final flushHook = _flushHook;
-    if (flushHook != null) widget.store.removeFlushHook(flushHook);
+    if (flushHook != null) widget.repository.removeFlushHook(flushHook);
     _editor
       ..removeListener(_handleEditorChanged)
       ..dispose();
@@ -242,9 +251,9 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   Future<void> _flushLifecycle() async {
-    await widget.store.flush();
-    await widget.store.createCheckpoint(widget.entry.id);
-    await widget.store.flush();
+    await widget.repository.flush();
+    await widget.repository.createCheckpoint(widget.entry.id);
+    await widget.repository.flush();
   }
 
   void _handleTitleFocusChanged() {
@@ -485,8 +494,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       sheetContext,
       initialValue: pickerValue,
       dialogTitle: 'Ink color',
-      recentColorValues: widget.store.recentColorValues,
-      favoriteColorValues: widget.store.favoriteColorValues,
+      recentColorValues: widget.repository.recentColorValues,
+      favoriteColorValues: widget.repository.favoriteColorValues,
       onPreview: (value) =>
           _applyInkColorValue(value, refreshSheet: () => setSheetState(() {})),
       onFavoriteColorsChanged: _updateFavoriteColors,
@@ -584,13 +593,13 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void _addRecentColor(int value) {
     final recent = [
       value,
-      ...widget.store.recentColorValues.where((item) => item != value),
+      ...widget.repository.recentColorValues.where((item) => item != value),
     ].take(8).toList(growable: false);
-    unawaited(widget.store.updateColorPreferences(recent: recent));
+    unawaited(widget.repository.updateColorPreferences(recent: recent));
   }
 
   void _updateFavoriteColors(Set<int> values) {
-    unawaited(widget.store.updateColorPreferences(favorites: values));
+    unawaited(widget.repository.updateColorPreferences(favorites: values));
   }
 
   TextStyle _titleStyle(BuildContext context) =>
@@ -684,7 +693,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       final picked = await _imageSource.pickImage(context);
       if (!mounted || picked == null) return;
       final image = widget.imageProcessor.process(picked.bytes);
-      final assetId = await widget.store.addAsset(
+      final assetId = await widget.repository.putAsset(
         widget.entry.id,
         AssetKind.image,
         image.mime,
@@ -795,7 +804,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         () => AssetImage(sticker.assetPath),
       );
     }
-    final bytes = widget.store.getAsset(assetId);
+    final bytes = widget.repository.readAsset(assetId);
     if (bytes == null) return null;
     return _imageProviders.putIfAbsent(assetId, () => MemoryImage(bytes));
   }
@@ -807,7 +816,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
 
   Future<void> _openImage(ContentBlock block) async {
     final assetId = block.assetId;
-    final bytes = assetId == null ? null : widget.store.getAsset(assetId);
+    final bytes = assetId == null ? null : widget.repository.readAsset(assetId);
     if (bytes == null || !mounted) return;
     await showDialog<void>(
       context: context,
@@ -1082,7 +1091,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
     if (!mounted || name == null || name.trim().isEmpty) return;
     final now = DateTime.now();
-    await widget.store.saveTemplate(
+    await widget.repository.saveTemplate(
       JournalTemplate(
         id: _uuid.v4(),
         name: name.trim(),
@@ -1106,7 +1115,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   void _showTemplates() {
-    final templates = widget.store.templates;
+    final templates = widget.repository.templates;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: PaperPage.paper,
@@ -1147,7 +1156,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   Future<void> _exportArchive() async {
-    final archive = widget.store.archiveForEntry(widget.entry.id);
+    final archive = widget.repository.archiveForDocument(widget.entry.id);
     if (archive == null || !mounted) return;
     final uri = await FilePicker.saveFile(
       fileName:
@@ -1175,7 +1184,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     final bytes = await file.readAsBytes();
     try {
       final archive = JournalArchive.decode(bytes);
-      await widget.store.importArchive(archive);
+      await widget.repository.importArchive(archive);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1778,7 +1787,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       showDragHandle: true,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
-          final checkpoints = widget.store.checkpointsFor(widget.entry.id);
+          final checkpoints = widget.repository.checkpointsFor(widget.entry.id);
           return SafeArea(
             child: SizedBox(
               height: MediaQuery.sizeOf(context).height * 0.62,
@@ -1788,7 +1797,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     leading: const Icon(Icons.add_task_outlined),
                     title: const Text('Create recovery checkpoint'),
                     onTap: () async {
-                      await widget.store.createCheckpoint(widget.entry.id);
+                      await widget.repository.createCheckpoint(widget.entry.id);
                       setModalState(() {});
                     },
                   ),
@@ -1813,13 +1822,15 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                                   'Restore this local version',
                                 ),
                                 onTap: () async {
-                                  await widget.store.restoreCheckpoint(
+                                  await widget.repository.restoreCheckpoint(
                                     checkpoint.id,
                                   );
-                                  final restored = widget.store.entries
+                                  final restored = widget.repository.documents
                                       .firstWhere(
-                                        (entry) => entry.id == widget.entry.id,
-                                      );
+                                        (document) =>
+                                            document.id == widget.entry.id,
+                                      )
+                                      .toEntry();
                                   _editor.replaceDocument(
                                     restored.blocks,
                                     restored.board,
@@ -2179,7 +2190,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                             _editor.add(block);
                             setState(() => _selectedId = block.id);
                           },
-                          imageBytes: widget.store.getAsset,
+                          imageBytes: widget.repository.readAsset,
                           imageProvider: _imageProvider,
                           onOpenImage: _openImage,
                         ),
@@ -2323,8 +2334,9 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       onTextColorChanged: _changeTextColor,
                       onTextColorEditStart: _beginTextColorEdit,
                       onTextColorEditEnd: _endTextColorEdit,
-                      recentColorValues: widget.store.recentColorValues,
-                      favoriteColorValues: widget.store.favoriteColorValues,
+                      recentColorValues: widget.repository.recentColorValues,
+                      favoriteColorValues:
+                          widget.repository.favoriteColorValues,
                       onRecentColorAdded: _addRecentColor,
                       onFavoriteColorsChanged: _updateFavoriteColors,
                       onSampleColor: _requestColorSample,
@@ -2401,8 +2413,9 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       onTextColorChanged: _changeTextColor,
                       onTextColorEditStart: _beginTextColorEdit,
                       onTextColorEditEnd: _endTextColorEdit,
-                      recentColorValues: widget.store.recentColorValues,
-                      favoriteColorValues: widget.store.favoriteColorValues,
+                      recentColorValues: widget.repository.recentColorValues,
+                      favoriteColorValues:
+                          widget.repository.favoriteColorValues,
                       onRecentColorAdded: _addRecentColor,
                       onFavoriteColorsChanged: _updateFavoriteColors,
                       onSampleColor: _requestColorSample,

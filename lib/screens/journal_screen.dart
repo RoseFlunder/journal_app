@@ -4,8 +4,10 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/document.dart';
 import '../models/entry.dart';
-import '../services/journal_store.dart';
+import '../services/repositories.dart';
+import '../view_models/journal_view_model.dart';
 import '../widgets/entry_chrome.dart';
 import 'contents_page.dart';
 import 'entry_page.dart';
@@ -13,9 +15,9 @@ import 'entry_page.dart';
 /// Root of the journal: a [PageView] over
 /// `[table of contents, ...one page per entry]`.
 class JournalScreen extends StatefulWidget {
-  const JournalScreen({super.key, required this.store});
+  const JournalScreen({super.key, required this.repository});
 
-  final JournalStore store;
+  final JournalRepository repository;
 
   @override
   State<JournalScreen> createState() => _JournalScreenState();
@@ -23,6 +25,7 @@ class JournalScreen extends StatefulWidget {
 
 class _JournalScreenState extends State<JournalScreen> {
   final PageController _pageController = PageController();
+  late final JournalViewModel _journal;
   bool _animating = false;
   int _currentPageIndex = 0;
   static const _chromeIdleDuration = Duration(seconds: 3);
@@ -32,13 +35,20 @@ class _JournalScreenState extends State<JournalScreen> {
   bool _chromeVisible = true;
 
   @override
+  void initState() {
+    super.initState();
+    _journal = JournalViewModel(repository: widget.repository);
+  }
+
+  @override
   void dispose() {
     _chromeTimer?.cancel();
     _pageController.dispose();
+    _journal.dispose();
     super.dispose();
   }
 
-  int get _pageCount => widget.store.entries.length + 1;
+  int get _pageCount => _journal.documents.length + 1;
 
   int get _currentPage {
     return _currentPageIndex.clamp(0, _pageCount - 1).toInt();
@@ -60,8 +70,8 @@ class _JournalScreenState extends State<JournalScreen> {
 
   String? get _activeEntryId {
     final page = _currentPage;
-    if (page == 0 || page > widget.store.entries.length) return null;
-    return widget.store.entries[page - 1].id;
+    if (page == 0 || page > _journal.documents.length) return null;
+    return _journal.documents[page - 1].id;
   }
 
   bool get _activeEntryIsEditing {
@@ -126,7 +136,7 @@ class _JournalScreenState extends State<JournalScreen> {
     }
   }
 
-  /// Jumps to the page of [entryIndex] (index into [JournalStore.entries]).
+  /// Jumps to the page of [entryIndex] (index into the repository documents).
   /// The TOC occupies page 0 of the [PageView], so the page index is +1.
   void goToEntry(int entryIndex) => goToPageIndex(entryIndex + 1);
 
@@ -137,13 +147,13 @@ class _JournalScreenState extends State<JournalScreen> {
   Future<void> _createPage() async {
     final title = await _promptForTitle();
     if (!mounted || title == null) return;
-    final entry = await widget.store.addEntry(title: title);
+    final document = await _journal.createPage(title: title);
     // Wait two frames: the store notification builds the new PageView child
     // on the first one, then the controller can safely animate to it.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        goToEntry(widget.store.entries.indexWhere((e) => e.id == entry.id));
+        goToEntry(_journal.indexOf(document.id));
       });
     });
   }
@@ -155,32 +165,63 @@ class _JournalScreenState extends State<JournalScreen> {
     );
   }
 
-  Widget _buildEntryPage(Entry entry) {
+  EntryDocument _latestDocument(EntryDocument fallback) =>
+      widget.repository.documents.firstWhere(
+        (document) => document.id == fallback.id,
+        orElse: () => fallback,
+      );
+
+  void _previewEntryMutation(
+    EntryDocument fallback,
+    List<ContentBlock> blocks,
+    BoardSettings board,
+  ) {
+    final entry = _latestDocument(fallback).toEntry()
+      ..blocks = blocks
+      ..board = board;
+    widget.repository.previewDocument(EntryDocument.fromEntry(entry));
+  }
+
+  Future<void> _saveEntryMutation(
+    EntryDocument fallback,
+    void Function(Entry entry) mutate,
+  ) async {
+    final entry = _latestDocument(fallback).toEntry();
+    mutate(entry);
+    await _journal.saveDocument(EntryDocument.fromEntry(entry));
+  }
+
+  Widget _buildEntryPage(EntryDocument document) {
+    final entry = document.toEntry();
     return EntryPage(
       entry: entry,
-      store: widget.store,
+      repository: widget.repository,
       controlsVisible: _entryChromeVisible,
       onViewChanged: (view) =>
-          widget.store.updateEntry(entry.id, (entry) => entry.view = view),
+          _saveEntryMutation(document, (entry) => entry.view = view),
       onDocumentChanged: (blocks, board) =>
-          widget.store.updateEntry(entry.id, (entry) {
-            entry.blocks = blocks;
-            entry.board = board;
+          _saveEntryMutation(document, (entry) {
+            entry
+              ..blocks = blocks
+              ..board = board;
           }),
+      onDocumentPreviewChanged: (blocks, board) =>
+          _previewEntryMutation(document, blocks, board),
       onTitleChanged: (title) =>
-          widget.store.updateEntry(entry.id, (entry) => entry.title = title),
+          _saveEntryMutation(document, (entry) => entry.title = title),
       onTitleStyleChanged: (fontSize, bold, italic) =>
-          widget.store.updateEntry(entry.id, (entry) {
-            entry.titleFontSize = fontSize;
-            entry.titleBold = bold;
-            entry.titleItalic = italic;
+          _saveEntryMutation(document, (entry) {
+            entry
+              ..titleFontSize = fontSize
+              ..titleBold = bold
+              ..titleItalic = italic;
           }),
-      onTitleFontFamilyChanged: (fontFamily) => widget.store.updateEntry(
-        entry.id,
+      onTitleFontFamilyChanged: (fontFamily) => _saveEntryMutation(
+        document,
         (entry) => entry.titleFontFamily = fontFamily,
       ),
-      onTitleTextColorChanged: (colorValue) => widget.store.updateEntry(
-        entry.id,
+      onTitleTextColorChanged: (colorValue) => _saveEntryMutation(
+        document,
         (entry) => entry.titleTextColorValue = colorValue,
       ),
       onEditingChanged: (editing) => _handleEditingChanged(entry.id, editing),
@@ -194,7 +235,7 @@ class _JournalScreenState extends State<JournalScreen> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: widget.store,
+      listenable: _journal,
       builder: (context, _) {
         return PopScope(
           canPop: _currentPage == 0,
@@ -238,12 +279,12 @@ class _JournalScreenState extends State<JournalScreen> {
                         },
                         children: [
                           ContentsPage(
-                            store: widget.store,
+                            repository: widget.repository,
                             onOpenPage: goToEntry,
                             onNewPage: _createPage,
                           ),
-                          for (var i = 0; i < widget.store.entries.length; i++)
-                            _buildEntryPage(widget.store.entries[i]),
+                          for (final document in _journal.documents)
+                            _buildEntryPage(document),
                         ],
                       ),
                       if (_currentPage > 0)
