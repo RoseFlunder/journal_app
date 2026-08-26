@@ -13,10 +13,11 @@ small bundled sticker pack.
 - [x] M4: PowerPoint-style text block editing, positioning, resizing and persistence
 - [x] M5: pictures, branding, scrapbook home, and bundled stickers
 - [x] M6: vector drawing, shared color selection, and image adjustments
-- [ ] M7: music and further polish
+- [~] M7: per-page Jamendo music and further polish
 
-The active implementation plan is in [PLAN.md](PLAN.md). Music remains
-deferred; future polish and creative-tool work are tracked there.
+The active implementation plan is in [PLAN.md](PLAN.md). Pages can attach and
+stream Creative Commons music from Jamendo; further polish and creative-tool
+work are tracked there.
 
 ## Run locally
 
@@ -26,6 +27,49 @@ Install Flutter with Android, Windows or Web support enabled, then run:
 flutter pub get
 flutter run
 ```
+
+To enable the Jamendo picker, register a noncommercial Jamendo developer app
+and put its client ID in the external file
+`%USERPROFILE%\.config\cozy_bloom\build-defines.json`:
+
+```json
+{
+  "JAMENDO_CLIENT_ID": "your_actual_client_id"
+}
+```
+
+Pass that file during build or run time:
+
+```text
+flutter run --dart-define-from-file="C:\Users\Steph\.config\cozy_bloom\build-defines.json"
+flutter build appbundle --release --dart-define-from-file="C:\Users\Steph\.config\cozy_bloom\build-defines.json"
+flutter build windows --release --dart-define-from-file="C:\Users\Steph\.config\cozy_bloom\build-defines.json"
+flutter build web --release --dart-define-from-file="C:\Users\Steph\.config\cozy_bloom\build-defines.json"
+```
+
+Or use the repository wrapper, which defaults to that external file:
+
+```powershell
+.\tool\build_with_defines.ps1 appbundle
+.\tool\build_with_defines.ps1 windows
+.\tool\build_with_defines.ps1 web
+```
+
+If PowerShell script execution is restricted on Windows, use the equivalent
+command wrapper (it does not require changing the execution policy):
+
+```text
+tool\build_with_defines.cmd appbundle
+tool\build_with_defines.cmd windows
+tool\build_with_defines.cmd web
+```
+
+Both wrappers accept an optional second argument to select a different defines
+file.
+
+The client ID is an application identifier distributed with the client build,
+not a user login. Page music is streamed on demand and is not copied into Hive
+or `.cozyjournal` backups.
 
 Useful checks:
 

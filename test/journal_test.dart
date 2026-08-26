@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:image/image.dart' as img;
 import 'package:journal_app/models/entry.dart';
+import 'package:journal_app/models/page_music.dart';
 import 'package:journal_app/models/sticker.dart';
 import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/template.dart';
@@ -81,7 +82,7 @@ void main() {
             italic: true,
           ),
         ],
-        music: 'asset1',
+        music: const PageMusicTrack.legacy('asset1'),
         view: ViewState(zoom: 1.5, panX: 2, panY: -3),
         titleFontSize: 34,
         titleFontFamily: JournalFonts.caveat,
@@ -94,7 +95,7 @@ void main() {
       expect(decoded.id, 'abc');
       expect(decoded.title, 'Hello');
       expect(decoded.createdAt, DateTime.utc(2025, 8, 22, 12, 30));
-      expect(decoded.music, 'asset1');
+      expect(decoded.music?.legacyAssetId, 'asset1');
       expect(decoded.view?.zoom, 1.5);
       expect(decoded.view?.panY, -3);
       expect(decoded.titleFontSize, 34);
@@ -215,6 +216,46 @@ void main() {
       expect(decoded.titleBold, isTrue);
       expect(decoded.titleItalic, isFalse);
       expect(decoded.blocks, isEmpty);
+    });
+
+    test('round-trips remote page music metadata without audio bytes', () {
+      const music = PageMusicTrack(
+        provider: 'jamendo',
+        trackId: '42',
+        title: 'Soft Rain',
+        artist: 'Bloom Artist',
+        artworkUrl: 'https://img.example/42.jpg',
+        streamUrl: 'https://audio.example/42.mp3',
+        trackPageUrl: 'https://jamendo.example/42',
+        licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
+        duration: Duration(seconds: 125),
+      );
+      final entry = Entry(
+        id: 'music-page',
+        createdAt: DateTime.utc(2026),
+        music: music,
+      );
+
+      final json = entry.toJson();
+      final decoded = Entry.fromJson(json);
+
+      expect(json['music'], isA<Map<String, dynamic>>());
+      expect(json.toString(), isNot(contains('bytes')));
+      expect(decoded.music?.trackId, '42');
+      expect(decoded.music?.duration, const Duration(seconds: 125));
+      expect(decoded.schemaVersion, Entry.currentSchemaVersion);
+    });
+
+    test('decodes legacy string music references without losing the id', () {
+      final decoded = Entry.fromJson({
+        'id': 'legacy-music',
+        'createdAt': DateTime.utc(2025).toIso8601String(),
+        'music': 'asset1',
+      });
+
+      expect(decoded.music?.isLegacy, isTrue);
+      expect(decoded.music?.legacyAssetId, 'asset1');
+      expect(decoded.music?.isPlayable, isFalse);
     });
   });
 

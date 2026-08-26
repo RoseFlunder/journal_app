@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import 'entry.dart';
+import 'page_music.dart';
 
 /// Immutable world-space transform shared by every board node.
 class Transform2D {
@@ -174,7 +175,7 @@ class EntryDocument {
   final List<CanvasNode> nodes;
   final BoardSettings board;
   final ViewState? view;
-  final String? music;
+  final PageMusicTrack? music;
   final double titleFontSize;
   final String? titleFontFamily;
   final int? titleTextColorValue;
@@ -205,7 +206,9 @@ class EntryDocument {
     nodes: nodes ?? this.nodes,
     board: board ?? this.board,
     view: identical(view, _copyWithUnset) ? this.view : view as ViewState?,
-    music: identical(music, _copyWithUnset) ? this.music : music as String?,
+    music: identical(music, _copyWithUnset)
+        ? this.music
+        : music as PageMusicTrack?,
     titleFontSize: titleFontSize ?? this.titleFontSize,
     titleFontFamily: identical(titleFontFamily, _copyWithUnset)
         ? this.titleFontFamily
@@ -255,7 +258,7 @@ class EntryDocument {
     view: json['view'] is Map
         ? ViewState.fromJson(Map<String, dynamic>.from(json['view'] as Map))
         : null,
-    music: json['music'] as String?,
+    music: PageMusicTrack.decode(json['music']),
     titleFontSize: (json['titleFontSize'] as num?)?.toDouble() ?? 28,
     titleFontFamily: json['titleFontFamily'] as String?,
     titleTextColorValue: (json['titleTextColorValue'] as num?)?.toInt(),
@@ -291,7 +294,7 @@ class EntryDocument {
     'nodes': nodes.map((node) => node.toJson()).toList(),
     'board': board.toJson(),
     'view': view?.toJson(),
-    'music': music,
+    'music': music?.toJson(),
     'titleFontSize': titleFontSize,
     'titleFontFamily': titleFontFamily,
     'titleTextColorValue': titleTextColorValue,

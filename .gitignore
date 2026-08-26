@@ -33,6 +33,11 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Local compile-time configuration; keep credentials and API identifiers out
+# of source control even if a developer temporarily copies the file here.
+build-defines.json
+*.defines.json
+
 # Symbolication related
 app.*.symbols
 

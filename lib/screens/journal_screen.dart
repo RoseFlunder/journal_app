@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/document.dart';
+import '../models/page_music.dart';
+import '../services/audio_playback.dart';
 import '../services/repositories.dart';
 import '../ui/features/journal/view_models/journal_view_model.dart';
+import '../ui/features/music/view_models/page_music_controller.dart';
 import '../widgets/entry_chrome.dart';
 import 'contents_page.dart';
 import 'entry_page.dart';
@@ -14,9 +17,16 @@ import 'entry_page.dart';
 /// Root of the journal: a [PageView] over
 /// `[table of contents, ...one page per entry]`.
 class JournalScreen extends StatefulWidget {
-  const JournalScreen({super.key, required this.repositories});
+  const JournalScreen({
+    super.key,
+    required this.repositories,
+    required this.musicCatalog,
+    required this.audioPlaybackFactory,
+  });
 
   final JournalRepositories repositories;
+  final MusicCatalogRepository musicCatalog;
+  final AudioPlaybackFactory audioPlaybackFactory;
 
   @override
   State<JournalScreen> createState() => _JournalScreenState();
@@ -25,6 +35,7 @@ class JournalScreen extends StatefulWidget {
 class _JournalScreenState extends State<JournalScreen> {
   final PageController _pageController = PageController();
   late final JournalViewModel _journal;
+  late final PageMusicController _music;
   bool _animating = false;
   int _currentPageIndex = 0;
   static const _chromeIdleDuration = Duration(seconds: 3);
@@ -39,6 +50,11 @@ class _JournalScreenState extends State<JournalScreen> {
     _journal = JournalViewModel(
       repository: widget.repositories.documentRepository,
     );
+    _music = PageMusicController(
+      catalog: widget.musicCatalog,
+      playback: widget.audioPlaybackFactory(),
+      persistResolvedTrack: _persistResolvedTrack,
+    );
   }
 
   @override
@@ -46,6 +62,7 @@ class _JournalScreenState extends State<JournalScreen> {
     _chromeTimer?.cancel();
     _pageController.dispose();
     _journal.dispose();
+    _music.dispose();
     super.dispose();
   }
 
@@ -171,11 +188,38 @@ class _JournalScreenState extends State<JournalScreen> {
       document: document,
       repository: widget.repositories,
       controlsVisible: _entryChromeVisible,
-      onDocumentPreviewChanged: widget.repositories.documentRepository.previewDocument,
+      active: document.id == _activeEntryId,
+      musicCatalog: widget.musicCatalog,
+      audioPlaybackFactory: widget.audioPlaybackFactory,
+      musicController: _music,
+      onDocumentPreviewChanged:
+          widget.repositories.documentRepository.previewDocument,
       onDocumentChanged: _journal.saveDocument,
       onEditingChanged: (editing) =>
           _handleEditingChanged(document.id, editing),
     );
+  }
+
+  Future<void> _persistResolvedTrack(
+    String pageId,
+    PageMusicTrack track,
+  ) async {
+    final document = widget.repositories.documentRepository.documents
+        .where((candidate) => candidate.id == pageId)
+        .firstOrNull;
+    if (document == null) return;
+    await widget.repositories.documentRepository.saveDocument(
+      document.copyWith(music: track, modifiedAt: DateTime.now()),
+    );
+  }
+
+  Future<void> _activateMusicForPage(int page) async {
+    if (page <= 0 || page > _journal.documents.length) {
+      await _music.setActivePage(null, null);
+      return;
+    }
+    final document = _journal.documents[page - 1];
+    await _music.setActivePage(document.id, document.music);
   }
 
   void _handleBack() {
@@ -226,11 +270,13 @@ class _JournalScreenState extends State<JournalScreen> {
                               _scheduleChromeHide();
                             }
                           }
+                          unawaited(_activateMusicForPage(page));
                         },
                         children: [
                           ContentsPage(
                             documents: _journal.documents,
-                            assetRepository: widget.repositories.assetRepository,
+                            assetRepository:
+                                widget.repositories.assetRepository,
                             onOpenPage: goToEntry,
                             onNewPage: _createPage,
                             onDeletePage: _journal.deletePage,

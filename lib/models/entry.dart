@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:uuid/uuid.dart';
 
+import 'page_music.dart';
+
 /// Font families that can be selected in the editor.
 ///
 /// A null value intentionally means the current theme default. This keeps
@@ -343,7 +345,7 @@ class Entry {
        modifiedAt = modifiedAt ?? createdAt;
 
   static const _uuid = Uuid();
-  static const currentSchemaVersion = 2;
+  static const currentSchemaVersion = 3;
 
   factory Entry.newPage() {
     final now = DateTime.now();
@@ -356,8 +358,8 @@ class Entry {
   DateTime modifiedAt;
   List<ContentBlock> blocks;
 
-  /// Asset id of the page's background music (nullable), see milestone M6.
-  String? music;
+  /// Optional remote music reference for this page.
+  PageMusicTrack? music;
 
   /// The page's zoom/pan state, see milestone M3.
   ViewState? view;
@@ -381,7 +383,7 @@ class Entry {
     'createdAt': createdAt.toIso8601String(),
     'modifiedAt': modifiedAt.toIso8601String(),
     'blocks': blocks.map((b) => b.toJson()).toList(),
-    'music': music,
+    'music': music?.toJson(),
     'view': view?.toJson(),
     'titleFontSize': titleFontSize,
     'titleFontFamily': titleFontFamily,
@@ -405,7 +407,7 @@ class Entry {
       blocks: (json['blocks'] as List<dynamic>? ?? const [])
           .map((b) => ContentBlock.fromJson(_stringMap(b)))
           .toList(),
-      music: json['music'] as String?,
+      music: PageMusicTrack.decode(json['music']),
       view: json['view'] != null
           ? ViewState.fromJson(_stringMap(json['view']))
           : null,

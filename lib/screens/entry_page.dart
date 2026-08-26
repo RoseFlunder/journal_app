@@ -8,20 +8,25 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../editor/editor_toolbar.dart';
 import '../editor/editor_state.dart';
 import '../editor/entry_canvas.dart';
 import '../models/document.dart';
 import '../models/entry.dart';
+import '../models/page_music.dart';
 import '../models/sticker.dart';
 import '../models/storage_records.dart';
 import '../models/template.dart';
 import '../services/image_source.dart';
 import '../services/journal_transfer_service.dart';
 import '../services/repositories.dart';
+import '../services/audio_playback.dart';
 import '../ui/features/editor/view_models/entry_editor_view_model.dart';
 import '../ui/features/editor/views/entry_editor_surface.dart';
+import '../ui/features/music/view_models/page_music_controller.dart';
+import '../ui/features/music/views/music_picker_sheet.dart';
 import '../widgets/entry_chrome.dart';
 import '../widgets/page_viewport.dart';
 import '../widgets/paper_page.dart';
@@ -37,6 +42,10 @@ class EntryPage extends StatefulWidget {
     this.onDocumentPreviewChanged,
     required this.onDocumentChanged,
     required this.onEditingChanged,
+    required this.active,
+    required this.musicCatalog,
+    required this.audioPlaybackFactory,
+    required this.musicController,
     this.controlsVisible = true,
     this.imageSource,
     this.imageProcessor = const ImageProcessor(),
@@ -49,6 +58,10 @@ class EntryPage extends StatefulWidget {
   final ValueChanged<EntryDocument> onDocumentChanged;
   final ValueChanged<bool> onEditingChanged;
   final bool controlsVisible;
+  final bool active;
+  final MusicCatalogRepository musicCatalog;
+  final AudioPlaybackFactory audioPlaybackFactory;
+  final PageMusicController musicController;
 
   final ImageSourceService? imageSource;
   final ImageProcessor imageProcessor;
@@ -198,6 +211,18 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     widget.repository.persistence.addFlushHook(_flushHook!);
   }
 
+  @override
+  void didUpdateWidget(covariant EntryPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active &&
+        (!oldWidget.active ||
+            oldWidget.document.music != widget.document.music)) {
+      unawaited(
+        widget.musicController.setActivePage(_document.id, _document.music),
+      );
+    }
+  }
+
   void _handleEditorChanged() {
     // Keep the app's in-memory entry current for immediate previews and UI
     // consumers, while the controller still batches the Hive write itself.
@@ -231,6 +256,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       unawaited(_flushLifecycle());
+      if (widget.active) unawaited(widget.musicController.stopAndReset());
     }
   }
 
@@ -363,8 +389,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
 
   bool get _activeBold => _activeTextBlock?.bold ?? _document.titleBold;
 
-  bool get _activeItalic =>
-      _activeTextBlock?.italic ?? _document.titleItalic;
+  bool get _activeItalic => _activeTextBlock?.italic ?? _document.titleItalic;
 
   void _changeFontSize(double delta) {
     final block = _activeTextBlock;
@@ -378,10 +403,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       unawaited(_editor.commitTransaction());
     } else {
       _publishDocument(
-        _document.copyWith(
-          titleFontSize: size,
-          modifiedAt: DateTime.now(),
-        ),
+        _document.copyWith(titleFontSize: size, modifiedAt: DateTime.now()),
       );
     }
     setState(() {});
@@ -502,7 +524,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       sheetContext,
       initialValue: pickerValue,
       dialogTitle: 'Ink color',
-      recentColorValues: widget.repository.preferenceRepository.recentColorValues,
+      recentColorValues:
+          widget.repository.preferenceRepository.recentColorValues,
       favoriteColorValues:
           widget.repository.preferenceRepository.favoriteColorValues,
       onPreview: (value) =>
@@ -628,12 +651,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         color: _document.titleTextColorValue == null
             ? PaperPage.ink
             : Color(_document.titleTextColorValue!),
-        fontWeight: _document.titleBold
-            ? FontWeight.bold
-            : FontWeight.normal,
-        fontStyle: _document.titleItalic
-            ? FontStyle.italic
-            : FontStyle.normal,
+        fontWeight: _document.titleBold ? FontWeight.bold : FontWeight.normal,
+        fontStyle: _document.titleItalic ? FontStyle.italic : FontStyle.normal,
       );
 
   void _addText() {
@@ -1474,6 +1493,22 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     },
                   ),
                 ListTile(
+                  key: const ValueKey('page-music-tool'),
+                  leading: const Icon(Icons.library_music_outlined),
+                  title: Text(
+                    _document.music == null
+                        ? 'Add page music'
+                        : 'Change page music',
+                  ),
+                  subtitle: const Text(
+                    'Stream Creative Commons music from Jamendo',
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    unawaited(_showMusicPicker());
+                  },
+                ),
+                ListTile(
                   leading: const Icon(Icons.layers_outlined),
                   title: const Text('Layers'),
                   subtitle: const Text('Reorder, show, hide, and lock content'),
@@ -1532,6 +1567,35 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  Future<void> _showMusicPicker() async {
+    await widget.musicController.stopAndReset();
+    if (!mounted) return;
+    final result = await showModalBottomSheet<MusicPickerResult>(
+      context: context,
+      backgroundColor: PaperPage.paper,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => MusicPickerSheet(
+        catalog: widget.musicCatalog,
+        audioPlaybackFactory: widget.audioPlaybackFactory,
+        current: _document.music,
+      ),
+    );
+    if (!mounted || result == null) return;
+    final track = result.remove ? null : result.track;
+    final next = _document.copyWith(
+      music: track,
+      modifiedAt: DateTime.now(),
+      schemaVersion: Entry.currentSchemaVersion,
+    );
+    _publishDocument(next);
+    await widget.musicController.setActivePage(
+      widget.active ? _document.id : null,
+      widget.active ? track : null,
+    );
+    if (mounted) setState(() {});
   }
 
   void _showAlignment() {
@@ -1838,11 +1902,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                                 ),
                                 onTap: () async {
                                   await widget.repository.checkpointRepository
-                                      .restoreCheckpoint(
-                                    checkpoint.id,
-                                  );
-                                  final restored = widget.repository
-                                      .documentRepository.documents
+                                      .restoreCheckpoint(checkpoint.id);
+                                  final restored = widget
+                                      .repository
+                                      .documentRepository
+                                      .documents
                                       .firstWhere(
                                         (document) =>
                                             document.id == _document.id,
@@ -1936,6 +2000,107 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
+  }
+
+  Widget _buildMusicChip() => ListenableBuilder(
+    listenable: widget.musicController,
+    builder: (context, _) {
+      final controller = widget.musicController;
+      final track = controller.pageId == _document.id
+          ? controller.track ?? _document.music
+          : _document.music;
+      if (track == null) return const SizedBox.shrink();
+      final loading = widget.active && controller.isLoading;
+      final playing = widget.active && controller.isPlaying;
+      final failed = widget.active && controller.error != null;
+      return Material(
+        color: PaperPage.paper,
+        elevation: 2,
+        borderRadius: BorderRadius.circular(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 280),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                key: const ValueKey('page-music-play-pause'),
+                tooltip: failed
+                    ? 'Retry page music'
+                    : playing
+                    ? 'Pause page music'
+                    : 'Play page music',
+                onPressed: !widget.active || loading
+                    ? null
+                    : () async {
+                        await controller.toggle();
+                        if (!context.mounted || controller.error == null) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(controller.error!)),
+                        );
+                      },
+                icon: loading
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        failed
+                            ? Icons.refresh
+                            : playing
+                            ? Icons.pause
+                            : Icons.play_arrow,
+                      ),
+              ),
+              Flexible(
+                child: Text(
+                  track.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Page music details',
+                onPressed: () => _showMusicDetails(track),
+                icon: const Icon(Icons.info_outline, size: 20),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+
+  Future<void> _showMusicDetails(PageMusicTrack track) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(track.title),
+        content: Text(
+          track.isLegacy
+              ? 'This page contains a legacy local music reference. Replace or remove it from More tools.'
+              : '${track.artist}\n\nStreamed from Jamendo under the linked Creative Commons license.',
+        ),
+        actions: [
+          if (track.licenseUrl.isNotEmpty)
+            TextButton(
+              onPressed: () => launchUrl(Uri.parse(track.licenseUrl)),
+              child: const Text('License'),
+            ),
+          if (track.trackPageUrl.isNotEmpty)
+            TextButton(
+              onPressed: () => launchUrl(Uri.parse(track.trackPageUrl)),
+              child: const Text('Open on Jamendo'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _renameLayer(ContentBlock block) async {
@@ -2211,7 +2376,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                             _editor.add(block);
                             setState(() => _selectedId = block.id);
                           },
-                          imageBytes: widget.repository.assetRepository.readAsset,
+                          imageBytes:
+                              widget.repository.assetRepository.readAsset,
                           imageProvider: _imageProvider,
                           onOpenImage: _openImage,
                         ),
@@ -2261,9 +2427,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                                     ),
                               const SizedBox(height: 4),
                               Text(
-                                DateFormat.yMMMMd().format(
-                                  _document.createdAt,
-                                ),
+                                DateFormat.yMMMMd().format(_document.createdAt),
                                 style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(color: Colors.black54),
                                 textAlign: TextAlign.center,
@@ -2325,70 +2489,93 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     ),
                   ),
                 ),
+              if (_editing && _document.music != null)
+                Positioned(
+                  right: 12,
+                  top: 12,
+                  child: EntryChrome(
+                    visible: widget.controlsVisible,
+                    child: _buildMusicChip(),
+                  ),
+                ),
               if (!_editing)
                 Positioned(
                   right: 12,
                   top: 12,
                   child: EntryChrome(
                     visible: widget.controlsVisible,
-                    child: EditorToolbar(
-                      editing: false,
-                      hasSelection: false,
-                      textEditing: false,
-                      textFormattingAvailable: false,
-                      textSelection: false,
-                      onToggleEditing: () => setState(() {
-                        _editing = true;
-                        _titleFocused = false;
-                        widget.onEditingChanged(true);
-                      }),
-                      onAddText: _addText,
-                      onAddImage: _addImage,
-                      onAddSticker: _addSticker,
-                      onMore: _showMoreTools,
-                      onEditText: () =>
-                          setState(() => _textEditingId = _selectedId),
-                      onDecreaseFontSize: _activeFontSize > _minFontSize
-                          ? () => _changeFontSize(-_fontSizeStep)
-                          : null,
-                      onIncreaseFontSize: _activeFontSize < _maxFontSize
-                          ? () => _changeFontSize(_fontSizeStep)
-                          : null,
-                      fontFamily: _activeFontFamily,
-                      onFontFamilyChanged: _changeFontFamily,
-                      textColorValue: _activeTextColor,
-                      onTextColorChanged: _changeTextColor,
-                      onTextColorEditStart: _beginTextColorEdit,
-                      onTextColorEditEnd: _endTextColorEdit,
-                      recentColorValues:
-                          widget.repository.preferenceRepository.recentColorValues,
-                      favoriteColorValues: widget.repository.preferenceRepository
-                          .favoriteColorValues,
-                      onRecentColorAdded: _addRecentColor,
-                      onFavoriteColorsChanged: _updateFavoriteColors,
-                      onSampleColor: _requestColorSample,
-                      strokeColorValue: _activeStrokeColorValue,
-                      strokeColorAvailable: _strokeColorAvailable,
-                      onStrokeColorChanged: _changeStrokeColor,
-                      onStrokeColorEditStart: _beginStrokeColorEdit,
-                      onStrokeColorEditEnd: _endStrokeColorEdit,
-                      inkColorValue: _inkPickerValue,
-                      inkColorAvailable: _drawMode,
-                      onInkColorChanged: _applyInkColorValue,
-                      onToggleBold: _toggleBold,
-                      onToggleItalic: _toggleItalic,
-                      bold: _activeBold,
-                      italic: _activeItalic,
-                      onDelete: _deleteSelected,
-                      onBringToFront: _bringToFront,
-                      canUndo: _editor.canUndo,
-                      canRedo: _editor.canRedo,
-                      onUndo: _undo,
-                      onRedo: _redo,
-                      onDuplicate: _duplicateSelected,
-                      onSendToBack: _sendToBack,
-                      onToggleLock: _toggleSelectedLock,
-                      locked: _editor.primarySelection?.locked ?? false,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_document.music != null) ...[
+                          _buildMusicChip(),
+                          const SizedBox(height: 8),
+                        ],
+                        EditorToolbar(
+                          editing: false,
+                          hasSelection: false,
+                          textEditing: false,
+                          textFormattingAvailable: false,
+                          textSelection: false,
+                          onToggleEditing: () => setState(() {
+                            _editing = true;
+                            _titleFocused = false;
+                            widget.onEditingChanged(true);
+                          }),
+                          onAddText: _addText,
+                          onAddImage: _addImage,
+                          onAddSticker: _addSticker,
+                          onMore: _showMoreTools,
+                          onEditText: () =>
+                              setState(() => _textEditingId = _selectedId),
+                          onDecreaseFontSize: _activeFontSize > _minFontSize
+                              ? () => _changeFontSize(-_fontSizeStep)
+                              : null,
+                          onIncreaseFontSize: _activeFontSize < _maxFontSize
+                              ? () => _changeFontSize(_fontSizeStep)
+                              : null,
+                          fontFamily: _activeFontFamily,
+                          onFontFamilyChanged: _changeFontFamily,
+                          textColorValue: _activeTextColor,
+                          onTextColorChanged: _changeTextColor,
+                          onTextColorEditStart: _beginTextColorEdit,
+                          onTextColorEditEnd: _endTextColorEdit,
+                          recentColorValues: widget
+                              .repository
+                              .preferenceRepository
+                              .recentColorValues,
+                          favoriteColorValues: widget
+                              .repository
+                              .preferenceRepository
+                              .favoriteColorValues,
+                          onRecentColorAdded: _addRecentColor,
+                          onFavoriteColorsChanged: _updateFavoriteColors,
+                          onSampleColor: _requestColorSample,
+                          strokeColorValue: _activeStrokeColorValue,
+                          strokeColorAvailable: _strokeColorAvailable,
+                          onStrokeColorChanged: _changeStrokeColor,
+                          onStrokeColorEditStart: _beginStrokeColorEdit,
+                          onStrokeColorEditEnd: _endStrokeColorEdit,
+                          inkColorValue: _inkPickerValue,
+                          inkColorAvailable: _drawMode,
+                          onInkColorChanged: _applyInkColorValue,
+                          onToggleBold: _toggleBold,
+                          onToggleItalic: _toggleItalic,
+                          bold: _activeBold,
+                          italic: _activeItalic,
+                          onDelete: _deleteSelected,
+                          onBringToFront: _bringToFront,
+                          canUndo: _editor.canUndo,
+                          canRedo: _editor.canRedo,
+                          onUndo: _undo,
+                          onRedo: _redo,
+                          onDuplicate: _duplicateSelected,
+                          onSendToBack: _sendToBack,
+                          onToggleLock: _toggleSelectedLock,
+                          locked: _editor.primarySelection?.locked ?? false,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -2440,9 +2627,13 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       onTextColorChanged: _changeTextColor,
                       onTextColorEditStart: _beginTextColorEdit,
                       onTextColorEditEnd: _endTextColorEdit,
-                      recentColorValues:
-                          widget.repository.preferenceRepository.recentColorValues,
-                      favoriteColorValues: widget.repository.preferenceRepository
+                      recentColorValues: widget
+                          .repository
+                          .preferenceRepository
+                          .recentColorValues,
+                      favoriteColorValues: widget
+                          .repository
+                          .preferenceRepository
                           .favoriteColorValues,
                       onRecentColorAdded: _addRecentColor,
                       onFavoriteColorsChanged: _updateFavoriteColors,

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import '../models/document.dart';
+import '../models/page_music.dart';
 import '../models/template.dart';
 import 'journal_archive.dart';
 import 'journal_store.dart';
@@ -47,6 +48,37 @@ abstract interface class PreferencesRepository {
   Future<void> updateColorPreferences({List<int>? recent, Set<int>? favorites});
 }
 
+/// Search and resolution capability for externally hosted page music.
+abstract interface class MusicCatalogRepository {
+  bool get isConfigured;
+
+  Future<List<PageMusicTrack>> searchTracks({
+    String query = '',
+    int offset = 0,
+    int limit = 20,
+  });
+
+  Future<PageMusicTrack> resolveTrack(String trackId);
+}
+
+class DisabledMusicCatalogRepository implements MusicCatalogRepository {
+  const DisabledMusicCatalogRepository();
+
+  @override
+  bool get isConfigured => false;
+
+  @override
+  Future<PageMusicTrack> resolveTrack(String trackId) =>
+      Future.error(StateError('The music catalog is not configured.'));
+
+  @override
+  Future<List<PageMusicTrack>> searchTracks({
+    String query = '',
+    int offset = 0,
+    int limit = 20,
+  }) => Future.error(StateError('The music catalog is not configured.'));
+}
+
 /// Persistence hooks shared by the application lifecycle and active editors.
 abstract interface class PersistenceRepository {
   void addFlushHook(Future<void> Function() hook);
@@ -79,7 +111,6 @@ abstract interface class DocumentRepository {
   void previewDocument(EntryDocument document);
 
   Future<void> deleteDocument(String id);
-
 }
 
 /// Repository boundary used by the journal and editor views. It composes the
@@ -113,16 +144,15 @@ class JournalRepositories {
   factory JournalRepositories.from(
     JournalRepository repository, {
     PersistenceRepository? persistence,
-  }) =>
-      JournalRepositories(
-        documentRepository: repository,
-        assetRepository: repository,
-        checkpointRepository: repository,
-        templateRepository: repository,
-        preferenceRepository: repository,
-        persistence: persistence ?? repository,
-        archiveRepository: repository,
-      );
+  }) => JournalRepositories(
+    documentRepository: repository,
+    assetRepository: repository,
+    checkpointRepository: repository,
+    templateRepository: repository,
+    preferenceRepository: repository,
+    persistence: persistence ?? repository,
+    archiveRepository: repository,
+  );
 
   final DocumentRepository documentRepository;
   final AssetRepository assetRepository;
@@ -131,7 +161,6 @@ class JournalRepositories {
   final PreferencesRepository preferenceRepository;
   final PersistenceRepository persistence;
   final ArchiveRepository archiveRepository;
-
 }
 
 /// Hive-backed repository facade. [JournalStore] remains available to the

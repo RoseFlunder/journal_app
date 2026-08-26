@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'app/app_dependencies.dart';
+import 'services/audio_playback.dart';
 import 'ui/features/journal/views/journal_screen.dart';
 import 'services/repositories.dart';
 import 'services/journal_store.dart';
@@ -188,8 +189,11 @@ class _JournalLifecycleState extends State<_JournalLifecycle>
   }
 
   @override
-  Widget build(BuildContext context) =>
-      JournalApp(repositories: widget.dependencies.repositories);
+  Widget build(BuildContext context) => JournalApp(
+    repositories: widget.dependencies.repositories,
+    musicCatalog: widget.dependencies.musicCatalog,
+    audioPlaybackFactory: widget.dependencies.audioPlaybackFactory,
+  );
 }
 
 class JournalApp extends StatelessWidget {
@@ -199,6 +203,8 @@ class JournalApp extends StatelessWidget {
     JournalRepository? repository,
     JournalStore? store,
     AppDependencies? dependencies,
+    MusicCatalogRepository? musicCatalog,
+    AudioPlaybackFactory? audioPlaybackFactory,
   }) : assert(
          repositories != null ||
              repository != null ||
@@ -210,9 +216,19 @@ class JournalApp extends StatelessWidget {
            repositories ??
            JournalRepositories.from(
              repository ?? HiveJournalRepository(store!),
-           );
+           ),
+       musicCatalog =
+           dependencies?.musicCatalog ??
+           musicCatalog ??
+           const DisabledMusicCatalogRepository(),
+       audioPlaybackFactory =
+           dependencies?.audioPlaybackFactory ??
+           audioPlaybackFactory ??
+           _disabledAudioFactory;
 
   final JournalRepositories repositories;
+  final MusicCatalogRepository musicCatalog;
+  final AudioPlaybackFactory audioPlaybackFactory;
 
   @override
   Widget build(BuildContext context) {
@@ -263,7 +279,14 @@ class JournalApp extends StatelessWidget {
           ),
         ),
       ),
-      home: JournalScreen(repositories: repositories),
+      home: JournalScreen(
+        repositories: repositories,
+        musicCatalog: musicCatalog,
+        audioPlaybackFactory: audioPlaybackFactory,
+      ),
     );
   }
 }
+
+AudioPlaybackService _disabledAudioFactory() =>
+    const DisabledAudioPlaybackService();
