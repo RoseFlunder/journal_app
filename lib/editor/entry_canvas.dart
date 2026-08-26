@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../models/entry.dart';
 import '../widgets/page_viewport.dart';
 import 'block_widget.dart';
+import 'canvas_geometry.dart';
 
 typedef TouchSelectionRotation = void Function(
   Set<String> blockIds,
@@ -856,12 +857,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
   }
 
   Offset _rotate(Offset point, double angle) {
-    final cosine = math.cos(angle);
-    final sine = math.sin(angle);
-    return Offset(
-      point.dx * cosine - point.dy * sine,
-      point.dx * sine + point.dy * cosine,
-    );
+    return CanvasGeometry.rotate(point, angle);
   }
 
   bool _containsResizeHandle(Offset point, ContentBlock block, double scale) {
@@ -902,22 +898,15 @@ class _EntryCanvasState extends State<EntryCanvas> {
         widget.worldOrigin;
   }
 
-  bool _containsBlock(Offset point, ContentBlock block, double scale) {
-    final width = math.max(EntryCanvas.minWidth, block.w) * scale;
-    final height = math.max(EntryCanvas.minHeight, block.h) * scale;
-    final center = Offset(
-      (block.x + widget.worldOrigin.dx) * scale + width / 2,
-      (block.y + widget.worldOrigin.dy) * scale + height / 2,
-    );
-    final offset = point - center;
-    final cosine = math.cos(-block.rotation);
-    final sine = math.sin(-block.rotation);
-    final local = Offset(
-      offset.dx * cosine - offset.dy * sine,
-      offset.dx * sine + offset.dy * cosine,
-    );
-    return local.dx.abs() <= width / 2 && local.dy.abs() <= height / 2;
-  }
+  bool _containsBlock(Offset point, ContentBlock block, double scale) =>
+      CanvasGeometry.containsBlock(
+        point,
+        block,
+        worldOrigin: widget.worldOrigin,
+        scale: scale,
+        minWidth: EntryCanvas.minWidth,
+        minHeight: EntryCanvas.minHeight,
+      );
 
   String? _visualId(ContentBlock block) =>
       block.type == BlockType.sticker ? block.stickerId : block.assetId;
