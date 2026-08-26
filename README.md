@@ -1,9 +1,9 @@
 # Cozy Bloom Journal
 
 A botanical scrapbook journal for Android, Windows and Web. Cozy Bloom Journal
-uses a framed paper page inside a Figma-like infinite workspace, local
-persistence, freely positioned text and photos, and a small bundled sticker
-pack.
+uses a finite A4 ruled-paper page inside a zoomable workspace, local
+persistence, freely positioned text and photos, vector ink drawing, and a
+small bundled sticker pack.
 
 ## Status
 
@@ -12,10 +12,11 @@ pack.
 - [x] M3: zoom and pan viewport with per-entry view persistence
 - [x] M4: PowerPoint-style text block editing, positioning, resizing and persistence
 - [x] M5: pictures, branding, scrapbook home, and bundled stickers
-- [ ] M6-M7: music, drawing, photo adjustments, and further polish
+- [x] M6: vector drawing, shared color selection, and image adjustments
+- [ ] M7: music and further polish
 
-The active implementation plan is in [PLAN.md](PLAN.md). Music, drawing, and
-photo adjustments are intentionally deferred.
+The active implementation plan is in [PLAN.md](PLAN.md). Music remains
+deferred; future polish and creative-tool work are tracked there.
 
 ## Run locally
 
@@ -52,8 +53,9 @@ limited by the browser, commonly around 50-500 MB, and is tied to that
 browser profile rather than being synced to a server.
 
 The `entries` box stores serialized entries and the `assets` box stores image
-and audio records. Feature code should use `JournalStore` rather than direct
-filesystem access so the same path remains compatible with Web.
+and audio records. Feature code should use the narrow repository interfaces;
+the Hive-backed `JournalStore` stays behind the data layer so the same path
+remains compatible with Web.
 
 ## Platform notes
 
@@ -69,15 +71,22 @@ filesystem access so the same path remains compatible with Web.
 ## Architecture
 
 - `lib/models/entry.dart`: entry, block and view-state serialization models
+- `lib/models/document.dart`: immutable document and canvas-node boundaries
 - `lib/models/sticker.dart`: bundled sticker catalog and metadata
 - `lib/services/journal_store.dart`: Hive-backed journal and asset storage
+- `lib/services/repositories.dart`: repository capability contracts
+- `lib/services/hive_repositories.dart`: Hive repository adapters
+- `lib/services/persistence_coordinator.dart`: ordered save/flush lifecycle
 - `lib/screens/journal_screen.dart`: PageView over TOC and entries
 - `lib/screens/contents_page.dart`: table of contents
 - `lib/screens/entry_page.dart`: entry page rendering
 - `lib/widgets/paper_page.dart`: M2 paper surface and painter
 - `lib/widgets/page_viewport.dart`: M3 zoom and pan viewport
+- `lib/widgets/camera_controller.dart`: page camera matrix and view state
 - `lib/editor/entry_canvas.dart`: M4 free-positioned block canvas
 - `lib/editor/block_widget.dart`: selectable, movable and resizable text blocks
+- `lib/editor/editor_controller.dart`: editor commands and transactions
+- `lib/editor/geometry_services.dart`: transform, hit-test, bounds, and snap policy
 - `lib/editor/editor_toolbar.dart`: scrapbook edit-mode creation/context bar
 - `test/journal_test.dart`: model and persistence tests
 - `test/page_viewport_test.dart`: viewport behavior tests

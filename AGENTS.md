@@ -1,78 +1,90 @@
 # Project Instructions
 
-Flutter journal app. Plan and architecture: `PLAN.md`.
+Cozy Bloom Journal is a Flutter journal app for Android, Windows, and Web.
+`PLAN.md` is the current architecture and product roadmap.
 
-## Running tests
+## Architecture boundaries
 
-```sh
-flutter test
-```
+- `lib/app/` is the composition root. Construct dependencies there and pass
+  repository capabilities into features.
+- `lib/ui/features/` contains feature view models and feature-facing views.
+- `lib/services/` owns Hive, archives, assets, checkpoints, and persistence
+  coordination. Feature code must not access raw `dart:io` storage paths.
+- Screens and view models depend on narrow repository interfaces from
+  `lib/services/repositories.dart`; they must not depend directly on
+  `JournalStore`.
+- `EntryDocument`, `CanvasNode`, `Transform2D`, and editor snapshots are
+  immutable boundaries. `Entry` and `ContentBlock` are legacy mutable
+  adapters and should stay at compatibility edges while the editor migrates.
+- `EditorController` owns selection, transactions, undo/redo, and save state.
+  Continuous gestures must begin and commit one transaction, producing one
+  undo command and one persistence write.
+- `CameraController`, `TransformService`, `HitTestService`,
+  `BoundsService`, and `SnappingService` own page-camera and geometry policy;
+  do not duplicate those calculations in widgets.
 
-## Running the analyzer from Codex
+Keep the finite A4 paper page and page-local model coordinates intact. Web is
+a first-class target, so storage and feature behavior must remain platform
+neutral.
 
-```sh
+## Validation commands
+
+Run these from the repository root:
+
+```text
+flutter pub get
 flutter analyze
+flutter test
+flutter build appbundle --release
+flutter build web --release
 ```
 
-Run this command with sandbox escalation (outside the workspace filesystem
-restriction). Flutter needs access to its SDK cache and lock files under the
-user's Flutter installation. Inside the workspace-only sandbox, even
-`flutter --version` can hang without producing output; this is not an analyzer
-or output-capture problem. With escalation, `flutter analyze` returns its
-normal output in a few seconds.
+When using Codex on Windows, Flutter commands may need sandbox escalation so
+Flutter can access its SDK and Gradle caches. If a command appears to hang,
+interrupt only the recorded command session. Do not terminate unrelated
+`dart.exe` processes; they may belong to the VS Code Flutter extension.
 
-If a sandboxed attempt hangs, interrupt only that recorded command session.
-Do not terminate unrelated `dart.exe` processes, because they may belong to
-the VS Code Flutter extension.
+Windows desktop plugin builds may require Developer Mode for plugin symlinks.
 
-Reference tests:
+## Test conventions
 
-- `test/journal_test.dart` — pure unit tests (plain `test()`, no widget
-  binding, real async, direct awaits on Hive are fine)
-- `test/widget_test.dart` — widget test that builds the app and touches
-  Hive, using the **live binding** pattern (see below)
+All tests use `flutter_test`; this project does not require a separate
+`package:test` runner. The focused suites are:
 
-## Rules for writing widget tests in this repo
+- `test/journal_test.dart` — model serialization and Hive storage behavior;
+  it uses real asynchronous storage I/O without widget binding.
+- `test/editor_controller_test.dart` and `test/editor_history_test.dart` —
+  editor commands, transactions, selection, and undo/redo.
+- `test/entry_editor_view_model_test.dart` and
+  `test/journal_view_model_test.dart` — view-model/repository boundaries.
+- `test/canvas_geometry_test.dart` and `test/page_viewport_test.dart` —
+  geometry services, camera state, page fitting, and viewport behavior.
+- `test/widget_test.dart` — live-binding integration coverage for the app,
+  Hive-backed navigation, paper page, editor, and touch interactions.
 
-The app persists to **real files via Hive** (`lib/services/journal_store.dart`).
+Any `testWidgets` test that builds `JournalApp` or otherwise touches Hive must
+start with the live binding:
 
-1. **Any `testWidgets` test that builds `JournalApp` (i.e. touches Hive) must
-   start its `main()` with the live binding:**
+```dart
+void main() {
+  LiveTestWidgetsFlutterBinding.ensureInitialized();
+  // ...
+}
+```
 
-   ```dart
-   void main() {
-     LiveTestWidgetsFlutterBinding.ensureInitialized();
-     // ...
-   }
-   ```
+The default automated binding runs test bodies in a `FakeAsync` zone. Real
+Hive file I/O can then strand continuations and make `Hive.close()` hang.
+With the live binding, use ordinary `await`s, `tester.pumpAndSettle()`, and
+`await Hive.close()`; do not add `runAsync` or custom settle helpers.
 
-2. **Why:** the default (automated) binding runs the test body in a
-   FakeAsync zone. Hive does real `dart:io` file I/O; its continuations get
-   stranded in the fake zone, so writes never drain and `Hive.close()` hangs
-   *silently* (suite freezes, usually at `tearDownAll`, with no error
-   message). The live binding runs everything on the real event loop, so
-   plain `await`s just work. Cost: animations take real wall-clock time
-   (test runs a few seconds slower).
+For Hive-backed widget tests, use a fresh temporary directory in `setUpAll`:
 
-3. **With the live binding, write tests plainly:**
-   `await store.init();`, `await tester.tap(...)`,
-   `await tester.pumpAndSettle();` — no `runAsync`, no custom settle
-   helpers, and `await Hive.close()` is safe in `tearDownAll`.
+```dart
+final temp = Directory.systemTemp.createTempSync('journal_widget_test');
+Hive.init(temp.path);
+```
 
-4. **Use a fresh temp dir per run:** `Directory.systemTemp.createTempSync(...)`
-   + `Hive.init(temp.path)` in `setUpAll`; `await Hive.close()` and delete the
-   dir in `tearDownAll`.
+Close Hive and delete that exact temporary directory in `tearDownAll`.
 
-5. **If `flutter test` appears to hang with no output**, check for and kill
-   only the process/session started for that test run, then retry. Record its
-   PID/session ID when starting it. Do not kill `dart.exe` processes merely
-   because they exist; inspect their command lines first, since they may belong
-   to the VS Code Flutter extension. (Windows: inspect with
-   `Get-CimInstance Win32_Process -Filter "Name='dart.exe'"`, and kill a
-   verified stale process with `taskkill /T /F /PID <pid>`.)
-
-## Other repo notes
-
-- Windows desktop builds require Windows **Developer Mode** (plugin symlinks).
-- Web is a first-class target; keep storage on Hive (never raw `dart:io` paths
-  in feature code) so Web keeps working.
+Avoid direct filesystem access in feature code. Hive uses local files on
+Android and Windows and IndexedDB on Web.
