@@ -147,6 +147,8 @@ class CanvasNode {
 /// code. The legacy Entry adapter is intentionally retained only as a
 /// temporary UI/storage bridge while fresh data adopts this shape.
 class EntryDocument {
+  static const _copyWithUnset = Object();
+
   EntryDocument({
     required this.id,
     required this.title,
@@ -186,11 +188,11 @@ class EntryDocument {
     DateTime? modifiedAt,
     Iterable<CanvasNode>? nodes,
     BoardSettings? board,
-    ViewState? view,
-    String? music,
+    Object? view = _copyWithUnset,
+    Object? music = _copyWithUnset,
     double? titleFontSize,
-    String? titleFontFamily,
-    int? titleTextColorValue,
+    Object? titleFontFamily = _copyWithUnset,
+    Object? titleTextColorValue = _copyWithUnset,
     bool? titleBold,
     bool? titleItalic,
     int? revision,
@@ -202,11 +204,15 @@ class EntryDocument {
     modifiedAt: modifiedAt ?? this.modifiedAt,
     nodes: nodes ?? this.nodes,
     board: board ?? this.board,
-    view: view ?? this.view,
-    music: music ?? this.music,
+    view: identical(view, _copyWithUnset) ? this.view : view as ViewState?,
+    music: identical(music, _copyWithUnset) ? this.music : music as String?,
     titleFontSize: titleFontSize ?? this.titleFontSize,
-    titleFontFamily: titleFontFamily ?? this.titleFontFamily,
-    titleTextColorValue: titleTextColorValue ?? this.titleTextColorValue,
+    titleFontFamily: identical(titleFontFamily, _copyWithUnset)
+        ? this.titleFontFamily
+        : titleFontFamily as String?,
+    titleTextColorValue: identical(titleTextColorValue, _copyWithUnset)
+        ? this.titleTextColorValue
+        : titleTextColorValue as int?,
     titleBold: titleBold ?? this.titleBold,
     titleItalic: titleItalic ?? this.titleItalic,
     revision: revision ?? this.revision,

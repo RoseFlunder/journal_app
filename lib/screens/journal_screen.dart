@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/document.dart';
-import '../models/entry.dart';
 import '../services/repositories.dart';
 import '../ui/features/journal/view_models/journal_view_model.dart';
 import '../widgets/entry_chrome.dart';
@@ -167,62 +166,15 @@ class _JournalScreenState extends State<JournalScreen> {
     );
   }
 
-  EntryDocument _latestDocument(EntryDocument fallback) =>
-      widget.repositories.documents.firstWhere(
-        (document) => document.id == fallback.id,
-        orElse: () => fallback,
-      );
-
-  void _previewEntryMutation(
-    EntryDocument fallback,
-    List<ContentBlock> blocks,
-    BoardSettings board,
-  ) {
-    final entry = _latestDocument(fallback).toEntry()
-      ..blocks = blocks
-      ..board = board;
-    widget.repositories.documentRepository.previewDocument(
-      EntryDocument.fromEntry(entry),
-    );
-  }
-
-  Future<void> _saveEntryMutation(
-    EntryDocument fallback,
-    void Function(Entry entry) mutate,
-  ) async {
-    final entry = _latestDocument(fallback).toEntry();
-    mutate(entry);
-    await _journal.saveDocument(EntryDocument.fromEntry(entry));
-  }
-
   Widget _buildEntryPage(EntryDocument document) {
-    final entry = document.toEntry();
     return EntryPage(
-      entry: entry,
+      document: document,
       repository: widget.repositories,
       controlsVisible: _entryChromeVisible,
-      onViewChanged: (view) =>
-          _saveEntryMutation(document, (entry) => entry.view = view),
-      onDocumentPreviewChanged: (blocks, board) =>
-          _previewEntryMutation(document, blocks, board),
-      onTitleChanged: (title) =>
-          _saveEntryMutation(document, (entry) => entry.title = title),
-      onTitleStyleChanged: (fontSize, bold, italic) =>
-          _saveEntryMutation(document, (entry) {
-            entry
-              ..titleFontSize = fontSize
-              ..titleBold = bold
-              ..titleItalic = italic;
-          }),
-      onTitleFontFamilyChanged: (fontFamily) => _saveEntryMutation(
-        document,
-        (entry) => entry.titleFontFamily = fontFamily,
-      ),
-      onTitleTextColorChanged: (colorValue) => _saveEntryMutation(
-        document,
-        (entry) => entry.titleTextColorValue = colorValue,
-      ),
-      onEditingChanged: (editing) => _handleEditingChanged(entry.id, editing),
+      onDocumentPreviewChanged: widget.repositories.documentRepository.previewDocument,
+      onDocumentChanged: _journal.saveDocument,
+      onEditingChanged: (editing) =>
+          _handleEditingChanged(document.id, editing),
     );
   }
 

@@ -25,20 +25,16 @@ import '../widgets/entry_chrome.dart';
 import '../widgets/page_viewport.dart';
 import '../widgets/paper_page.dart';
 
-/// Shows one [Entry] as a journal page.
+/// Shows one immutable [EntryDocument] as a journal page.
 ///
 /// Renders one framed paper page and its freely positioned content blocks.
 class EntryPage extends StatefulWidget {
   const EntryPage({
     super.key,
-    required this.entry,
+    required this.document,
     required this.repository,
-    required this.onViewChanged,
     this.onDocumentPreviewChanged,
-    required this.onTitleChanged,
-    required this.onTitleStyleChanged,
-    required this.onTitleFontFamilyChanged,
-    required this.onTitleTextColorChanged,
+    required this.onDocumentChanged,
     required this.onEditingChanged,
     this.controlsVisible = true,
     this.imageSource,
@@ -46,16 +42,10 @@ class EntryPage extends StatefulWidget {
     this.archiveService = const JournalTransferService(),
   });
 
-  final Entry entry;
+  final EntryDocument document;
   final JournalRepositories repository;
-  final ValueChanged<ViewState> onViewChanged;
-  final void Function(List<ContentBlock>, BoardSettings)?
-  onDocumentPreviewChanged;
-  final ValueChanged<String> onTitleChanged;
-  final void Function(double fontSize, bool bold, bool italic)
-  onTitleStyleChanged;
-  final ValueChanged<String?> onTitleFontFamilyChanged;
-  final ValueChanged<int?> onTitleTextColorChanged;
+  final ValueChanged<EntryDocument>? onDocumentPreviewChanged;
+  final ValueChanged<EntryDocument> onDocumentChanged;
   final ValueChanged<bool> onEditingChanged;
   final bool controlsVisible;
 
@@ -145,7 +135,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   final GlobalKey _pageCaptureKey = GlobalKey();
   Completer<Color?>? _colorSampleCompleter;
   late final TextEditingController _titleController = TextEditingController(
-    text: widget.entry.title,
+    text: widget.document.title,
   );
   late final FocusNode _titleFocusNode = FocusNode()
     ..addListener(_handleTitleFocusChanged);
@@ -155,6 +145,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   final Map<String, ImageProvider<Object>> _imageProviders = {};
   final Map<String, ImageProvider<Object>> _stickerProviders = {};
   late final EntryEditorViewModel _editor;
+  late EntryDocument _document;
   Future<void> Function()? _flushHook;
 
   List<ContentBlock> get _blocks => _editor.blocks;
@@ -195,9 +186,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _document = widget.document;
     WidgetsBinding.instance.addObserver(this);
     _editor = EntryEditorViewModel(
-      document: EntryDocument.fromEntry(widget.entry),
+      document: widget.document,
       documentRepository: widget.repository.documentRepository,
       checkpointRepository: widget.repository.checkpointRepository,
     )..addListener(_handleEditorChanged);
@@ -208,13 +200,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void _handleEditorChanged() {
     // Keep the app's in-memory entry current for immediate previews and UI
     // consumers, while the controller still batches the Hive write itself.
-    widget.entry
-      ..blocks = _editor.snapshotBlocks()
-      ..board = _editor.board;
-    widget.onDocumentPreviewChanged?.call(
-      _editor.snapshotBlocks(),
-      _editor.board,
-    );
+    _document = _editor.document;
+    widget.onDocumentPreviewChanged?.call(_document);
     if (mounted) setState(() {});
   }
 
@@ -248,7 +235,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
 
   Future<void> _flushLifecycle() async {
     await widget.repository.flush();
-    await widget.repository.createCheckpoint(widget.entry.id);
+    await widget.repository.createCheckpoint(_document.id);
     await widget.repository.flush();
   }
 
@@ -330,16 +317,27 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   String? get _activeFontFamily {
     final block = _activeTextBlock;
     return block?.fontFamily ??
-        (_titleFocused ? widget.entry.titleFontFamily : null);
+        (_titleFocused ? _document.titleFontFamily : null);
   }
 
   bool get _textFormattingAvailable =>
       _titleFocused || _activeTextBlock != null;
 
+  void _publishDocument(EntryDocument next) {
+    _document = next;
+    widget.onDocumentChanged(next);
+  }
+
+  void _handleViewChanged(ViewState view) {
+    _publishDocument(
+      _document.copyWith(view: view, modifiedAt: DateTime.now()),
+    );
+  }
+
   int? get _activeTextColor {
     final block = _activeTextBlock;
     return block?.textColorValue ??
-        (_titleFocused ? widget.entry.titleTextColorValue : null);
+        (_titleFocused ? _document.titleTextColorValue : null);
   }
 
   void _changeFontFamily(String? fontFamily) {
@@ -349,18 +347,23 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       _editor.updateBlock(block.id, (target) => target.fontFamily = fontFamily);
       unawaited(_editor.commitTransaction());
     } else if (_titleFocused) {
-      widget.onTitleFontFamilyChanged(fontFamily);
+      _publishDocument(
+        _document.copyWith(
+          titleFontFamily: fontFamily,
+          modifiedAt: DateTime.now(),
+        ),
+      );
     }
     setState(() {});
   }
 
   double get _activeFontSize =>
-      _activeTextBlock?.fontSize ?? widget.entry.titleFontSize;
+      _activeTextBlock?.fontSize ?? _document.titleFontSize;
 
-  bool get _activeBold => _activeTextBlock?.bold ?? widget.entry.titleBold;
+  bool get _activeBold => _activeTextBlock?.bold ?? _document.titleBold;
 
   bool get _activeItalic =>
-      _activeTextBlock?.italic ?? widget.entry.titleItalic;
+      _activeTextBlock?.italic ?? _document.titleItalic;
 
   void _changeFontSize(double delta) {
     final block = _activeTextBlock;
@@ -373,10 +376,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       _editor.updateBlock(block.id, (target) => target.fontSize = size);
       unawaited(_editor.commitTransaction());
     } else {
-      widget.onTitleStyleChanged(
-        size,
-        widget.entry.titleBold,
-        widget.entry.titleItalic,
+      _publishDocument(
+        _document.copyWith(
+          titleFontSize: size,
+          modifiedAt: DateTime.now(),
+        ),
       );
     }
     setState(() {});
@@ -390,10 +394,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       _editor.updateBlock(block.id, (target) => target.bold = !target.bold);
       unawaited(_editor.commitTransaction());
     } else {
-      widget.onTitleStyleChanged(
-        widget.entry.titleFontSize,
-        !widget.entry.titleBold,
-        widget.entry.titleItalic,
+      _publishDocument(
+        _document.copyWith(
+          titleBold: !_document.titleBold,
+          modifiedAt: DateTime.now(),
+        ),
       );
     }
     setState(() {});
@@ -407,10 +412,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       _editor.updateBlock(block.id, (target) => target.italic = !target.italic);
       unawaited(_editor.commitTransaction());
     } else {
-      widget.onTitleStyleChanged(
-        widget.entry.titleFontSize,
-        widget.entry.titleBold,
-        !widget.entry.titleItalic,
+      _publishDocument(
+        _document.copyWith(
+          titleItalic: !_document.titleItalic,
+          modifiedAt: DateTime.now(),
+        ),
       );
     }
     setState(() {});
@@ -421,7 +427,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     if (block != null) {
       _editor.updateBlock(block.id, (target) => target.textColorValue = value);
     } else if (_titleFocused) {
-      widget.onTitleTextColorChanged(value);
+      _publishDocument(
+        _document.copyWith(
+          titleTextColorValue: value,
+          modifiedAt: DateTime.now(),
+        ),
+      );
     }
     setState(() {});
   }
@@ -600,15 +611,15 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
 
   TextStyle _titleStyle(BuildContext context) =>
       (Theme.of(context).textTheme.headlineSmall ?? const TextStyle()).copyWith(
-        fontSize: widget.entry.titleFontSize,
-        fontFamily: widget.entry.titleFontFamily,
-        color: widget.entry.titleTextColorValue == null
+        fontSize: _document.titleFontSize,
+        fontFamily: _document.titleFontFamily,
+        color: _document.titleTextColorValue == null
             ? PaperPage.ink
-            : Color(widget.entry.titleTextColorValue!),
-        fontWeight: widget.entry.titleBold
+            : Color(_document.titleTextColorValue!),
+        fontWeight: _document.titleBold
             ? FontWeight.bold
             : FontWeight.normal,
-        fontStyle: widget.entry.titleItalic
+        fontStyle: _document.titleItalic
             ? FontStyle.italic
             : FontStyle.normal,
       );
@@ -690,7 +701,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       if (!mounted || picked == null) return;
       final image = widget.imageProcessor.process(picked.bytes);
       final assetId = await widget.repository.putAsset(
-        widget.entry.id,
+        _document.id,
         AssetKind.image,
         image.mime,
         image.bytes,
@@ -1094,7 +1105,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         document: EntryDocument.fromEntry(
           Entry(
             id: _uuid.v4(),
-            title: widget.entry.title,
+            title: _document.title,
             createdAt: now,
             blocks: selectedBlocks,
             board: _editor.board,
@@ -1152,12 +1163,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   Future<void> _exportArchive() async {
-    final archive = widget.repository.archiveForDocument(widget.entry.id);
+    final archive = widget.repository.archiveForDocument(_document.id);
     if (archive == null || !mounted) return;
     final exported = await widget.archiveService.exportArchive(
       archive,
       fileName:
-          '${widget.entry.title.trim().isEmpty ? 'journal' : widget.entry.title.trim()}.cozyjournal',
+          '${_document.title.trim().isEmpty ? 'journal' : _document.title.trim()}.cozyjournal',
     );
     if (mounted && exported) {
       ScaffoldMessenger.of(
@@ -1773,7 +1784,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       showDragHandle: true,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
-          final checkpoints = widget.repository.checkpointsFor(widget.entry.id);
+          final checkpoints = widget.repository.checkpointsFor(_document.id);
           return SafeArea(
             child: SizedBox(
               height: MediaQuery.sizeOf(context).height * 0.62,
@@ -1783,7 +1794,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     leading: const Icon(Icons.add_task_outlined),
                     title: const Text('Create recovery checkpoint'),
                     onTap: () async {
-                      await widget.repository.createCheckpoint(widget.entry.id);
+                      await widget.repository.createCheckpoint(_document.id);
                       setModalState(() {});
                     },
                   ),
@@ -1814,7 +1825,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                                   final restored = widget.repository.documents
                                       .firstWhere(
                                         (document) =>
-                                            document.id == widget.entry.id,
+                                            document.id == _document.id,
                                       )
                                       .toEntry();
                                   _editor.replaceDocument(
@@ -2084,8 +2095,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                 controlsVisible: widget.controlsVisible,
                 gesturesEnabled:
                     !_resizeActive && !(_editing && _editor.hasSelection),
-                initialView: widget.entry.view,
-                onViewChanged: widget.onViewChanged,
+                initialView: _document.view,
+                onViewChanged: _handleViewChanged,
                 child: RepaintBoundary(
                   key: _pageCaptureKey,
                   child: Stack(
@@ -2203,7 +2214,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                                           _textEditingId = null;
                                         });
                                       },
-                                      onChanged: widget.onTitleChanged,
+                                      onChanged: (title) => _publishDocument(
+                                        _document.copyWith(
+                                          title: title,
+                                          modifiedAt: DateTime.now(),
+                                        ),
+                                      ),
                                       style: _titleStyle(context),
                                       textAlign: TextAlign.center,
                                       decoration: const InputDecoration(
@@ -2213,16 +2229,16 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                                       ),
                                     )
                                   : Text(
-                                      widget.entry.title.isEmpty
+                                      _document.title.isEmpty
                                           ? 'Untitled page'
-                                          : widget.entry.title,
+                                          : _document.title,
                                       style: _titleStyle(context),
                                       textAlign: TextAlign.center,
                                     ),
                               const SizedBox(height: 4),
                               Text(
                                 DateFormat.yMMMMd().format(
-                                  widget.entry.createdAt,
+                                  _document.createdAt,
                                 ),
                                 style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(color: Colors.black54),
