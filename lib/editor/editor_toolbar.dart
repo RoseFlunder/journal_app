@@ -31,6 +31,14 @@ class EditorToolbar extends StatelessWidget {
     this.onRecentColorAdded,
     this.onFavoriteColorsChanged,
     this.onSampleColor,
+    this.strokeColorValue,
+    this.strokeColorAvailable = false,
+    this.onStrokeColorChanged,
+    this.onStrokeColorEditStart,
+    this.onStrokeColorEditEnd,
+    this.inkColorValue,
+    this.inkColorAvailable = false,
+    this.onInkColorChanged,
     required this.onToggleBold,
     required this.onToggleItalic,
     required this.bold,
@@ -72,6 +80,14 @@ class EditorToolbar extends StatelessWidget {
   final ValueChanged<int>? onRecentColorAdded;
   final ValueChanged<Set<int>>? onFavoriteColorsChanged;
   final Future<Color?> Function()? onSampleColor;
+  final int? strokeColorValue;
+  final bool strokeColorAvailable;
+  final ValueChanged<int?>? onStrokeColorChanged;
+  final VoidCallback? onStrokeColorEditStart;
+  final VoidCallback? onStrokeColorEditEnd;
+  final int? inkColorValue;
+  final bool inkColorAvailable;
+  final ValueChanged<int?>? onInkColorChanged;
   final VoidCallback onToggleBold;
   final VoidCallback onToggleItalic;
   final bool bold;
@@ -158,9 +174,12 @@ class EditorToolbar extends StatelessWidget {
                     fontFamily: fontFamily,
                     onChanged: onFontFamilyChanged,
                   ),
-                  _TextColorPicker(
+                  _ColorPickerButton(
                     compact: compact,
                     colorValue: textColorValue,
+                    label: 'Text color',
+                    toolbarLabel: 'Color',
+                    icon: Icons.format_color_text,
                     onChanged: onTextColorChanged,
                     onEditStart: onTextColorEditStart,
                     onEditEnd: onTextColorEditEnd,
@@ -197,6 +216,36 @@ class EditorToolbar extends StatelessWidget {
                     selected: italic,
                   ),
                 ],
+                if (strokeColorAvailable)
+                  _ColorPickerButton(
+                    compact: compact,
+                    colorValue: strokeColorValue,
+                    label: 'Stroke color',
+                    toolbarLabel: 'Stroke',
+                    icon: Icons.brush_outlined,
+                    onChanged: onStrokeColorChanged!,
+                    onEditStart: onStrokeColorEditStart,
+                    onEditEnd: onStrokeColorEditEnd,
+                    recentColorValues: recentColorValues,
+                    favoriteColorValues: favoriteColorValues,
+                    onRecentColorAdded: onRecentColorAdded,
+                    onFavoriteColorsChanged: onFavoriteColorsChanged,
+                    onSampleColor: onSampleColor,
+                  ),
+                if (inkColorAvailable)
+                  _ColorPickerButton(
+                    compact: compact,
+                    colorValue: inkColorValue,
+                    label: 'Ink color',
+                    toolbarLabel: 'Ink',
+                    icon: Icons.brush_outlined,
+                    onChanged: onInkColorChanged!,
+                    recentColorValues: recentColorValues,
+                    favoriteColorValues: favoriteColorValues,
+                    onRecentColorAdded: onRecentColorAdded,
+                    onFavoriteColorsChanged: onFavoriteColorsChanged,
+                    onSampleColor: onSampleColor,
+                  ),
                 _Action(
                   tooltip: 'More editing tools',
                   icon: Icons.more_horiz,
@@ -340,10 +389,54 @@ class _FontPicker extends StatelessWidget {
   }
 }
 
-class _TextColorPicker extends StatelessWidget {
-  const _TextColorPicker({
+/// The result returned by [showVisualColorPicker].
+class VisualColorPickerResult {
+  const VisualColorPickerResult(this.value, {this.isSample = false});
+
+  const VisualColorPickerResult.sample() : value = null, isSample = true;
+
+  final int? value;
+  final bool isSample;
+}
+
+/// Presents the shared visual color picker used by text and drawable tools.
+Future<VisualColorPickerResult?> showVisualColorPicker(
+  BuildContext context, {
+  required int? initialValue,
+  String dialogTitle = 'Text color',
+  List<int> recentColorValues = const <int>[],
+  Set<int> favoriteColorValues = const <int>{},
+  ValueChanged<int?>? onPreview,
+  ValueChanged<Set<int>>? onFavoriteColorsChanged,
+  Future<Color?> Function()? onSampleColor,
+}) async {
+  final choice = await showDialog<_ColorChoice>(
+    context: context,
+    builder: (context) => _ColorPickerDialog(
+      initialValue: initialValue,
+      dialogTitle: dialogTitle,
+      recentColorValues: recentColorValues,
+      favoriteColorValues: favoriteColorValues,
+      onPreview: onPreview,
+      onFavoriteColorsChanged: onFavoriteColorsChanged,
+      onSampleColor: onSampleColor == null
+          ? null
+          : () => Navigator.pop(context, const _ColorChoice.sample()),
+    ),
+  );
+  if (choice == null) return null;
+  return choice.sample
+      ? const VisualColorPickerResult.sample()
+      : VisualColorPickerResult(choice.value);
+}
+
+class _ColorPickerButton extends StatelessWidget {
+  const _ColorPickerButton({
     required this.compact,
     required this.colorValue,
+    required this.label,
+    required this.toolbarLabel,
+    required this.icon,
     required this.onChanged,
     this.onEditStart,
     this.onEditEnd,
@@ -356,6 +449,9 @@ class _TextColorPicker extends StatelessWidget {
 
   final bool compact;
   final int? colorValue;
+  final String label;
+  final String toolbarLabel;
+  final IconData icon;
   final ValueChanged<int?> onChanged;
   final VoidCallback? onEditStart;
   final VoidCallback? onEditEnd;
@@ -375,20 +471,17 @@ class _TextColorPicker extends StatelessWidget {
     onEditStart?.call();
     while (!finished) {
       if (!context.mounted) break;
-      final choice = await showDialog<_ColorChoice>(
-        context: context,
-        builder: (context) => _ColorPickerDialog(
-          initialValue: dialogInitial,
-          recentColorValues: recentColorValues,
-          favoriteColorValues: favoriteColorValues,
-          onPreview: onChanged,
-          onFavoriteColorsChanged: onFavoriteColorsChanged,
-          onSampleColor: onSampleColor != null
-              ? () => Navigator.pop(context, const _ColorChoice.sample())
-              : null,
-        ),
+      final choice = await showVisualColorPicker(
+        context,
+        initialValue: dialogInitial,
+        dialogTitle: label,
+        recentColorValues: recentColorValues,
+        favoriteColorValues: favoriteColorValues,
+        onPreview: onChanged,
+        onFavoriteColorsChanged: onFavoriteColorsChanged,
+        onSampleColor: onSampleColor,
       );
-      if (choice?.sample == true) {
+      if (choice?.isSample == true) {
         final sampled = await onSampleColor?.call();
         final value = sampled?.toARGB32();
         onChanged(value ?? original);
@@ -410,10 +503,10 @@ class _TextColorPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Tooltip(
-    message: 'Text color',
+    message: label,
     child: Semantics(
       button: true,
-      label: 'Text color',
+      label: label,
       child: InkWell(
         onTap: () => _open(context),
         borderRadius: BorderRadius.circular(16),
@@ -422,9 +515,9 @@ class _TextColorPicker extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.format_color_text, size: 20, color: _color),
+              Icon(icon, size: 20, color: _color),
               Text(
-                compact ? '' : 'Color',
+                compact ? '' : toolbarLabel,
                 style: const TextStyle(
                   fontFamily: 'Lora',
                   fontSize: 9,
@@ -452,6 +545,7 @@ class _ColorChoice {
 class _ColorPickerDialog extends StatefulWidget {
   const _ColorPickerDialog({
     this.initialValue,
+    this.dialogTitle = 'Text color',
     this.recentColorValues = const <int>[],
     this.favoriteColorValues = const <int>{},
     this.onPreview,
@@ -460,6 +554,7 @@ class _ColorPickerDialog extends StatefulWidget {
   });
 
   final int? initialValue;
+  final String dialogTitle;
   final List<int> recentColorValues;
   final Set<int> favoriteColorValues;
   final ValueChanged<int?>? onPreview;
@@ -623,7 +718,7 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
     return AlertDialog(
       title: Row(
         children: [
-          const Expanded(child: Text('Text color')),
+          Expanded(child: Text(widget.dialogTitle)),
           if (widget.onSampleColor != null)
             IconButton(
               key: const ValueKey('color-eyedropper'),

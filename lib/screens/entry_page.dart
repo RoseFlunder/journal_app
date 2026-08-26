@@ -136,6 +136,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   String? _selectedId;
   String? _textEditingId;
   String? _colorTransactionBlockId;
+  bool _strokeColorTransactionActive = false;
   bool _samplingColor = false;
   final GlobalKey _pageCaptureKey = GlobalKey();
   Completer<Color?>? _colorSampleCompleter;
@@ -153,6 +154,38 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   Future<void> Function()? _flushHook;
 
   List<ContentBlock> get _blocks => _editor.blocks;
+
+  ContentBlock? get _activeStrokeBlock {
+    final primary = _editor.primarySelection;
+    if (primary != null &&
+        _isDrawable(primary) &&
+        !primary.locked &&
+        !primary.hidden) {
+      return primary;
+    }
+    for (final block in _editor.selectedDrawableBlocks) {
+      if (!block.locked && !block.hidden) return block;
+    }
+    return null;
+  }
+
+  bool get _strokeColorAvailable =>
+      _editor.selectedDrawableBlocks.any((block) => !block.locked);
+
+  int? get _activeStrokeColorValue {
+    final block = _activeStrokeBlock;
+    if (block == null) return null;
+    return Color(block.strokeColorValue ?? PaperPage.ink.toARGB32())
+        .withValues(alpha: block.opacity.clamp(0.0, 1.0).toDouble())
+        .toARGB32();
+  }
+
+  int get _inkPickerValue => Color(_inkColorValue)
+      .withValues(alpha: _inkOpacity.clamp(0.0, 1.0).toDouble())
+      .toARGB32();
+
+  bool _isDrawable(ContentBlock block) =>
+      block.type == BlockType.ink || block.type == BlockType.shape;
 
   @override
   void initState() {
@@ -401,6 +434,91 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     unawaited(_editor.commitTransaction());
   }
 
+  void _applyInkColorValue(int? value, {VoidCallback? refreshSheet}) {
+    final color = value == null ? PaperPage.ink : Color(value);
+    setState(() {
+      _inkColorValue = color.withValues(alpha: 1).toARGB32();
+      _inkOpacity = value == null ? 1 : color.a;
+    });
+    refreshSheet?.call();
+  }
+
+  void _beginStrokeColorEdit() {
+    if (!_strokeColorAvailable) return;
+    _strokeColorTransactionActive = true;
+    _editor.beginTransaction('Format stroke');
+  }
+
+  void _changeStrokeColor(int? value) {
+    final color = value == null ? PaperPage.ink : Color(value);
+    _editor.updateSelectedDrawableStroke(
+      colorValue: color.withValues(alpha: 1).toARGB32(),
+      opacity: value == null ? 1 : color.a,
+    );
+    setState(() {});
+  }
+
+  void _endStrokeColorEdit() {
+    if (!_strokeColorTransactionActive) return;
+    _strokeColorTransactionActive = false;
+    unawaited(_editor.commitTransaction());
+  }
+
+  Future<Color?> _sampleFromInkSettings(BuildContext sheetContext) async {
+    if (!sheetContext.mounted) return null;
+    Navigator.pop(sheetContext, true);
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    if (!mounted) return null;
+    return _requestColorSample();
+  }
+
+  Future<void> _openInkColorPicker(
+    BuildContext sheetContext,
+    StateSetter setSheetState,
+  ) async {
+    final originalColor = _inkColorValue;
+    final originalOpacity = _inkOpacity;
+    final pickerValue = Color(originalColor)
+        .withValues(alpha: originalOpacity)
+        .toARGB32();
+    final result = await showVisualColorPicker(
+      sheetContext,
+      initialValue: pickerValue,
+      dialogTitle: 'Ink color',
+      recentColorValues: widget.store.recentColorValues,
+      favoriteColorValues: widget.store.favoriteColorValues,
+      onPreview: (value) =>
+          _applyInkColorValue(value, refreshSheet: () => setSheetState(() {})),
+      onFavoriteColorsChanged: _updateFavoriteColors,
+      onSampleColor: () => _sampleFromInkSettings(sheetContext),
+    );
+    if (!mounted) return;
+    if (result?.isSample == true) {
+      if (!sheetContext.mounted) return;
+      final sampled = await _sampleFromInkSettings(sheetContext);
+      if (sampled == null) {
+        setState(() {
+          _inkColorValue = originalColor;
+          _inkOpacity = originalOpacity;
+        });
+      } else {
+        final value = sampled.toARGB32();
+        _applyInkColorValue(value);
+        _addRecentColor(value);
+      }
+      return;
+    }
+    if (result == null) {
+      setState(() {
+        _inkColorValue = originalColor;
+        _inkOpacity = originalOpacity;
+      });
+      return;
+    }
+    _applyInkColorValue(result.value, refreshSheet: () => setSheetState(() {}));
+    if (result.value != null) _addRecentColor(result.value!);
+  }
+
   Future<Color?> _requestColorSample() {
     final current = _colorSampleCompleter;
     if (current != null) return current.future;
@@ -548,7 +666,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       y: 28 + (_blocks.length * 7) % 70,
       w: shape == 'line' || shape == 'arrow' ? 42 : 32,
       h: shape == 'line' || shape == 'arrow' ? 18 : 24,
-      strokeColorValue: PaperPage.ink.toARGB32(),
+      strokeColorValue: _inkColorValue,
+      opacity: _inkOpacity,
       fillColorValue: shape == 'rectangle' || shape == 'ellipse'
           ? const Color(0x33C97068).toARGB32()
           : null,
@@ -1088,11 +1207,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     onSelected: (_) => onTap(),
   );
 
-  void _showInkSettings() {
-    var colorValue = _inkColorValue;
-    var width = _inkWidth;
-    var opacity = _inkOpacity;
-    showModalBottomSheet<void>(
+  Future<void> _showInkSettings() async {
+    final originalColor = _inkColorValue;
+    final originalOpacity = _inkOpacity;
+    final originalWidth = _inkWidth;
+    final result = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: PaperPage.paper,
       showDragHandle: true,
@@ -1107,53 +1226,44 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                 const ListTile(
                   leading: Icon(Icons.draw_outlined),
                   title: Text('Ink settings'),
-                  subtitle: Text('Vector pen and highlighter presets'),
+                  subtitle: Text('Color, opacity, and stroke width'),
+                ),
+                ListTile(
+                  key: const ValueKey('ink-color'),
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: Color(_inkColorValue)
+                        .withValues(alpha: _inkOpacity),
+                    child: const Icon(Icons.brush_outlined),
+                  ),
+                  title: const Text('Ink color'),
+                  subtitle: const Text('Open the visual color picker'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _openInkColorPicker(context, setSheetState),
                 ),
                 const SizedBox(height: 8),
-                Wrap(
-                  spacing: 10,
-                  children: [
-                    for (final choice in const [
-                      (label: 'Ink', value: 0xFF3B3226),
-                      (label: 'Berry', value: 0xFF873F4D),
-                      (label: 'Moss', value: 0xFF4E684A),
-                    ])
-                      ChoiceChip(
-                        label: Text(choice.label),
-                        selected: colorValue == choice.value,
-                        onSelected: (_) =>
-                            setSheetState(() => colorValue = choice.value),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text('Width ${width.toStringAsFixed(1)}'),
+                Text('Width ${_inkWidth.toStringAsFixed(1)}'),
                 Slider(
                   min: 0.8,
                   max: 8,
-                  value: width,
-                  onChanged: (value) => setSheetState(() => width = value),
+                  value: _inkWidth,
+                  onChanged: (value) {
+                    setState(() => _inkWidth = value);
+                    setSheetState(() {});
+                  },
                 ),
-                Text('Opacity ${(opacity * 100).round()}%'),
-                Slider(
-                  min: 0.2,
-                  max: 1,
-                  value: opacity,
-                  onChanged: (value) => setSheetState(() => opacity = value),
-                ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton(
-                    onPressed: () {
-                      setState(() {
-                        _inkColorValue = colorValue;
-                        _inkWidth = width;
-                        _inkOpacity = opacity;
-                      });
-                      Navigator.pop(context);
-                    },
-                    child: const Text('Apply'),
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Apply'),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1161,6 +1271,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         ),
       ),
     );
+    if (!mounted || result == true) return;
+    setState(() {
+      _inkColorValue = originalColor;
+      _inkOpacity = originalOpacity;
+      _inkWidth = originalWidth;
+    });
   }
 
   void _showMoreTools() {
@@ -1326,6 +1442,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                 ),
                 if (_drawMode)
                   ListTile(
+                    key: const ValueKey('ink-settings'),
                     leading: const Icon(Icons.tune),
                     title: const Text('Ink settings'),
                     subtitle: const Text('Color, width, and opacity'),
@@ -2211,6 +2328,14 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       onRecentColorAdded: _addRecentColor,
                       onFavoriteColorsChanged: _updateFavoriteColors,
                       onSampleColor: _requestColorSample,
+                      strokeColorValue: _activeStrokeColorValue,
+                      strokeColorAvailable: _strokeColorAvailable,
+                      onStrokeColorChanged: _changeStrokeColor,
+                      onStrokeColorEditStart: _beginStrokeColorEdit,
+                      onStrokeColorEditEnd: _endStrokeColorEdit,
+                      inkColorValue: _inkPickerValue,
+                      inkColorAvailable: _drawMode,
+                      onInkColorChanged: _applyInkColorValue,
                       onToggleBold: _toggleBold,
                       onToggleItalic: _toggleItalic,
                       bold: _activeBold,
@@ -2282,6 +2407,14 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       onRecentColorAdded: _addRecentColor,
                       onFavoriteColorsChanged: _updateFavoriteColors,
                       onSampleColor: _requestColorSample,
+                      strokeColorValue: _activeStrokeColorValue,
+                      strokeColorAvailable: _strokeColorAvailable,
+                      onStrokeColorChanged: _changeStrokeColor,
+                      onStrokeColorEditStart: _beginStrokeColorEdit,
+                      onStrokeColorEditEnd: _endStrokeColorEdit,
+                      inkColorValue: _inkPickerValue,
+                      inkColorAvailable: _drawMode,
+                      onInkColorChanged: _applyInkColorValue,
                       onToggleBold: _toggleBold,
                       onToggleItalic: _toggleItalic,
                       bold: _activeBold,

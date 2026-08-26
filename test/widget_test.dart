@@ -661,6 +661,96 @@ void main() {
     expect(drawn?.h, greaterThanOrEqualTo(10));
   });
 
+  testWidgets('ink and shape strokes use the shared visual color picker', (
+    tester,
+  ) async {
+    store = JournalStore();
+    await store.init();
+    for (final existing in store.entries.toList()) {
+      await store.deleteEntry(existing.id);
+    }
+    await tester.pumpWidget(JournalApp(store: store));
+    await tester.pumpAndSettle();
+    await createPageFromFab(tester, title: 'Sketches');
+    await tester.tap(find.byTooltip('Edit page'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('More editing tools'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Draw'),
+      500,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(find.text('Draw'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Ink color'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ink color'), findsOneWidget);
+    expect(find.byKey(const ValueKey('color-wheel')), findsOneWidget);
+    expect(find.byKey(const ValueKey('color-field')), findsOneWidget);
+    expect(find.byKey(const ValueKey('color-opacity')), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('Berry'));
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    final canvas = tester.getRect(find.byType(EntryCanvas));
+    final gesture = await tester.startGesture(canvas.center);
+    await gesture.moveBy(const Offset(36, 24));
+    await gesture.moveBy(const Offset(24, 18));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    var ink = store.entries.single.blocks.lastWhere(
+      (block) => block.type == BlockType.ink,
+    );
+    expect(ink.strokeColorValue, 0xFF3B3226);
+
+    await tester.tap(find.byTooltip('Ink color'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Berry'));
+    await tester.tap(find.text('Apply'));
+    await tester.pumpAndSettle();
+    final secondGesture = await tester.startGesture(
+      canvas.topLeft + const Offset(40, 400),
+    );
+    await secondGesture.moveBy(const Offset(36, 20));
+    await secondGesture.moveBy(const Offset(24, 16));
+    await secondGesture.up();
+    await tester.pumpAndSettle();
+    ink = store.entries.single.blocks.lastWhere(
+      (block) => block.type == BlockType.ink,
+    );
+    expect(ink.strokeColorValue, 0xFF873F4D);
+
+    await tester.tap(find.byTooltip('Stroke color'));
+    await tester.pumpAndSettle();
+    expect(find.text('Stroke color'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('Moss'));
+    await tester.tap(find.text('Apply'));
+    await tester.pumpAndSettle();
+    ink = store.entries.single.blocks.lastWhere(
+      (block) => block.type == BlockType.ink,
+    );
+    expect(ink.strokeColorValue, 0xFF4E684A);
+
+    await tester.tap(find.byTooltip('More editing tools'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add shape'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rectangle'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Stroke color'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Teal'));
+    await tester.tap(find.text('Apply'));
+    await tester.pumpAndSettle();
+    final shape = store.entries.single.blocks.firstWhere(
+      (block) => block.type == BlockType.shape,
+    );
+    expect(shape.strokeColorValue, 0xFF286A68);
+  });
+
   testWidgets(
     'visual text color picker supports palette, custom, and default colors',
     (tester) async {

@@ -40,6 +40,11 @@ class EditorController extends ChangeNotifier {
   List<ContentBlock> get blocks => List.unmodifiable(_blocks);
   BoardSettings get board => _board;
   Set<String> get selection => Set.unmodifiable(_selection);
+  List<ContentBlock> get selectedDrawableBlocks => _expandedSelectedBlocks
+      .where(
+        (block) => block.type == BlockType.ink || block.type == BlockType.shape,
+      )
+      .toList(growable: false);
   bool get hasSelection => _selection.isNotEmpty;
   bool get canUndo => _undo.isNotEmpty;
   bool get canRedo => _redo.isNotEmpty;
@@ -128,6 +133,23 @@ class EditorController extends ChangeNotifier {
     mutate(block);
     block.opacity = block.opacity.clamp(0.0, 1.0).toDouble();
     notifyListeners();
+  }
+
+  /// Updates the stroke presentation of every selected, unlocked drawable.
+  ///
+  /// The caller owns the surrounding transaction so a continuous color
+  /// picker interaction can be undone as one edit.
+  void updateSelectedDrawableStroke({
+    required int colorValue,
+    required double opacity,
+  }) {
+    for (final block in selectedDrawableBlocks) {
+      updateBlock(block.id, (target) {
+        target
+          ..strokeColorValue = colorValue
+          ..opacity = opacity;
+      });
+    }
   }
 
   /// Applies a detached block snapshot at the command boundary.

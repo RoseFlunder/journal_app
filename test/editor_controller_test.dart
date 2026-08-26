@@ -68,6 +68,78 @@ void main() {
     expect(controller.canUndo, isFalse);
   });
 
+  test(
+    'selected drawable stroke styling updates unlocked ink and shapes together',
+    () async {
+      var saves = 0;
+      final controller = EditorController(
+        blocks: [
+          ContentBlock(
+            id: 'ink',
+            type: BlockType.ink,
+            w: 20,
+            h: 20,
+            strokeColorValue: 0xFF3B3226,
+            opacity: 1,
+          ),
+          ContentBlock(
+            id: 'shape',
+            type: BlockType.shape,
+            w: 30,
+            h: 20,
+            strokeColorValue: 0xFF3B3226,
+            opacity: 1,
+          ),
+          ContentBlock(
+            id: 'locked-shape',
+            type: BlockType.shape,
+            w: 30,
+            h: 20,
+            strokeColorValue: 0xFF3B3226,
+            opacity: 1,
+            locked: true,
+          ),
+          _text(id: 'text'),
+        ],
+        initialBoard: const BoardSettings(),
+        persistDocument: (_, _) async => saves++,
+      );
+      addTearDown(controller.dispose);
+
+      controller.selectMany(['ink', 'shape', 'locked-shape', 'text']);
+      controller.beginTransaction('Format stroke');
+      controller.updateSelectedDrawableStroke(
+        colorValue: 0xFF873F4D,
+        opacity: 0.4,
+      );
+      await controller.commitTransaction();
+
+      for (final id in ['ink', 'shape']) {
+        final block = controller.blocks.firstWhere((item) => item.id == id);
+        expect(block.strokeColorValue, 0xFF873F4D);
+        expect(block.opacity, 0.4);
+      }
+      final locked = controller.blocks.firstWhere(
+        (block) => block.id == 'locked-shape',
+      );
+      expect(locked.strokeColorValue, 0xFF3B3226);
+      expect(locked.opacity, 1);
+      expect(saves, 1);
+
+      await controller.undo();
+      expect(
+        controller.blocks.firstWhere((block) => block.id == 'ink').opacity,
+        1,
+      );
+      expect(
+        controller.blocks
+            .firstWhere((block) => block.id == 'shape')
+            .strokeColorValue,
+        0xFF3B3226,
+      );
+    },
+  );
+
   test('touch rotation orbits unlocked blocks around a fixed pivot in one transaction', () async {
     var saves = 0;
     final controller = EditorController(
