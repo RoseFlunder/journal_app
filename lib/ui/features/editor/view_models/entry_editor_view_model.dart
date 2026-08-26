@@ -7,26 +7,31 @@ import '../../../../services/repositories.dart';
 class EntryEditorViewModel extends EditorController {
   EntryEditorViewModel({
     required EntryDocument document,
-    required JournalRepository repository,
+    required DocumentRepository documentRepository,
+    required CheckpointRepository checkpointRepository,
     super.maxHistory,
   }) : _documentId = document.id,
-       _repository = repository,
+       _documentRepository = documentRepository,
        super(
          blocks: document.toEntry().blocks,
          initialBoard: document.board,
          persistDocument: (blocks, board) =>
-             _persistCurrentDocument(repository, document, blocks, board),
+             _persistCurrentDocument(
+               documentRepository,
+               checkpointRepository,
+               document,
+               blocks,
+               board,
+             ),
        );
 
   final String _documentId;
-  final JournalRepository _repository;
+  final DocumentRepository _documentRepository;
 
   String get documentId => _documentId;
 
-  JournalRepository get repository => _repository;
-
   EntryDocument get document {
-    final current = _repository.documents.firstWhere(
+    final current = _documentRepository.documents.firstWhere(
       (document) => document.id == _documentId,
       orElse: () => EntryDocument.fromEntry(
         Entry(id: _documentId, createdAt: DateTime.now()),
@@ -40,18 +45,19 @@ class EntryEditorViewModel extends EditorController {
 }
 
 Future<void> _persistCurrentDocument(
-  JournalRepository repository,
+  DocumentRepository documentRepository,
+  CheckpointRepository checkpointRepository,
   EntryDocument initial,
   List<ContentBlock> blocks,
   BoardSettings board,
 ) async {
-  final current = repository.documents.firstWhere(
+  final current = documentRepository.documents.firstWhere(
     (document) => document.id == initial.id,
     orElse: () => initial,
   );
   final entry = current.toEntry()
     ..blocks = blocks
     ..board = board;
-  await repository.saveDocument(EntryDocument.fromEntry(entry));
-  repository.scheduleCheckpoint(initial.id);
+  await documentRepository.saveDocument(EntryDocument.fromEntry(entry));
+  checkpointRepository.scheduleCheckpoint(initial.id);
 }

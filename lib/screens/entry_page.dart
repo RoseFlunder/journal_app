@@ -46,7 +46,7 @@ class EntryPage extends StatefulWidget {
   });
 
   final Entry entry;
-  final JournalRepository repository;
+  final JournalRepositories repository;
   final ValueChanged<ViewState> onViewChanged;
   final void Function(List<ContentBlock>, BoardSettings)?
   onDocumentPreviewChanged;
@@ -197,10 +197,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _editor = EntryEditorViewModel(
       document: EntryDocument.fromEntry(widget.entry),
-      repository: widget.repository,
+      documentRepository: widget.repository.documentRepository,
+      checkpointRepository: widget.repository.checkpointRepository,
     )..addListener(_handleEditorChanged);
     _flushHook = _editor.flushText;
-    widget.repository.addFlushHook(_flushHook!);
+    widget.repository.persistence.addFlushHook(_flushHook!);
   }
 
   void _handleEditorChanged() {
@@ -222,7 +223,9 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     _colorSampleCompleter = null;
     WidgetsBinding.instance.removeObserver(this);
     final flushHook = _flushHook;
-    if (flushHook != null) widget.repository.removeFlushHook(flushHook);
+    if (flushHook != null) {
+      widget.repository.persistence.removeFlushHook(flushHook);
+    }
     _editor
       ..removeListener(_handleEditorChanged)
       ..dispose();

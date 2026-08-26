@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../models/document.dart';
 import '../models/entry.dart';
 import '../models/sticker.dart';
 import '../services/repositories.dart';
@@ -11,16 +12,18 @@ import '../widgets/paper_page.dart';
 class ContentsPage extends StatelessWidget {
   const ContentsPage({
     super.key,
-    required this.documentRepository,
+    required this.documents,
     required this.assetRepository,
     required this.onOpenPage,
     required this.onNewPage,
+    required this.onDeletePage,
   });
 
-  final DocumentRepository documentRepository;
+  final List<EntryDocument> documents;
   final AssetRepository assetRepository;
   final ValueChanged<int> onOpenPage;
   final VoidCallback onNewPage;
+  final Future<void> Function(String id) onDeletePage;
 
   Future<void> _confirmDelete(BuildContext context, Entry entry) async {
     final title = entry.title.isEmpty ? 'Untitled page' : entry.title;
@@ -44,15 +47,13 @@ class ContentsPage extends StatelessWidget {
       ),
     );
     if (confirmed == true && context.mounted) {
-      await documentRepository.deleteDocument(entry.id);
+      await onDeletePage(entry.id);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final entries = documentRepository.documents
-        .map((document) => document.toEntry())
-        .toList();
+    final entries = documents.map((document) => document.toEntry()).toList();
     final dateFormat = DateFormat.yMMMMd();
 
     return Scaffold(

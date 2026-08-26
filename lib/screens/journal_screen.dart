@@ -15,9 +15,9 @@ import 'entry_page.dart';
 /// Root of the journal: a [PageView] over
 /// `[table of contents, ...one page per entry]`.
 class JournalScreen extends StatefulWidget {
-  const JournalScreen({super.key, required this.repository});
+  const JournalScreen({super.key, required this.repositories});
 
-  final JournalRepository repository;
+  final JournalRepositories repositories;
 
   @override
   State<JournalScreen> createState() => _JournalScreenState();
@@ -37,7 +37,9 @@ class _JournalScreenState extends State<JournalScreen> {
   @override
   void initState() {
     super.initState();
-    _journal = JournalViewModel(repository: widget.repository);
+    _journal = JournalViewModel(
+      repository: widget.repositories.documentRepository,
+    );
   }
 
   @override
@@ -166,7 +168,7 @@ class _JournalScreenState extends State<JournalScreen> {
   }
 
   EntryDocument _latestDocument(EntryDocument fallback) =>
-      widget.repository.documents.firstWhere(
+      widget.repositories.documents.firstWhere(
         (document) => document.id == fallback.id,
         orElse: () => fallback,
       );
@@ -179,7 +181,9 @@ class _JournalScreenState extends State<JournalScreen> {
     final entry = _latestDocument(fallback).toEntry()
       ..blocks = blocks
       ..board = board;
-    widget.repository.previewDocument(EntryDocument.fromEntry(entry));
+    widget.repositories.documentRepository.previewDocument(
+      EntryDocument.fromEntry(entry),
+    );
   }
 
   Future<void> _saveEntryMutation(
@@ -195,7 +199,7 @@ class _JournalScreenState extends State<JournalScreen> {
     final entry = document.toEntry();
     return EntryPage(
       entry: entry,
-      repository: widget.repository,
+      repository: widget.repositories,
       controlsVisible: _entryChromeVisible,
       onViewChanged: (view) =>
           _saveEntryMutation(document, (entry) => entry.view = view),
@@ -273,10 +277,11 @@ class _JournalScreenState extends State<JournalScreen> {
                         },
                         children: [
                           ContentsPage(
-                            documentRepository: widget.repository,
-                            assetRepository: widget.repository,
+                            documents: _journal.documents,
+                            assetRepository: widget.repositories.assetRepository,
                             onOpenPage: goToEntry,
                             onNewPage: _createPage,
+                            onDeletePage: _journal.deletePage,
                           ),
                           for (final document in _journal.documents)
                             _buildEntryPage(document),

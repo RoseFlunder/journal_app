@@ -188,22 +188,30 @@ class _JournalLifecycleState extends State<_JournalLifecycle>
 
   @override
   Widget build(BuildContext context) =>
-      JournalApp(repository: widget.dependencies.journalRepository);
+      JournalApp(repositories: widget.dependencies.repositories);
 }
 
 class JournalApp extends StatelessWidget {
   JournalApp({
     super.key,
+    JournalRepositories? repositories,
     JournalRepository? repository,
     JournalStore? store,
     AppDependencies? dependencies,
-  }) : assert(repository != null || store != null || dependencies != null),
-       repository =
-           dependencies?.journalRepository ??
-           repository ??
-           HiveJournalRepository(store!);
+  }) : assert(
+         repositories != null ||
+             repository != null ||
+             store != null ||
+             dependencies != null,
+       ),
+       repositories =
+           dependencies?.repositories ??
+           repositories ??
+           JournalRepositories.from(
+             repository ?? HiveJournalRepository(store!),
+           );
 
-  final JournalRepository repository;
+  final JournalRepositories repositories;
 
   @override
   Widget build(BuildContext context) {
@@ -254,7 +262,7 @@ class JournalApp extends StatelessWidget {
           ),
         ),
       ),
-      home: JournalScreen(repository: repository),
+      home: JournalScreen(repositories: repositories),
     );
   }
 }

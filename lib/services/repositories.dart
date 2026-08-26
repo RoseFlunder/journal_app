@@ -47,6 +47,23 @@ abstract interface class PreferencesRepository {
   Future<void> updateColorPreferences({List<int>? recent, Set<int>? favorites});
 }
 
+/// Persistence hooks shared by the application lifecycle and active editors.
+abstract interface class PersistenceRepository {
+  void addFlushHook(Future<void> Function() hook);
+
+  void removeFlushHook(Future<void> Function() hook);
+
+  Future<void> flush();
+}
+
+/// Archive capability kept separate from document CRUD because it coordinates
+/// documents, assets, and templates as one portable transfer.
+abstract interface class ArchiveRepository {
+  JournalArchive? archiveForDocument(String id);
+
+  Future<EntryDocument> importArchive(JournalArchive archive);
+}
+
 /// Document-only capability used by the journal navigation shell.
 abstract interface class DocumentRepository {
   Future<void> init();
@@ -63,7 +80,6 @@ abstract interface class DocumentRepository {
 
   Future<void> deleteDocument(String id);
 
-  Future<void> flush();
 }
 
 /// Repository boundary used by the journal and editor views. It composes the
@@ -75,14 +91,108 @@ abstract interface class JournalRepository
         AssetRepository,
         CheckpointRepository,
         TemplateRepository,
-        PreferencesRepository {
-  void addFlushHook(Future<void> Function() hook);
+        PreferencesRepository,
+        PersistenceRepository,
+        ArchiveRepository {}
 
-  void removeFlushHook(Future<void> Function() hook);
+/// Narrow repository capabilities passed to feature views and view models.
+///
+/// The current Hive adapter can still share one implementation internally,
+/// but the UI no longer depends on an aggregate CRUD contract.
+class JournalRepositories {
+  const JournalRepositories({
+    required this.documentRepository,
+    required this.assetRepository,
+    required this.checkpointRepository,
+    required this.templateRepository,
+    required this.preferenceRepository,
+    required this.persistence,
+    required this.archiveRepository,
+  });
 
-  JournalArchive? archiveForDocument(String id);
+  factory JournalRepositories.from(JournalRepository repository) =>
+      JournalRepositories(
+        documentRepository: repository,
+        assetRepository: repository,
+        checkpointRepository: repository,
+        templateRepository: repository,
+        preferenceRepository: repository,
+        persistence: repository,
+        archiveRepository: repository,
+      );
 
-  Future<EntryDocument> importArchive(JournalArchive archive);
+  final DocumentRepository documentRepository;
+  final AssetRepository assetRepository;
+  final CheckpointRepository checkpointRepository;
+  final TemplateRepository templateRepository;
+  final PreferencesRepository preferenceRepository;
+  final PersistenceRepository persistence;
+  final ArchiveRepository archiveRepository;
+
+  // Compatibility forwarding members keep the editor migration mechanical.
+  // New feature code should depend on the narrow fields above.
+  List<EntryDocument> get documents => documentRepository.documents;
+
+  List<int> get recentColorValues => preferenceRepository.recentColorValues;
+
+  Set<int> get favoriteColorValues =>
+      preferenceRepository.favoriteColorValues;
+
+  Future<void> updateColorPreferences({
+    List<int>? recent,
+    Set<int>? favorites,
+  }) => preferenceRepository.updateColorPreferences(
+    recent: recent,
+    favorites: favorites,
+  );
+
+  void addFlushHook(Future<void> Function() hook) =>
+      persistence.addFlushHook(hook);
+
+  void removeFlushHook(Future<void> Function() hook) =>
+      persistence.removeFlushHook(hook);
+
+  Future<void> flush() => persistence.flush();
+
+  Future<String> putAsset(
+    String ownerId,
+    AssetKind kind,
+    String mime,
+    List<int> bytes,
+  ) => assetRepository.putAsset(ownerId, kind, mime, bytes);
+
+  Uint8List? readAsset(String id) => assetRepository.readAsset(id);
+
+  String? assetMime(String id) => assetRepository.assetMime(id);
+
+  Future<void> collectUnreferencedAssets() =>
+      assetRepository.collectUnreferencedAssets();
+
+  List<EntryCheckpoint> checkpointsFor(String documentId) =>
+      checkpointRepository.checkpointsFor(documentId);
+
+  void scheduleCheckpoint(String documentId) =>
+      checkpointRepository.scheduleCheckpoint(documentId);
+
+  Future<void> createCheckpoint(String documentId) =>
+      checkpointRepository.createCheckpoint(documentId);
+
+  Future<void> restoreCheckpoint(String checkpointId) =>
+      checkpointRepository.restoreCheckpoint(checkpointId);
+
+  List<JournalTemplate> get templates => templateRepository.templates;
+
+  Future<void> saveTemplate(JournalTemplate template) =>
+      templateRepository.saveTemplate(template);
+
+  Future<void> deleteTemplate(String id) =>
+      templateRepository.deleteTemplate(id);
+
+  JournalArchive? archiveForDocument(String id) =>
+      archiveRepository.archiveForDocument(id);
+
+  Future<EntryDocument> importArchive(JournalArchive archive) =>
+      archiveRepository.importArchive(archive);
 }
 
 /// Hive-backed repository facade. [JournalStore] remains available to the
