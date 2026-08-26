@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'app/app_dependencies.dart';
-import 'screens/journal_screen.dart';
+import 'ui/features/journal/views/journal_screen.dart';
 import 'services/repositories.dart';
 import 'services/journal_store.dart';
 import 'widgets/paper_page.dart';
