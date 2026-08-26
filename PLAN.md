@@ -3,9 +3,9 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-25 on top of commit `124ec34` (`Add vector ink drawing
-mode`). The correctness slice analyzes cleanly, all 55 tests pass, and an
-Android release APK remains the validation target.
+Last audited: 2026-08-26 on top of commit `f70a1c3` (`refactor: extract page
+camera controller`). The architecture slices analyze cleanly and the focused
+editor, repository, geometry, and viewport suites pass.
 
 Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
@@ -13,15 +13,15 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
 ### Foundation and persistence
 
-- [~] Immutable `EntryDocument`, `CanvasNode`, and `Transform2D` boundaries
-  exist, but the active editor still uses mutable `Entry` and `ContentBlock`
-  adapters.
+- [~] Immutable `EntryDocument`, `CanvasNode`, `Transform2D`, and
+  `EditorDocumentSnapshot` boundaries exist. The active canvas still uses
+  mutable `Entry` and `ContentBlock` adapters at the widget/controller edge.
 - [x] Fresh-data startup; legacy migration is out of scope.
 - [x] `EditorController` owns selection, transactions, clipboard, 100-step
   undo/redo, text coalescing, and save state.
 - [x] Completed transform gestures produce one undo entry and one save.
-- [!] Replace whole-document `_EditorCommand` snapshots and mutation-oriented
-  widget callbacks with typed immutable commands.
+- [~] Typed immutable `EditorCommand` values now back undo/redo, with a
+  transitional whole-document replacement command for non-transform edits.
 - [x] Five-minute checkpoint scheduling no longer resets after every save.
 - [~] Manual checkpoint creation, pruning, listing, and restore UI exist;
   background checkpoint creation is missing.
@@ -29,8 +29,9 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
   and failure integration coverage are missing.
 - [x] Journal, asset, checkpoint, and template repository interfaces have Hive
   implementations.
-- [!] Screens still depend directly on `JournalStore`; inject repository
-  contracts through the editor/view-model layer.
+- [x] Screens receive narrow document, asset, checkpoint, template,
+  preference, persistence, and archive repository contracts through the
+  composition root; `JournalStore` is kept behind the Hive adapter.
 - [~] Asset collection protects live documents, checkpoints, and templates,
   but not undo/redo or clipboard references.
 - [x] Serialize final text commit, background checkpoint, and storage flush to
@@ -49,9 +50,9 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [!] Move selection borders, handles, lasso, guides, and ink preview into a
   true screen-space overlay.
 - [x] Exclude hidden nodes and structural group blocks from content-fit bounds.
-- [ ] Add a camera matrix, visible-node culling, overscan, displayed-size image
-  decoding, thumbnail caching, and repaint boundaries.
-- [ ] Add dedicated camera, hit-testing, transform, bounds, and snapping
+- [ ] Add visible-node culling, overscan, displayed-size image decoding,
+  thumbnail caching, and repaint boundaries.
+- [x] Add dedicated camera, hit-testing, transform, bounds, and snapping
   services.
 
 ### Direct manipulation
@@ -63,8 +64,8 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [x] Rotated resizing preserves the opposite world-space anchor.
 - [x] Correct the inverted aspect ratio used by vertical-only image and sticker
   resizing; regression coverage now exercises a vertical visual handle.
-- [x] Two-finger rotation is constrained to selected block geometry and rotates
-  the active selection as one transaction; mobile hides the rotate handle.
+- [x] Two-finger rotation can start anywhere on the page and rotates only the
+  selected unlocked blocks as one transaction; mobile hides the rotate handle.
 - [~] Contextual toolbar, scrollable More sheet, duplicate, clipboard, lock,
   layers, groups, and delete exist.
 - [x] Single-tap selects text and double-tap enters editing; double-tap visual
@@ -159,13 +160,12 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
    - Replace snapshot commands with typed immutable commands.
 
 2. **True document and group model**
-   - Make immutable documents the editor's working state.
-   - Inject repository interfaces instead of `JournalStore`.
+   - Make immutable documents the editor's working state rather than using
+     mutable compatibility adapters in the active controller.
    - Convert groups to nested local-coordinate nodes.
    - Account for undo and clipboard during asset retention.
 
 3. **Complete page interaction overlay**
-   - Introduce camera, transform, and snapping services for the finite page.
    - Render visible nodes and interaction chrome in their correct coordinate
      spaces.
    - Add culling, smart guides, distribution, haptics, and platform gesture
