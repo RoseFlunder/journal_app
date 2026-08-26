@@ -46,6 +46,28 @@ void main() {
     expect(normalized.panY, -40000);
   });
 
+  test('camera controller round-trips persisted page-relative view state', () {
+    final camera = CameraController();
+    addTearDown(camera.dispose);
+
+    camera.configure(
+      viewport: const Size(800, 600),
+      pageRect: const Rect.fromLTWH(0, 0, 1000, 1414),
+      initialView: const ViewState(zoom: 1.5, panX: 12, panY: -8),
+      fitContentOnFirstOpen: false,
+    );
+
+    expect(camera.zoom, closeTo(1.5, 0.001));
+    expect(camera.viewState.zoom, closeTo(1.5, 0.001));
+    expect(camera.viewState.panX, closeTo(12, 0.001));
+    expect(camera.viewState.panY, closeTo(-8, 0.001));
+
+    camera.fitPage();
+    expect(camera.viewState.zoom, closeTo(1, 0.001));
+    expect(camera.viewState.panX, closeTo(0, 0.001));
+    expect(camera.viewState.panY, closeTo(0, 0.001));
+  });
+
   testWidgets(
     'fit content is available and double tap returns to the content fit',
     (tester) async {
