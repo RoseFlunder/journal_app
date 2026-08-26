@@ -1,4 +1,5 @@
 import '../services/journal_store.dart';
+import '../services/hive_repositories.dart';
 import '../services/persistence_coordinator.dart';
 import '../services/repositories.dart';
 
@@ -12,19 +13,33 @@ class AppDependencies {
     return AppDependencies._(
       journalRepository: journalRepository,
       persistence: persistence,
+      repositories: JournalRepositories.from(
+        journalRepository,
+        persistence: persistence,
+      ),
     );
   }
 
   AppDependencies._({
     required this.journalRepository,
     required this.persistence,
-  }) : repositories = JournalRepositories.from(
-         journalRepository,
-         persistence: persistence,
-       );
+    required this.repositories,
+  });
 
-  factory AppDependencies.hive() =>
-      AppDependencies(journalRepository: HiveJournalRepository(JournalStore()));
+  factory AppDependencies.hive() {
+    final source = HiveJournalRepository(JournalStore());
+    final persistence = PersistenceCoordinator(
+      repository: HivePersistenceRepository(source),
+    );
+    return AppDependencies._(
+      journalRepository: source,
+      persistence: persistence,
+      repositories: HiveRepositorySet(
+        source,
+        persistence: persistence,
+      ).repositories,
+    );
+  }
 
   final JournalRepository journalRepository;
   final PersistenceCoordinator persistence;
