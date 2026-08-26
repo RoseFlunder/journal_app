@@ -19,7 +19,7 @@ import '../models/template.dart';
 import '../services/image_source.dart';
 import '../services/journal_transfer_service.dart';
 import '../services/repositories.dart';
-import '../view_models/entry_editor_view_model.dart';
+import '../ui/features/editor/view_models/entry_editor_view_model.dart';
 import '../widgets/entry_chrome.dart';
 import '../widgets/page_viewport.dart';
 import '../widgets/paper_page.dart';

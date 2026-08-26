@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import '../models/document.dart';
 import '../models/entry.dart';
 import '../services/repositories.dart';
-import '../view_models/journal_view_model.dart';
+import '../ui/features/journal/view_models/journal_view_model.dart';
 import '../widgets/entry_chrome.dart';
 import 'contents_page.dart';
 import 'entry_page.dart';

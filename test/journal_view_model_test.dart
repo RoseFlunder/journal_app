@@ -8,7 +8,7 @@ import 'package:journal_app/models/template.dart';
 import 'package:journal_app/services/journal_archive.dart';
 import 'package:journal_app/services/journal_store.dart';
 import 'package:journal_app/services/repositories.dart';
-import 'package:journal_app/view_models/journal_view_model.dart';
+import 'package:journal_app/ui/features/journal/view_models/journal_view_model.dart';
 
 void main() {
   test('publishes immutable document changes from the repository', () async {
