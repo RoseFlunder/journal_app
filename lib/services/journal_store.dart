@@ -5,74 +5,13 @@ import 'package:uuid/uuid.dart';
 
 import '../models/document.dart';
 import '../models/entry.dart';
+import '../models/storage_records.dart';
 import '../models/template.dart';
 import 'journal_archive.dart';
 import 'hive_journal_data_source.dart';
 
-/// Kinds of binary assets stored in the `assets` box.
-enum AssetKind { image, audio }
-
-/// A binary asset (image or audio) stored in the `assets` box.
-class AssetRecord {
-  AssetRecord({
-    required this.entryId,
-    required this.kind,
-    required this.mime,
-    required this.data,
-  });
-
-  /// The entry this asset belongs to.
-  final String entryId;
-  final AssetKind kind;
-  final String mime;
-  final List<int> data;
-
-  Map<String, dynamic> toJson() => {
-    'entryId': entryId,
-    'kind': kind.name,
-    'mime': mime,
-    'data': data,
-  };
-
-  factory AssetRecord.fromJson(Map<String, dynamic> json) => AssetRecord(
-    entryId: json['entryId'] as String,
-    kind: AssetKind.values.byName(json['kind'] as String? ?? 'image'),
-    mime: json['mime'] as String? ?? '',
-    data: (json['data'] as List<dynamic>? ?? const [])
-        .map((e) => e is int ? e : (e as num).toInt())
-        .toList(),
-  );
-}
-
-/// A restorable local document snapshot. Assets stay immutable in the normal
-/// assets box, so checkpoints only need entry JSON and asset references.
-class EntryCheckpoint {
-  EntryCheckpoint({
-    required this.id,
-    required this.entryId,
-    required this.createdAt,
-    required this.entry,
-  });
-
-  final String id;
-  final String entryId;
-  final DateTime createdAt;
-  final Entry entry;
-
-  Map<String, dynamic> toJson() => {
-    'entryId': entryId,
-    'createdAt': createdAt.toIso8601String(),
-    'entry': entry.toJson(),
-  };
-
-  factory EntryCheckpoint.fromJson(String id, Map<String, dynamic> json) =>
-      EntryCheckpoint(
-        id: id,
-        entryId: json['entryId'] as String,
-        createdAt: DateTime.parse(json['createdAt'] as String),
-        entry: Entry.fromJson(Map<String, dynamic>.from(json['entry'] as Map)),
-      );
-}
+export '../models/storage_records.dart'
+    show AssetKind, AssetRecord, EntryCheckpoint;
 
 /// Loads, owns and persists all journal data.
 ///
