@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../models/document.dart';
-import '../services/journal_archive.dart';
 import '../services/repositories.dart';
 
 /// Presentation state and commands for the journal page shell.
@@ -12,13 +11,13 @@ import '../services/repositories.dart';
 /// behind [JournalRepository], which lets the shell use an in-memory fake in
 /// tests and keeps Hive-specific details out of the views.
 class JournalViewModel extends ChangeNotifier {
-  JournalViewModel({required JournalRepository repository})
+  JournalViewModel({required DocumentRepository repository})
     : _repository = repository,
       _documents = List.unmodifiable(repository.documents) {
     _changesSubscription = repository.changes.listen((_) => _refresh());
   }
 
-  final JournalRepository _repository;
+  final DocumentRepository _repository;
   late final StreamSubscription<void> _changesSubscription;
   List<EntryDocument> _documents;
 
@@ -48,12 +47,6 @@ class JournalViewModel extends ChangeNotifier {
   Future<void> deletePage(String id) async {
     await _repository.deleteDocument(id);
     _refresh();
-  }
-
-  Future<EntryDocument> importArchive(JournalArchive archive) async {
-    final document = await _repository.importArchive(archive);
-    _refresh();
-    return document;
   }
 
   void _refresh() {

@@ -11,12 +11,14 @@ import '../widgets/paper_page.dart';
 class ContentsPage extends StatelessWidget {
   const ContentsPage({
     super.key,
-    required this.repository,
+    required this.documentRepository,
+    required this.assetRepository,
     required this.onOpenPage,
     required this.onNewPage,
   });
 
-  final JournalRepository repository;
+  final DocumentRepository documentRepository;
+  final AssetRepository assetRepository;
   final ValueChanged<int> onOpenPage;
   final VoidCallback onNewPage;
 
@@ -42,13 +44,13 @@ class ContentsPage extends StatelessWidget {
       ),
     );
     if (confirmed == true && context.mounted) {
-      await repository.deleteDocument(entry.id);
+      await documentRepository.deleteDocument(entry.id);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final entries = repository.documents
+    final entries = documentRepository.documents
         .map((document) => document.toEntry())
         .toList();
     final dateFormat = DateFormat.yMMMMd();
@@ -159,7 +161,7 @@ class ContentsPage extends StatelessWidget {
         if (sticker != null) return AssetImage(sticker.assetPath);
       }
       if (block.type == BlockType.image && block.assetId != null) {
-        final bytes = repository.readAsset(block.assetId!);
+        final bytes = assetRepository.readAsset(block.assetId!);
         if (bytes != null) return MemoryImage(bytes);
       }
     }

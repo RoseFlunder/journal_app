@@ -47,24 +47,13 @@ abstract interface class PreferencesRepository {
   Future<void> updateColorPreferences({List<int>? recent, Set<int>? favorites});
 }
 
-/// Repository boundary used by the journal and editor views. It composes the
-/// aggregate contracts needed by the current editor while the Hive adapter is
-/// migrated behind smaller data services.
-abstract interface class JournalRepository
-    implements
-        AssetRepository,
-        CheckpointRepository,
-        TemplateRepository,
-        PreferencesRepository {
+/// Document-only capability used by the journal navigation shell.
+abstract interface class DocumentRepository {
   Future<void> init();
 
   List<EntryDocument> get documents;
 
   Stream<void> get changes;
-
-  void addFlushHook(Future<void> Function() hook);
-
-  void removeFlushHook(Future<void> Function() hook);
 
   Future<EntryDocument> createDocument({String title});
 
@@ -75,6 +64,21 @@ abstract interface class JournalRepository
   Future<void> deleteDocument(String id);
 
   Future<void> flush();
+}
+
+/// Repository boundary used by the journal and editor views. It composes the
+/// aggregate contracts needed by the current editor while the Hive adapter is
+/// migrated behind smaller data services.
+abstract interface class JournalRepository
+    implements
+        DocumentRepository,
+        AssetRepository,
+        CheckpointRepository,
+        TemplateRepository,
+        PreferencesRepository {
+  void addFlushHook(Future<void> Function() hook);
+
+  void removeFlushHook(Future<void> Function() hook);
 
   JournalArchive? archiveForDocument(String id);
 

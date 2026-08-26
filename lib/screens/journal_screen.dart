@@ -273,7 +273,8 @@ class _JournalScreenState extends State<JournalScreen> {
                         },
                         children: [
                           ContentsPage(
-                            repository: widget.repository,
+                            documentRepository: widget.repository,
+                            assetRepository: widget.repository,
                             onOpenPage: goToEntry,
                             onNewPage: _createPage,
                           ),
