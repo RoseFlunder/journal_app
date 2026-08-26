@@ -2,18 +2,24 @@ import 'package:flutter/foundation.dart';
 
 import '../models/entry.dart';
 
-/// A detached document state used by one editor history command.
+/// A detached, deeply immutable document state used by one editor command.
 class EditorDocumentSnapshot {
-  EditorDocumentSnapshot(Iterable<ContentBlock> blocks, this.board)
-    : blocks = List.unmodifiable(blocks.map((block) => block.clone()));
+  EditorDocumentSnapshot(Iterable<ContentBlock> blocks, BoardSettings board)
+    : _data = _freeze(<String, dynamic>{
+        'blocks': blocks.map((block) => block.toJson()).toList(growable: false),
+        'board': board.toJson(),
+      });
 
-  final List<ContentBlock> blocks;
-  final BoardSettings board;
+  final Map<String, dynamic> _data;
 
-  Map<String, dynamic> toJson() => {
-    'blocks': blocks.map((block) => block.toJson()).toList(),
-    'board': board.toJson(),
-  };
+  /// Rehydrates detached mutable adapters only at the controller boundary.
+  List<ContentBlock> get blocks => _blocksFrom(_data['blocks']);
+
+  BoardSettings get board => BoardSettings.fromJson(
+    Map<String, dynamic>.from(_data['board'] as Map<Object?, Object?>),
+  );
+
+  Map<String, dynamic> toJson() => _copyMap(_data);
 }
 
 /// One labeled editor transaction with its before and after states.
@@ -98,3 +104,35 @@ class EditorHistory {
   @visibleForTesting
   int get redoLength => _redo.length;
 }
+
+List<ContentBlock> _blocksFrom(Object? raw) {
+  if (raw is! List<Object?>) return <ContentBlock>[];
+  return raw
+      .whereType<Map<Object?, Object?>>()
+      .map((block) => ContentBlock.fromJson(_copyMap(block)))
+      .toList(growable: false);
+}
+
+Map<String, dynamic> _copyMap(Map<Object?, Object?> source) => <String, dynamic>{
+  for (final entry in source.entries)
+    entry.key.toString(): _copyValue(entry.value),
+};
+
+Object? _copyValue(Object? value) => switch (value) {
+  Map<Object?, Object?> map => _copyMap(map),
+  List<Object?> list => list.map(_copyValue).toList(growable: false),
+  _ => value,
+};
+
+Map<String, dynamic> _freeze(Map<String, dynamic> source) =>
+    Map<String, dynamic>.unmodifiable(
+      source.map((key, value) => MapEntry(key, _freezeValue(value))),
+    );
+
+Object? _freezeValue(Object? value) => switch (value) {
+  Map<Object?, Object?> map => _freeze(_copyMap(map)),
+  List<Object?> list => List<Object?>.unmodifiable(
+    list.map(_freezeValue).toList(growable: false),
+  ),
+  _ => value,
+};

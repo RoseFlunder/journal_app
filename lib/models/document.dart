@@ -49,7 +49,7 @@ class CanvasNode {
     this.visible = true,
     this.accessibilityLabel,
     Iterable<CanvasNode> children = const [],
-  }) : payload = UnmodifiableMapView(Map<String, dynamic>.from(payload)),
+  }) : payload = _freezeMap(payload),
        children = UnmodifiableListView(List<CanvasNode>.from(children));
 
   final String id;
@@ -338,3 +338,17 @@ class EntryDocument {
     }
   }
 }
+
+Map<String, dynamic> _freezeMap(Map<Object?, Object?> source) =>
+    UnmodifiableMapView(<String, dynamic>{
+      for (final entry in source.entries)
+        entry.key.toString(): _freezeValue(entry.value),
+    });
+
+Object? _freezeValue(Object? value) => switch (value) {
+  Map<Object?, Object?> map => _freezeMap(map),
+  List<Object?> list => UnmodifiableListView<Object?>(
+    list.map(_freezeValue).toList(growable: false),
+  ),
+  _ => value,
+};

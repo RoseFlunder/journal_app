@@ -298,11 +298,17 @@ class ContentBlock {
 /// Per-page camera state. `zoom == 1` means the default readable scale.
 /// Pan offsets are world-space units and are intentionally not page-bounded.
 class ViewState {
-  ViewState({this.zoom = 1, this.panX = 0, this.panY = 0});
+  const ViewState({this.zoom = 1, this.panX = 0, this.panY = 0});
 
-  double zoom;
-  double panX;
-  double panY;
+  final double zoom;
+  final double panX;
+  final double panY;
+
+  ViewState copyWith({double? zoom, double? panX, double? panY}) => ViewState(
+    zoom: zoom ?? this.zoom,
+    panX: panX ?? this.panX,
+    panY: panY ?? this.panY,
+  );
 
   Map<String, dynamic> toJson() => {'zoom': zoom, 'panX': panX, 'panY': panY};
 
