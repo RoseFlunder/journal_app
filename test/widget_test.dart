@@ -12,6 +12,7 @@ import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/sticker.dart';
 import 'package:journal_app/services/journal_store.dart';
 import 'package:journal_app/editor/block_widget.dart';
+import 'package:journal_app/editor/editor_toolbar.dart';
 import 'package:journal_app/editor/entry_canvas.dart';
 import 'package:journal_app/widgets/paper_page.dart';
 import 'package:journal_app/widgets/page_viewport.dart';
@@ -48,6 +49,100 @@ void main() {
     await tester.tap(find.text('Create page'));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('layer order menu opens above the toolbar in every layout', (
+    tester,
+  ) async {
+    var bringToFront = 0;
+    var bringToBack = 0;
+
+    Widget toolbar({
+      required bool hasSelection,
+      required Size mediaSize,
+    }) {
+      return MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(size: mediaSize),
+          child: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: EditorToolbar(
+                editing: true,
+                hasSelection: hasSelection,
+                textEditing: false,
+                onToggleEditing: () {},
+                onAddText: () {},
+                onAddImage: () {},
+                onAddSticker: () {},
+                onMore: () {},
+                onEditText: () {},
+                textFormattingAvailable: false,
+                textSelection: false,
+                onDecreaseFontSize: null,
+                onIncreaseFontSize: null,
+                fontFamily: null,
+                onFontFamilyChanged: (_) {},
+                textColorValue: null,
+                onTextColorChanged: (_) {},
+                onToggleBold: () {},
+                onToggleItalic: () {},
+                bold: false,
+                italic: false,
+                onDelete: () {},
+                onBringToFront: () => bringToFront++,
+                onSendToBack: () => bringToBack++,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(
+      toolbar(hasSelection: false, mediaSize: const Size(800, 600)),
+    );
+    final layerOrderButton = find.byTooltip('Layer order');
+    expect(layerOrderButton, findsOneWidget);
+    await tester.tap(layerOrderButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Bring to front'), findsOneWidget);
+    expect(find.text('Bring to back'), findsOneWidget);
+    await tester.tap(find.text('Bring to front'));
+    await tester.pump();
+    expect(bringToFront, 0);
+    await tester.tap(find.text('Bring to back'));
+    await tester.pump();
+    expect(bringToBack, 0);
+    await tester.tapAt(const Offset(4, 4));
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(
+      toolbar(hasSelection: true, mediaSize: const Size(800, 600)),
+    );
+    await tester.pumpAndSettle();
+    final buttonRect = tester.getRect(layerOrderButton);
+    await tester.tap(layerOrderButton);
+    await tester.pumpAndSettle();
+    expect(
+      tester.getRect(find.text('Bring to front')).top,
+      lessThan(buttonRect.top),
+    );
+    await tester.tap(find.text('Bring to front'));
+    await tester.pumpAndSettle();
+    expect(bringToFront, 1);
+
+    await tester.tap(layerOrderButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bring to back'));
+    await tester.pumpAndSettle();
+    expect(bringToBack, 1);
+
+    await tester.pumpWidget(
+      toolbar(hasSelection: true, mediaSize: const Size(1200, 800)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Layer order'), findsOneWidget);
+  });
 
   testWidgets(
     'create a page, navigate with home/back controls, find it in TOC, delete it',

@@ -53,7 +53,6 @@ class EditorToolbar extends StatelessWidget {
     this.onSendToBack,
     this.onToggleLock,
     this.locked = false,
-    this.onLayers,
   });
 
   final bool editing;
@@ -102,7 +101,6 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback? onSendToBack;
   final VoidCallback? onToggleLock;
   final bool locked;
-  final VoidCallback? onLayers;
 
   @override
   Widget build(BuildContext context) {
@@ -252,13 +250,11 @@ class EditorToolbar extends StatelessWidget {
                   label: compact ? null : 'More',
                   onPressed: onMore,
                 ),
-                if (!compact && onLayers != null)
-                  _Action(
-                    tooltip: 'Layers',
-                    icon: Icons.layers,
-                    label: null,
-                    onPressed: onLayers,
-                  ),
+                _LayerOrderMenu(
+                  hasSelection: hasSelection,
+                  onBringToFront: onBringToFront,
+                  onSendToBack: onSendToBack,
+                ),
                 if (hasSelection) ...[
                   _divider(),
                   if (textSelection)
@@ -267,19 +263,6 @@ class EditorToolbar extends StatelessWidget {
                       icon: textEditing ? Icons.keyboard_hide : Icons.edit_note,
                       label: null,
                       onPressed: onEditText,
-                    ),
-                  _Action(
-                    tooltip: 'Bring to front',
-                    icon: Icons.layers_outlined,
-                    label: null,
-                    onPressed: onBringToFront,
-                  ),
-                  if (!compact && onSendToBack != null)
-                    _Action(
-                      tooltip: 'Send to back',
-                      icon: Icons.flip_to_back_outlined,
-                      label: null,
-                      onPressed: onSendToBack,
                     ),
                   if (!compact && onDuplicate != null)
                     _Action(
@@ -316,6 +299,60 @@ class EditorToolbar extends StatelessWidget {
     height: 28,
     margin: const EdgeInsets.symmetric(horizontal: 4),
     color: Colors.black.withValues(alpha: 0.14),
+  );
+}
+
+enum _LayerOrderAction { bringToFront, bringToBack }
+
+class _LayerOrderMenu extends StatelessWidget {
+  const _LayerOrderMenu({
+    required this.hasSelection,
+    required this.onBringToFront,
+    required this.onSendToBack,
+  });
+
+  final bool hasSelection;
+  final VoidCallback onBringToFront;
+  final VoidCallback? onSendToBack;
+
+  @override
+  Widget build(BuildContext context) => PopupMenuButton<_LayerOrderAction>(
+    tooltip: 'Layer order',
+    position: PopupMenuPosition.over,
+    offset: const Offset(0, -8),
+    onSelected: (action) {
+      switch (action) {
+        case _LayerOrderAction.bringToFront:
+          onBringToFront();
+        case _LayerOrderAction.bringToBack:
+          onSendToBack?.call();
+      }
+    },
+    itemBuilder: (context) => [
+      PopupMenuItem<_LayerOrderAction>(
+        value: _LayerOrderAction.bringToFront,
+        enabled: hasSelection,
+        child: const Row(
+          children: [
+            Icon(Icons.layers_outlined),
+            SizedBox(width: 12),
+            Text('Bring to front'),
+          ],
+        ),
+      ),
+      PopupMenuItem<_LayerOrderAction>(
+        value: _LayerOrderAction.bringToBack,
+        enabled: hasSelection && onSendToBack != null,
+        child: const Row(
+          children: [
+            Icon(Icons.flip_to_back_outlined),
+            SizedBox(width: 12),
+            Text('Bring to back'),
+          ],
+        ),
+      ),
+    ],
+    icon: const Icon(Icons.layers),
   );
 }
 
