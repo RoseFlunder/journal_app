@@ -239,4 +239,48 @@ void main() {
     expect(afterCtrlWheel.getMaxScaleOnAxis(), greaterThan(initialScale));
     debugDefaultTargetPlatformOverride = null;
   });
+
+  testWidgets('Windows primary-button drag pans freely in both axes', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 800,
+          height: 600,
+          child: PageViewport(
+            initialView: const ViewState(zoom: 1),
+            child: const ColoredBox(color: Colors.amber),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final viewer = tester.widget<InteractiveViewer>(
+      find.byType(InteractiveViewer),
+    );
+    final before = viewer.transformationController!.value.getTranslation();
+    final gesture = await tester.startGesture(
+      const Offset(400, 300),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await tester.pump();
+    await gesture.moveBy(const Offset(80, 60));
+    await gesture.up();
+    await tester.pump();
+
+    final after = tester
+        .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+        .transformationController!
+        .value
+        .getTranslation();
+    expect(after.y, isNot(closeTo(before.y, 0.001)));
+    expect(after.x, isNot(closeTo(before.x, 0.001)));
+    debugDefaultTargetPlatformOverride = null;
+  });
 }

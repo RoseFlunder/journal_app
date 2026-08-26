@@ -90,6 +90,12 @@ class PageViewport extends StatefulWidget {
 class _PageViewportState extends State<PageViewport> {
   late final CameraController _camera;
   Timer? _persistTimer;
+  Timer? _doubleTapTimer;
+  int? _tapPointer;
+  Offset? _tapDownPosition;
+  Duration? _lastTapTime;
+  Offset? _lastTapPosition;
+  bool _tapCandidate = false;
   bool _ready = false;
 
   Rect get _pageRect =>
@@ -112,6 +118,7 @@ class _PageViewportState extends State<PageViewport> {
   @override
   void dispose() {
     _persistTimer?.cancel();
+    _doubleTapTimer?.cancel();
     _camera.removeListener(_handleCameraChanged);
     _camera.dispose();
     super.dispose();
@@ -183,6 +190,69 @@ class _PageViewportState extends State<PageViewport> {
     _camera.panBy(event.scrollDelta);
   }
 
+  void _handlePointerDown(PointerDownEvent event) {
+    if (!_canHandleTap(event) || _tapPointer != null) return;
+    _tapPointer = event.pointer;
+    _tapDownPosition = event.localPosition;
+    _tapCandidate = true;
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    if (_tapPointer != event.pointer || _tapDownPosition == null) return;
+    if ((event.localPosition - _tapDownPosition!).distance > kTouchSlop) {
+      _tapCandidate = false;
+    }
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    if (_tapPointer != event.pointer) return;
+    final downPosition = _tapDownPosition;
+    final isTap =
+        _tapCandidate &&
+        downPosition != null &&
+        (event.localPosition - downPosition).distance <= kTouchSlop;
+    _tapPointer = null;
+    _tapDownPosition = null;
+    _tapCandidate = false;
+    if (!isTap || !widget.interactive || !widget.gesturesEnabled) return;
+
+    final lastTime = _lastTapTime;
+    final lastPosition = _lastTapPosition;
+    final isDoubleTap =
+        lastTime != null &&
+        lastPosition != null &&
+        event.timeStamp - lastTime <= kDoubleTapTimeout &&
+        (event.localPosition - lastPosition).distance <= kDoubleTapSlop;
+    if (isDoubleTap) {
+      _doubleTapTimer?.cancel();
+      _lastTapTime = null;
+      _lastTapPosition = null;
+      _fitContent();
+      return;
+    }
+
+    _lastTapTime = event.timeStamp;
+    _lastTapPosition = event.localPosition;
+    _doubleTapTimer?.cancel();
+    _doubleTapTimer = Timer(kDoubleTapTimeout, () {
+      _lastTapTime = null;
+      _lastTapPosition = null;
+    });
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    if (_tapPointer != event.pointer) return;
+    _tapPointer = null;
+    _tapDownPosition = null;
+    _tapCandidate = false;
+  }
+
+  bool _canHandleTap(PointerDownEvent event) =>
+      widget.interactive &&
+      widget.gesturesEnabled &&
+      event.buttons == kPrimaryButton &&
+      event.kind != PointerDeviceKind.trackpad;
+
   bool get _desktopWheelMode =>
       kIsWeb || defaultTargetPlatform == TargetPlatform.windows;
 
@@ -198,34 +268,36 @@ class _PageViewportState extends State<PageViewport> {
         }
         final minScale = _camera.fitScale * widget.minZoom;
         final maxScale = _camera.fitScale * widget.maxZoom;
+        final boundaryMargin = _desktopWheelMode
+            ? const EdgeInsets.all(double.infinity)
+            : const EdgeInsets.all(64);
         return Listener(
+          onPointerDown: _handlePointerDown,
+          onPointerMove: _handlePointerMove,
+          onPointerUp: _handlePointerUp,
+          onPointerCancel: _handlePointerCancel,
           onPointerSignal: _handlePointerSignal,
           child: Stack(
             fit: StackFit.expand,
             children: [
-              GestureDetector(
-                onDoubleTap: widget.interactive && widget.gesturesEnabled
-                    ? _fitContent
-                    : null,
-                child: InteractiveViewer(
-                  transformationController: _camera.transformation,
-                  minScale: minScale > 0 ? minScale : widget.minZoom,
-                  maxScale: maxScale > 0 ? maxScale : widget.maxZoom,
-                  constrained: false,
-                  panEnabled: widget.interactive && widget.gesturesEnabled,
-                  // InteractiveViewer scales every mouse-wheel event by
-                  // default. Windows and Web use the explicit handler above
-                  // so only Ctrl+wheel zooms; plain wheel input pans.
-                  scaleEnabled:
-                      widget.interactive &&
-                      widget.gesturesEnabled &&
-                      !_desktopWheelMode,
-                  boundaryMargin: const EdgeInsets.all(64),
-                  child: SizedBox(
-                    width: widget.canvasSize.width,
-                    height: widget.canvasSize.height,
-                    child: widget.child,
-                  ),
+              InteractiveViewer(
+                transformationController: _camera.transformation,
+                minScale: minScale > 0 ? minScale : widget.minZoom,
+                maxScale: maxScale > 0 ? maxScale : widget.maxZoom,
+                constrained: false,
+                panEnabled: widget.interactive && widget.gesturesEnabled,
+                // InteractiveViewer scales every mouse-wheel event by
+                // default. Windows and Web use the explicit handler above
+                // so only Ctrl+wheel zooms; plain wheel input pans.
+                scaleEnabled:
+                    widget.interactive &&
+                    widget.gesturesEnabled &&
+                    !_desktopWheelMode,
+                boundaryMargin: boundaryMargin,
+                child: SizedBox(
+                  width: widget.canvasSize.width,
+                  height: widget.canvasSize.height,
+                  child: widget.child,
                 ),
               ),
               if (widget.interactive)

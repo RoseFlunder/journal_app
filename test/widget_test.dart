@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -457,7 +458,7 @@ void main() {
       tester
           .widget<InteractiveViewer>(find.byType(InteractiveViewer))
           .panEnabled,
-      isFalse,
+      kIsWeb || defaultTargetPlatform == TargetPlatform.windows,
     );
     expect(
       tester
@@ -557,9 +558,17 @@ void main() {
 
     final panBeforeSelectedDrag = store.entries.single.view?.panX;
     final canvasCenter = tester.getCenter(find.byType(EntryCanvas));
-    await tester.dragFrom(canvasCenter, const Offset(40, 0));
+    await tester.dragFrom(
+      canvasCenter,
+      const Offset(40, 0),
+      kind: PointerDeviceKind.mouse,
+    );
     await tester.pump(const Duration(milliseconds: 300));
-    expect(store.entries.single.view?.panX, panBeforeSelectedDrag);
+    if (kIsWeb || defaultTargetPlatform == TargetPlatform.windows) {
+      expect(store.entries.single.view?.panX, isNot(panBeforeSelectedDrag));
+    } else {
+      expect(store.entries.single.view?.panX, panBeforeSelectedDrag);
+    }
 
     expect(find.byTooltip('Fit content'), findsOneWidget);
     await tester.tap(find.byTooltip('Fit content'));
