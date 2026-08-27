@@ -3,15 +3,15 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-27 on top of commit `5611fa8` (`refactor: remove obsolete
-toolbar export`). The editor controller, history, clipboard, and canvas
-configured path are document/node native; metadata and workflow persistence
-route through the feature view model; media referenced by undo/redo and
-clipboard snapshots is retained. Feature-native canvas, toolbar, More tools,
-layers, image, history, template, shape, alignment, and transform views are
-active, and the obsolete toolbar export and image-editor path are gone. Focused
-editor, repository, boundary, and widget suites pass; Android, Web, and
-Windows release builds passed before this final view cleanup.
+Last audited: 2026-08-27 on top of commit `0dd8fca` (`refactor: remove mutable
+canvas callbacks`). The editor controller, history, clipboard, and canvas are
+document/node native; metadata and workflow persistence route through the
+feature view model; media referenced by undo/redo and clipboard snapshots is
+retained. Feature-native canvas, toolbar, More tools, layers, image, history,
+template, shape, alignment, and transform views are active, and the obsolete
+toolbar export and image-editor path are gone. Focused editor, repository,
+boundary, and widget suites pass; Android, Web, and Windows release builds
+passed before this final view cleanup.
 
 Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
@@ -21,9 +21,9 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
 - [~] Immutable `EntryDocument`, `CanvasNode`, `Transform2D`, and
   `EditorDocumentSnapshot` boundaries are the controller's working state and
-  the active renderer consumes immutable world-space node projections. The
-  standalone `EntryCanvas` still has an explicit deprecated `ContentBlock`
-  input/callback bridge for embedders; production editor wiring is node-only.
+  the active renderer consumes immutable world-space node projections.
+  `EntryCanvas` now accepts only immutable nodes and emits typed transform and
+  ink intents; legacy `Entry`/`ContentBlock` remains at compatibility edges.
 - [x] Fresh-data startup; legacy migration is out of scope.
 - [x] `EditorController` owns selection, transactions, clipboard, 100-step
   undo/redo, text coalescing, and save state.
@@ -166,9 +166,8 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 ## Next Implementation Order
 
 1. **Complete the document-model migration**
-   - Retire the remaining standalone-canvas `ContentBlock` compatibility
-     input/callback bridge after downstream embedders move to typed node
-     intents.
+   - Keep `Entry`/`ContentBlock` conversion confined to the storage codec and
+     remove any remaining production compatibility-edge usage.
    - Finish extracting the remaining color/music dialog surfaces from the
      editor page; keep workflows in focused use cases/view-model methods.
 
