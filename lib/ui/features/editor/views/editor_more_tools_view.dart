@@ -83,8 +83,8 @@ class EditorMoreToolsView extends StatefulWidget {
 }
 
 class _EditorMoreToolsViewState extends State<EditorMoreToolsView> {
-  late bool _selectMode = widget.selectMode;
-  late bool _drawMode = widget.drawMode;
+  late final bool _selectMode = widget.selectMode;
+  late final bool _drawMode = widget.drawMode;
   late bool _snapToGrid = widget.board.snapToGrid;
   late bool _gridVisible = widget.board.gridVisible;
 

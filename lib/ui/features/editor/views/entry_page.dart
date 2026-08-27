@@ -1010,49 +1010,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
   }
 
-  // Kept temporarily while downstream callers transition to
-  // [EditorTemplatesView].
-  // ignore: unused_element
-  void _showTemplatesLegacy() {
-    final templates = _editor.templates;
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: PaperPage.paper,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(context).height * 0.68,
-          child: templates.isEmpty
-              ? const Center(child: Text('No saved templates yet'))
-              : ListView.builder(
-                  itemCount: templates.length,
-                  itemBuilder: (context, index) {
-                    final template = templates[index];
-                    return ListTile(
-                      leading: const Icon(Icons.dashboard_customize_outlined),
-                      title: Text(template.name),
-                      subtitle: Text(
-                        '${template.document.nodes.length} top-level objects',
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _editor.insertTemplate(
-                          nodes: template.document.nodes,
-                          offset: Offset(
-                            PageViewport.modelPageSize.width / 2,
-                            PageViewport.modelPageSize.height / 2,
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _exportArchive() async {
     if (!mounted) return;
     final exported = await _editor.exportArchive(
@@ -1497,72 +1454,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
             documentId: _document.id,
           );
           if (restored != null) _editor.replaceDocumentModel(restored);
-        },
-      ),
-    );
-  }
-
-  // Kept temporarily while downstream callers transition to
-  // [EditorHistoryView].
-  // ignore: unused_element
-  void _showHistoryLegacy() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: PaperPage.paper,
-      showDragHandle: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) {
-          final checkpoints = _editor.checkpointsFor(_document.id);
-          return SafeArea(
-            child: SizedBox(
-              height: MediaQuery.sizeOf(context).height * 0.62,
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.add_task_outlined),
-                    title: const Text('Create recovery checkpoint'),
-                    onTap: () async {
-                      await _editor.createCheckpoint(_document.id);
-                      setModalState(() {});
-                    },
-                  ),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: checkpoints.isEmpty
-                        ? const Center(
-                            child: Text('No recovery checkpoints yet'),
-                          )
-                        : ListView.builder(
-                            itemCount: checkpoints.length,
-                            itemBuilder: (context, index) {
-                              final checkpoint = checkpoints[index];
-                              return ListTile(
-                                leading: const Icon(Icons.restore),
-                                title: Text(
-                                  DateFormat.yMMMd().add_jm().format(
-                                    checkpoint.createdAt,
-                                  ),
-                                ),
-                                subtitle: const Text(
-                                  'Restore this local version',
-                                ),
-                                onTap: () async {
-                                  final restored = await _editor.restoreCheckpoint(
-                                        checkpointId: checkpoint.id,
-                                        documentId: _document.id,
-                                      );
-                                  if (restored == null) return;
-                                  _editor.replaceDocumentModel(restored);
-                                  if (context.mounted) Navigator.pop(context);
-                                },
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            ),
-          );
         },
       ),
     );
