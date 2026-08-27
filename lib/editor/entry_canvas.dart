@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
+import '../models/document.dart';
 import '../models/entry.dart';
 import '../widgets/page_viewport.dart';
 import 'block_widget.dart';
@@ -16,6 +17,16 @@ typedef TouchSelectionRotation = void Function(
   Offset pivot,
   double delta,
 );
+
+/// Immutable gesture intents emitted by the canvas. The canvas never writes
+/// into the detached block used by the legacy renderer; the editor decides
+/// how to apply this world-space transform to its document tree.
+typedef CanvasTransformChanged = void Function(
+  String nodeId,
+  Transform2D transform,
+);
+
+typedef CanvasNodeCreated = ValueChanged<CanvasNode>;
 
 class EntryCanvas extends StatefulWidget {
   const EntryCanvas({
@@ -29,6 +40,7 @@ class EntryCanvas extends StatefulWidget {
     required this.onSelect,
     required this.onEditText,
     required this.onChanged,
+    this.onTransformChanged,
     this.onTextChanged,
     this.onResizeActiveChanged,
     this.onInteractionStart,
@@ -43,10 +55,13 @@ class EntryCanvas extends StatefulWidget {
     this.inkOpacity = 1,
     this.onLassoSelected,
     this.onInkCreated,
+    this.onInkNodeCreated,
     required this.imageBytes,
     this.imageProvider,
     required this.onOpenImage,
+    this.onOpenImageId,
     this.onEditImage,
+    this.onEditImageId,
     this.workspaceSize = PageViewport.pageSize,
     this.worldOrigin = Offset.zero,
     this.cameraScale = 1,
@@ -61,6 +76,7 @@ class EntryCanvas extends StatefulWidget {
   final ValueChanged<String?> onSelect;
   final ValueChanged<String> onEditText;
   final ValueChanged<ContentBlock> onChanged;
+  final CanvasTransformChanged? onTransformChanged;
   final void Function(String blockId, String text, {List<dynamic>? delta})?
   onTextChanged;
   final ValueChanged<bool>? onResizeActiveChanged;
@@ -76,10 +92,13 @@ class EntryCanvas extends StatefulWidget {
   final double inkOpacity;
   final ValueChanged<Set<String>>? onLassoSelected;
   final ValueChanged<ContentBlock>? onInkCreated;
+  final CanvasNodeCreated? onInkNodeCreated;
   final Uint8List? Function(String assetId) imageBytes;
   final ImageProvider<Object>? Function(String assetId)? imageProvider;
   final ValueChanged<ContentBlock> onOpenImage;
+  final ValueChanged<String>? onOpenImageId;
   final ValueChanged<ContentBlock>? onEditImage;
+  final ValueChanged<String>? onEditImageId;
   final Size workspaceSize;
   final Offset worldOrigin;
   final double cameraScale;
@@ -331,12 +350,12 @@ class _EntryCanvasState extends State<EntryCanvas> {
                                           _visualId(block)!,
                                         ),
                                   onOpenImage: block.type == BlockType.image
-                                      ? () => widget.onOpenImage(block)
+                                      ? () => _openImage(block)
                                       : null,
                                   onEditImage:
                                       block.type == BlockType.image ||
                                           block.type == BlockType.sticker
-                                      ? () => widget.onEditImage?.call(block)
+                                      ? () => _editImage(block)
                                       : null,
                                   onTextChanged: (text) {
                                     if (block.locked) return;
@@ -345,6 +364,11 @@ class _EntryCanvasState extends State<EntryCanvas> {
                                       onTextChanged(block.id, text);
                                     } else {
                                       final next = block.clone()..text = text;
+                                      // Preserve the legacy callback contract
+                                      // for standalone canvas consumers. The
+                                      // configured editor path supplies
+                                      // [onTextChanged] and never reaches this
+                                      // mutable compatibility branch.
                                       block.text = next.text;
                                       widget.onChanged(next);
                                     }
@@ -514,8 +538,18 @@ class _EntryCanvasState extends State<EntryCanvas> {
       return;
     }
     final next = block.clone()..rotation += delta;
-    block.rotation = next.rotation;
-    widget.onChanged(next);
+    _emitTransform(
+      block.id,
+      Transform2D(
+        x: next.x,
+        y: next.y,
+        width: next.w,
+        height: next.h,
+        rotation: next.rotation,
+      ),
+      legacy: next,
+      legacyTarget: block,
+    );
   }
 
   ContentBlock _resizedBlock(
@@ -604,10 +638,18 @@ class _EntryCanvasState extends State<EntryCanvas> {
     final next = block.clone()
       ..x = position.dx
       ..y = position.dy;
-    block
-      ..x = next.x
-      ..y = next.y;
-    widget.onChanged(next);
+    _emitTransform(
+      block.id,
+      Transform2D(
+        x: next.x,
+        y: next.y,
+        width: next.w,
+        height: next.h,
+        rotation: next.rotation,
+      ),
+      legacy: next,
+      legacyTarget: block,
+    );
   }
 
   void _endMove() {
@@ -658,12 +700,18 @@ class _EntryCanvasState extends State<EntryCanvas> {
     final pointer = _resizePointerToModel(globalPosition);
     if (pointer == null) return;
     final next = _resizedBlock(block, session, pointer);
-    block
-      ..x = next.x
-      ..y = next.y
-      ..w = next.w
-      ..h = next.h;
-    widget.onChanged(next);
+    _emitTransform(
+      block.id,
+      Transform2D(
+        x: next.x,
+        y: next.y,
+        width: next.w,
+        height: next.h,
+        rotation: next.rotation,
+      ),
+      legacy: next,
+      legacyTarget: block,
+    );
   }
 
   void _endResize() {
@@ -751,7 +799,12 @@ class _EntryCanvasState extends State<EntryCanvas> {
     );
     _inkPoints.clear();
     setState(() {});
-    widget.onInkCreated?.call(block);
+    final onInkNodeCreated = widget.onInkNodeCreated;
+    if (onInkNodeCreated != null) {
+      onInkNodeCreated(CanvasNode.fromBlock(block));
+    } else {
+      widget.onInkCreated?.call(block);
+    }
   }
 
   void _cancelInk() {
@@ -858,6 +911,47 @@ class _EntryCanvasState extends State<EntryCanvas> {
 
   Offset _rotate(Offset point, double angle) {
     return TransformService.rotate(point, angle);
+  }
+
+  void _emitTransform(
+    String id,
+    Transform2D transform, {
+    required ContentBlock legacy,
+    ContentBlock? legacyTarget,
+  }) {
+    final onTransformChanged = widget.onTransformChanged;
+    if (onTransformChanged != null) {
+      onTransformChanged(id, transform);
+    } else {
+      // Legacy tests/embedders historically observe the detached block
+      // instance changing in place. Keep that adapter behavior only when no
+      // immutable intent sink is configured.
+      (legacyTarget ?? legacy)
+        ..x = transform.x
+        ..y = transform.y
+        ..w = transform.width
+        ..h = transform.height
+        ..rotation = transform.rotation;
+      widget.onChanged(legacy);
+    }
+  }
+
+  void _openImage(ContentBlock block) {
+    final callback = widget.onOpenImageId;
+    if (callback != null) {
+      callback(block.id);
+    } else {
+      widget.onOpenImage(block);
+    }
+  }
+
+  void _editImage(ContentBlock block) {
+    final callback = widget.onEditImageId;
+    if (callback != null) {
+      callback(block.id);
+    } else {
+      widget.onEditImage?.call(block);
+    }
   }
 
   bool _containsResizeHandle(Offset point, ContentBlock block, double scale) {

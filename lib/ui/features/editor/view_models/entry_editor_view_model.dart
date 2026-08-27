@@ -46,6 +46,11 @@ class EntryEditorViewModel extends EditorController {
   final PersistenceRepository? _persistence;
   final ArchiveRepository? _archives;
 
+  bool _editing = false;
+  bool _selectMode = false;
+  bool _drawMode = false;
+  String? _textEditingId;
+
   String get documentId => _documentId;
   DocumentRepository get documentRepository => _documentRepository;
   CheckpointRepository get checkpointRepository => _checkpointRepository;
@@ -58,6 +63,40 @@ class EntryEditorViewModel extends EditorController {
   PreferencesRepository get preferenceRepository => _preferences!;
   PersistenceRepository get persistence => _persistence!;
   ArchiveRepository get archiveRepository => _archives!;
+
+  /// Presentation/tool state that must stay consistent with the document
+  /// selection. Flutter-only focus, dialogs, and animations remain in views.
+  bool get editing => _editing;
+  set editing(bool value) {
+    if (_editing == value) return;
+    _editing = value;
+    notifyListeners();
+  }
+
+  bool get selectMode => _selectMode;
+  set selectMode(bool value) {
+    if (_selectMode == value && (!value || !_drawMode)) return;
+    _selectMode = value;
+    if (value) _drawMode = false;
+    notifyListeners();
+  }
+
+  bool get drawMode => _drawMode;
+  set drawMode(bool value) {
+    if (_drawMode == value && (!value || !_selectMode)) return;
+    _drawMode = value;
+    if (value) _selectMode = false;
+    notifyListeners();
+  }
+
+  String? get textEditingId => _textEditingId;
+  set textEditingId(String? value) {
+    if (_textEditingId == value) return;
+    _textEditingId = value;
+    notifyListeners();
+  }
+
+  String? get selectedId => selection.isEmpty ? null : selection.last;
 
   @override
   EntryDocument get document {

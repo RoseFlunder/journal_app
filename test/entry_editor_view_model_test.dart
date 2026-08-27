@@ -8,6 +8,28 @@ import 'package:journal_app/services/repositories.dart';
 import 'package:journal_app/ui/features/editor/view_models/entry_editor_view_model.dart';
 
 void main() {
+  test('owns tool and selection presentation state', () {
+    final document = _document();
+    final editor = EntryEditorViewModel(
+      document: document,
+      documentRepository: _FakeDocumentRepository(document),
+      checkpointRepository: _FakeCheckpointRepository(),
+    );
+    addTearDown(editor.dispose);
+
+    editor.select('text');
+    editor.editing = true;
+    editor.selectMode = true;
+    editor.drawMode = true;
+    editor.textEditingId = 'text';
+
+    expect(editor.selectedId, 'text');
+    expect(editor.editing, isTrue);
+    expect(editor.selectMode, isFalse);
+    expect(editor.drawMode, isTrue);
+    expect(editor.textEditingId, 'text');
+  });
+
   test('persists editor transactions through narrow repositories', () async {
     final document = _document();
     final documents = _FakeDocumentRepository(document);

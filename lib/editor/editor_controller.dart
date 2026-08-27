@@ -90,6 +90,21 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Applies a canvas gesture's immutable world-space transform to one node.
+  /// Parent-local coordinates are recalculated by [EntryDocument], so nested
+  /// group children remain stable when a parent is moved.
+  void replaceNodeWorldTransform(
+    String id,
+    Transform2D transform, {
+    String label = 'Transform node',
+  }) {
+    final node = _document.nodeById(id);
+    if (node == null || node.locked) return;
+    if (!_history.inTransaction) beginTransaction(label);
+    _document = _document.replaceWorldTransforms({id: transform});
+    notifyListeners();
+  }
+
   /// Applies an immutable update to one node without exposing the mutable
   /// compatibility adapter to callers.
   void updateNode(
@@ -193,13 +208,25 @@ class EditorController extends ChangeNotifier {
     required int colorValue,
     required double opacity,
   }) {
-    for (final block in selectedDrawableBlocks) {
-      updateBlock(block.id, (target) {
-        target
-          ..strokeColorValue = colorValue
-          ..opacity = opacity;
-      });
+    final ids = _expandedSelectedBlocks
+        .where(
+          (block) =>
+              block.type == BlockType.ink || block.type == BlockType.shape,
+        )
+        .map((block) => block.id)
+        .toSet();
+    if (ids.isEmpty) return;
+    beginTransaction('Stroke');
+    for (final id in ids) {
+      final node = _document.nodeById(id);
+      if (node == null || node.locked) continue;
+      final payload = Map<String, dynamic>.from(node.payload)
+        ..['strokeColorValue'] = colorValue;
+      _document = _document.replaceNode(
+        node.copyWith(payload: payload, opacity: opacity),
+      );
     }
+    notifyListeners();
   }
 
   /// Applies a detached block snapshot at the command boundary.
@@ -526,14 +553,14 @@ class EditorController extends ChangeNotifier {
     unawaited(commitTransaction());
   }
 
-  void setLocked(bool locked) => _setSelectionProperty(
+  void setLocked(bool locked) => _updateSelectedNodes(
     locked ? 'Lock' : 'Unlock',
-    (block) => block.locked = locked,
+    (node) => node.copyWith(locked: locked),
   );
 
-  void setHidden(bool hidden) => _setSelectionProperty(
+  void setHidden(bool hidden) => _updateSelectedNodes(
     hidden ? 'Hide' : 'Show',
-    (block) => block.hidden = hidden,
+    (node) => node.copyWith(visible: !hidden),
   );
 
   void bringToFront() {
@@ -583,16 +610,20 @@ class EditorController extends ChangeNotifier {
     if (_selection.isEmpty) return;
     final normalized = name.trim();
     if (normalized.isEmpty) return;
-    _setSelectionProperty('Rename', (block) => block.name = normalized);
+    _updateSelectedNodes(
+      'Rename',
+      (node) => node.copyWith(accessibilityLabel: normalized),
+    );
   }
 
   void renameLayer(String blockId, String name) {
     final normalized = name.trim();
-    final block = _byId(blockId);
-    if (block == null || normalized.isEmpty) return;
+    final node = _document.nodeById(blockId);
+    if (node == null || normalized.isEmpty) return;
     beginTransaction('Rename layer');
-    final next = block.clone()..name = normalized;
-    _document = _document.replaceLegacyBlock(next);
+    _document = _document.replaceNode(
+      node.copyWith(accessibilityLabel: normalized),
+    );
     notifyListeners();
     unawaited(commitTransaction());
   }
@@ -683,15 +714,17 @@ class EditorController extends ChangeNotifier {
   /// text field loses focus so typing never writes once per keystroke.
   void replaceText(String id, String text, {List<dynamic>? delta}) {
     if (!_history.inTransaction) beginTransaction('Edit text');
-    updateBlock(id, (block) {
-      block.text = text;
-      block.richTextDelta = delta == null
-          ? <dynamic>[
-              {'insert': text},
-              {'insert': '\n'},
-            ]
-          : List<dynamic>.from(delta);
-    });
+    updateNode(id, (node) {
+      final payload = Map<String, dynamic>.from(node.payload)
+        ..['text'] = text
+        ..['richTextDelta'] = delta == null
+            ? <dynamic>[
+                {'insert': text},
+                {'insert': '\n'},
+              ]
+            : List<dynamic>.from(delta);
+      return node.copyWith(payload: payload);
+    }, label: 'Edit text');
     _textTimer?.cancel();
     _textTimer = Timer(const Duration(milliseconds: 500), () {
       unawaited(commitTransaction());
@@ -782,17 +815,17 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _setSelectionProperty(String label, void Function(ContentBlock) change) {
+  void _updateSelectedNodes(
+    String label,
+    CanvasNode Function(CanvasNode node) update,
+  ) {
     if (_selection.isEmpty) return;
     beginTransaction(label);
-    final next = _cloneBlocks(blocks);
-    final byId = {for (final block in next) block.id: block};
-    for (final selected in _expandedSelectedBlocks) {
-      final block = byId[selected.id];
-      if (block == null) continue;
-      change(block);
+    for (final id in _expandedSelectedBlocks.map((block) => block.id).toSet()) {
+      final node = _document.nodeById(id);
+      if (node == null) continue;
+      _document = _document.replaceNode(update(node));
     }
-    _replaceLegacyBlocks(next);
     notifyListeners();
     unawaited(commitTransaction());
   }
@@ -856,11 +889,6 @@ class EditorController extends ChangeNotifier {
   void _restore(EditorDocumentSnapshot snapshot) {
     _document = snapshot.document;
     _selection.removeWhere((id) => _byId(id) == null);
-  }
-
-  void _replaceLegacyBlocks(List<ContentBlock> next) {
-    final entry = _document.toEntry()..blocks = _cloneBlocks(next);
-    _document = EntryDocument.fromEntry(entry);
   }
 
   List<CanvasNode> _nodesFromLegacyGraph(Iterable<ContentBlock> graph) {

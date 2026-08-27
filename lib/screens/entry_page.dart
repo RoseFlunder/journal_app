@@ -132,17 +132,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   static const _fontSizeStep = 2.0;
   static const _minFontSize = 12.0;
   static const _maxFontSize = 48.0;
-  bool _editing = false;
   bool _resizeActive = false;
-  bool _selectMode = false;
-  bool _drawMode = false;
   int _inkColorValue = 0xFF3B3226;
   double _inkWidth = 1.8;
   double _inkOpacity = 1;
   double _cameraScale = 1;
   bool _titleFocused = false;
-  String? _selectedId;
-  String? _textEditingId;
   String? _colorTransactionBlockId;
   bool _strokeColorTransactionActive = false;
   bool _samplingColor = false;
@@ -161,6 +156,20 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   late EntryEditorViewModel _editor;
   late EntryDocument _document;
   Future<void> Function()? _flushHook;
+
+  // Presentation/tool state is owned by the feature view model. These
+  // forwarding accessors keep this legacy surface readable while the view is
+  // split into feature-native widgets.
+  bool get _editing => _editor.editing;
+  set _editing(bool value) => _editor.editing = value;
+  bool get _selectMode => _editor.selectMode;
+  set _selectMode(bool value) => _editor.selectMode = value;
+  bool get _drawMode => _editor.drawMode;
+  set _drawMode(bool value) => _editor.drawMode = value;
+  String? get _textEditingId => _editor.textEditingId;
+  set _textEditingId(String? value) => _editor.textEditingId = value;
+  String? get _selectedId => _editor.selectedId;
+  set _selectedId(String? value) => _editor.select(value);
 
   List<ContentBlock> get _blocks => _editor.blocks;
 
@@ -2306,10 +2315,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                         child: EntryCanvas(
                           workspaceSize: _workspaceSize,
                           worldOrigin: _worldOrigin,
-                          // Render from detached snapshots. EntryCanvas may
-                          // mutate a preview during pointer updates, but the
-                          // controller-owned document remains behind its
-                          // explicit snapshot command boundary.
+                          // The canvas receives detached render adapters, but
+                          // gesture updates are emitted as immutable node
+                          // intents. The controller remains the sole owner of
+                          // the document and transaction boundary.
                           blocks: _blocks
                               .map((block) => block.clone())
                               .toList(),
@@ -2351,7 +2360,14 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                             setState(() => _selectedId = block.id);
                             _showImageEditor();
                           },
+                          onEditImageId: (id) {
+                            _editor.select(id);
+                            setState(() => _selectedId = id);
+                            _showImageEditor();
+                          },
                           onChanged: _changeBlock,
+                          onTransformChanged: (id, transform) =>
+                              _editor.replaceNodeWorldTransform(id, transform),
                           onTextChanged: _editor.replaceText,
                           onInteractionStart: () =>
                               _editor.beginTransaction('Transform'),
@@ -2380,14 +2396,20 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                               _textEditingId = null;
                             });
                           },
-                          onInkCreated: (block) {
-                            _editor.add(block);
-                            setState(() => _selectedId = block.id);
+                          onInkNodeCreated: (node) {
+                            _editor.addNode(node);
+                            setState(() => _selectedId = node.id);
                           },
                           imageBytes:
                               _editor.assetRepository.readAsset,
                           imageProvider: _imageProvider,
                           onOpenImage: _openImage,
+                          onOpenImageId: (id) {
+                            final block = _blocks
+                                .where((candidate) => candidate.id == id)
+                                .firstOrNull;
+                            if (block != null) unawaited(_openImage(block));
+                          },
                         ),
                       ),
                       Positioned(
