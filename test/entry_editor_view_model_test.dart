@@ -72,6 +72,35 @@ void main() {
     expect(editor.document.nodes.single.transform.y, 10);
     expect(documents.savedDocuments, isEmpty);
   });
+
+  test('owns metadata persistence and reports workflow failures', () async {
+    final document = _document();
+    final documents = _FakeDocumentRepository(document);
+    final editor = EntryEditorViewModel(
+      document: document,
+      documentRepository: documents,
+      checkpointRepository: _FakeCheckpointRepository(),
+    );
+    addTearDown(editor.dispose);
+
+    await editor.updateMetadata(
+      document.copyWith(title: 'Renamed', modifiedAt: DateTime.utc(2026, 2)),
+    );
+    expect(editor.document.title, 'Renamed');
+    expect(documents.savedDocuments.single.title, 'Renamed');
+    expect(editor.workflowError, isNull);
+
+    documents.failSaves = true;
+    await editor.updateMetadata(document.copyWith(title: 'Failed'));
+    expect(editor.document.title, 'Failed');
+    expect(editor.workflowError, contains('save failed'));
+    documents.failSaves = false;
+    await editor.retrySave();
+    expect(editor.workflowError, isNull);
+    expect(documents.savedDocuments.last.title, 'Failed');
+    editor.clearWorkflowError();
+    expect(editor.workflowError, isNull);
+  });
 }
 
 EntryDocument _document() => EntryDocument.fromEntry(
@@ -100,6 +129,7 @@ class _FakeDocumentRepository implements DocumentRepository {
   final StreamController<void> _changes = StreamController<void>.broadcast();
   final List<EntryDocument> _documents;
   final List<EntryDocument> savedDocuments = <EntryDocument>[];
+  bool failSaves = false;
 
   @override
   Stream<void> get changes => _changes.stream;
@@ -116,6 +146,7 @@ class _FakeDocumentRepository implements DocumentRepository {
 
   @override
   Future<void> saveDocument(EntryDocument document) async {
+    if (failSaves) throw StateError('save failed');
     savedDocuments.add(document);
     final index = _documents.indexWhere((item) => item.id == document.id);
     _documents[index] = document;

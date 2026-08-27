@@ -36,7 +36,6 @@ class EntryPage extends StatefulWidget {
     required this.document,
     required this.editorViewModelFactory,
     this.onDocumentPreviewChanged,
-    required this.onDocumentChanged,
     required this.onEditingChanged,
     required this.active,
     required this.musicController,
@@ -49,7 +48,6 @@ class EntryPage extends StatefulWidget {
   final EntryDocument document;
   final EntryEditorViewModelFactory editorViewModelFactory;
   final ValueChanged<EntryDocument>? onDocumentPreviewChanged;
-  final ValueChanged<EntryDocument> onDocumentChanged;
   final ValueChanged<bool> onEditingChanged;
   final bool controlsVisible;
   final bool active;
@@ -148,6 +146,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   late EntryEditorViewModel _editor;
   late EntryDocument _document;
   Future<void> Function()? _flushHook;
+  String? _lastWorkflowError;
 
   // Presentation/tool state is owned by the feature view model. These
   // forwarding accessors keep this legacy surface readable while the view is
@@ -238,6 +237,24 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     // consumers, while the controller still batches the Hive write itself.
     _document = _editor.document;
     widget.onDocumentPreviewChanged?.call(_document);
+    final workflowError = _editor.workflowError;
+    if (workflowError != null && workflowError != _lastWorkflowError) {
+      _lastWorkflowError = workflowError;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not save this change: $workflowError'),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () => unawaited(_editor.retrySave()),
+            ),
+          ),
+        );
+      });
+    } else if (workflowError == null) {
+      _lastWorkflowError = null;
+    }
     if (mounted) setState(() {});
   }
 
@@ -357,8 +374,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       _titleFocused || _activeTextBlock != null;
 
   void _publishDocument(EntryDocument next) {
-    _document = next;
-    widget.onDocumentChanged(next);
+    unawaited(_editor.updateMetadata(next));
   }
 
   void _handleViewChanged(ViewState view) {

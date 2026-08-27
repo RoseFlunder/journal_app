@@ -71,8 +71,11 @@ class EntryEditorViewModel extends EditorController {
   bool _selectMode = false;
   bool _drawMode = false;
   String? _textEditingId;
+  String? _workflowError;
+  EntryDocument? _pendingMetadata;
 
   String get documentId => _documentId;
+  String? get workflowError => _workflowError;
   DocumentRepository get documentRepository => _documentRepository;
   CheckpointRepository get checkpointRepository => _checkpointRepository;
 
@@ -126,6 +129,36 @@ class EntryEditorViewModel extends EditorController {
   set textEditingId(String? value) {
     if (_textEditingId == value) return;
     _textEditingId = value;
+    notifyListeners();
+  }
+
+  /// Publishes title, view, music, and other document metadata from the
+  /// feature boundary. Metadata is deliberately not added to node history,
+  /// but it is persisted through the same document capability.
+  Future<void> updateMetadata(EntryDocument next) async {
+    updateDocumentMetadata(next);
+    try {
+      await _documentRepository.saveDocument(next);
+      _pendingMetadata = null;
+      _setWorkflowError(null);
+    } catch (error) {
+      _pendingMetadata = next;
+      _setWorkflowError(error.toString());
+    }
+  }
+
+  void clearWorkflowError() => _setWorkflowError(null);
+
+  @override
+  Future<void> retrySave() {
+    final pending = _pendingMetadata;
+    if (pending != null) return updateMetadata(pending);
+    return super.retrySave();
+  }
+
+  void _setWorkflowError(String? value) {
+    if (_workflowError == value) return;
+    _workflowError = value;
     notifyListeners();
   }
 
@@ -204,14 +237,6 @@ class EntryEditorViewModel extends EditorController {
         transfer: transfer,
       ).importDocument();
 
-  @override
-  EntryDocument get document {
-    final current = _documentRepository.documents.firstWhere(
-      (document) => document.id == _documentId,
-      orElse: () => super.document,
-    );
-    return current.copyWith(nodes: super.document.nodes, board: super.document.board);
-  }
 }
 
 Future<void> _persistCurrentDocument(

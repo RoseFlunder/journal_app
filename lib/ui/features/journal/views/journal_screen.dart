@@ -195,7 +195,6 @@ class _JournalScreenState extends State<JournalScreen> {
       musicController: _music,
       onDocumentPreviewChanged:
           widget.repositories.documentRepository.previewDocument,
-      onDocumentChanged: _journal.saveDocument,
       onEditingChanged: (editing) =>
           _handleEditingChanged(document.id, editing),
     );

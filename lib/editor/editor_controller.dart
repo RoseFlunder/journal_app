@@ -401,6 +401,16 @@ class EditorController extends ChangeNotifier {
     unawaited(commitTransaction());
   }
 
+  /// Updates document metadata without creating an editor command. Metadata
+  /// edits are persisted by the feature view model; node edits remain
+  /// transactional and undoable.
+  @protected
+  void updateDocumentMetadata(EntryDocument next) {
+    if (next.id != _document.id) return;
+    _document = next;
+    notifyListeners();
+  }
+
   void add(ContentBlock block, {bool select = true}) {
     beginTransaction('Add ${block.type.name}');
     final nodes = _nodesFromLegacyGraph([block]);
