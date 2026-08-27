@@ -19,8 +19,6 @@ import '../../../../models/sticker.dart';
 import '../../../../models/view_state.dart';
 import '../../../../services/image_source.dart';
 import '../../../../services/journal_transfer_service.dart';
-import '../../../../services/audio_playback.dart';
-import '../../../../services/repositories.dart';
 import '../view_models/entry_editor_view_model.dart';
 import 'entry_editor_surface.dart';
 import '../../music/view_models/page_music_controller.dart';
@@ -41,8 +39,6 @@ class EntryPage extends StatefulWidget {
     required this.onDocumentChanged,
     required this.onEditingChanged,
     required this.active,
-    required this.musicCatalog,
-    required this.audioPlaybackFactory,
     required this.musicController,
     this.controlsVisible = true,
     this.imageSource,
@@ -57,8 +53,6 @@ class EntryPage extends StatefulWidget {
   final ValueChanged<bool> onEditingChanged;
   final bool controlsVisible;
   final bool active;
-  final MusicCatalogRepository musicCatalog;
-  final AudioPlaybackFactory audioPlaybackFactory;
   final PageMusicController musicController;
 
   final ImageSourceService? imageSource;
@@ -1649,8 +1643,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       showDragHandle: true,
       isScrollControlled: true,
       builder: (context) => MusicPickerSheet(
-        catalog: widget.musicCatalog,
-        audioPlaybackFactory: widget.audioPlaybackFactory,
+        catalog: _editor.musicCatalog,
+        audioPlaybackFactory: _editor.audioPlaybackFactory,
         current: _document.music,
       ),
     );

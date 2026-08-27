@@ -231,6 +231,9 @@ class JournalApp extends StatelessWidget {
                  .persistence,
              archiveRepository: (repositories ?? dependencies!.repositories)
                  .archiveRepository,
+             musicCatalog: musicCatalog ?? dependencies?.musicCatalog,
+             audioPlaybackFactory:
+                 audioPlaybackFactory ?? dependencies?.audioPlaybackFactory,
            ));
 
   final JournalRepositories repositories;

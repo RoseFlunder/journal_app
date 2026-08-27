@@ -1,9 +1,14 @@
+// The public constructor keeps capability names stable while storing them in
+// private fields; initializing-formal linting cannot express that distinction.
+// ignore_for_file: prefer_initializing_formals
+
 import 'dart:ui';
 import 'dart:typed_data';
 
 import '../../../../editor/editor_controller.dart';
 import '../../../../models/document.dart';
 import '../../../../models/template.dart';
+import '../../../../services/audio_playback.dart';
 import '../../../../services/image_source.dart';
 import '../../../../services/journal_transfer_service.dart';
 import '../../../../services/repositories.dart';
@@ -27,6 +32,8 @@ class EntryEditorViewModel extends EditorController {
     PreferencesRepository? preferenceRepository,
     PersistenceRepository? persistenceRepository,
     ArchiveRepository? archiveRepository,
+    MusicCatalogRepository? musicCatalog,
+    AudioPlaybackFactory? audioPlaybackFactory,
     super.maxHistory,
   }) : _documentId = document.id,
        _documentRepository = documentRepository,
@@ -36,6 +43,8 @@ class EntryEditorViewModel extends EditorController {
        _preferences = preferenceRepository,
        _persistence = persistenceRepository,
        _archives = archiveRepository,
+       _musicCatalog = musicCatalog,
+       _audioPlaybackFactory = audioPlaybackFactory,
        super(
          document: document,
          persistDocument: (EntryDocument next) =>
@@ -55,6 +64,8 @@ class EntryEditorViewModel extends EditorController {
   final PreferencesRepository? _preferences;
   final PersistenceRepository? _persistence;
   final ArchiveRepository? _archives;
+  final MusicCatalogRepository? _musicCatalog;
+  final AudioPlaybackFactory? _audioPlaybackFactory;
 
   bool _editing = false;
   bool _selectMode = false;
@@ -73,6 +84,10 @@ class EntryEditorViewModel extends EditorController {
   PreferencesRepository get preferenceRepository => _preferences!;
   PersistenceRepository get persistence => _persistence!;
   ArchiveRepository get archiveRepository => _archives!;
+  MusicCatalogRepository get musicCatalog =>
+      _musicCatalog ?? const DisabledMusicCatalogRepository();
+  AudioPlaybackFactory get audioPlaybackFactory =>
+      _audioPlaybackFactory ?? (() => const DisabledAudioPlaybackService());
   Uint8List? readAsset(String id) => assetRepository.readAsset(id);
 
   /// Runs media cleanup without deleting assets still reachable from this
