@@ -3,10 +3,11 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-27 on top of commit `53d07c1` (`refactor: move screens
-into feature views`). The immutable editor, canvas-intent, feature-state, and
-screen-extraction slices analyze cleanly and the full Flutter widget suite
-passes.
+Last audited: 2026-08-27 on top of commit `d73340a` (`refactor: make editor
+view model own metadata saves`). The editor now renders immutable node
+projections, routes metadata and workflow persistence through the feature view
+model, and retains media referenced by undo/redo and clipboard snapshots.
+Focused architecture, editor, repository, and widget suites pass.
 
 Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
@@ -15,9 +16,10 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 ### Foundation and persistence
 
 - [~] Immutable `EntryDocument`, `CanvasNode`, `Transform2D`, and
-  `EditorDocumentSnapshot` boundaries are now the controller's working state.
-  The active renderer still consumes detached legacy adapters at one explicit
-  compatibility edge; no editor mutation is performed through those aliases.
+  `EditorDocumentSnapshot` boundaries are the controller's working state and
+  the active renderer consumes immutable world-space node projections. Legacy
+  constructors, detached block getters, and standalone-canvas callbacks remain
+  as a compatibility edge for older tests and saved-data adapters.
 - [x] Fresh-data startup; legacy migration is out of scope.
 - [x] `EditorController` owns selection, transactions, clipboard, 100-step
   undo/redo, text coalescing, and save state.
@@ -35,8 +37,8 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [x] Screens receive configured editor view-model factories and narrow
   capability contracts through the composition root; `JournalStore` is kept
   behind Hive adapters.
-- [~] Asset collection protects live documents, checkpoints, and templates,
-  but not undo/redo or clipboard references.
+- [x] Asset collection protects live documents, checkpoints, templates,
+  immutable undo/redo snapshots, and clipboard references.
 - [x] Serialize final text commit, background checkpoint, and storage flush to
   eliminate lifecycle races.
 
@@ -86,8 +88,9 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [x] The immutable document nests group children, remaps graph IDs, and
   applies world-space gesture transforms while retaining parent-local child
   coordinates.
-- [~] Group children are serialized as local transforms and flattened back to
-  world coordinates for the current renderer; node-native rendering remains.
+- [x] Group children are serialized as local transforms and flattened into an
+  immutable world-space node projection for rendering; no mutable block clone
+  is used by the configured editor canvas.
 - [!] Groups remain hidden structural blocks without bounding-box resize,
   rotation, or reliable nested-group behavior.
 - [x] Layers support selection, rename, visibility, locking, drag reorder,
@@ -159,13 +162,12 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 ## Next Implementation Order
 
 1. **Complete the document-model migration**
-   - Replace the remaining renderer-facing `ContentBlock` adapter with a
-     node-native render model and remove the legacy editor codec from feature
-     views.
-   - Split editor orchestration into feature-native canvas, toolbar, layers,
-     image, history, template, and settings views; keep workflows in focused
-     use cases/view-model methods.
-   - Account for undo and clipboard during asset retention.
+   - Retire the remaining controller and standalone-canvas `ContentBlock`
+     compatibility APIs after downstream tests and embedders move to typed
+     node commands.
+   - Split the still-large editor page into feature-native canvas, toolbar,
+     layers, image, history, template, and settings views; keep workflows in
+     focused use cases/view-model methods.
 
 2. **Correctness hardening**
    - Fix image edge resizing, image-sheet state, lifecycle ordering, visible
