@@ -24,6 +24,8 @@ import 'entry_editor_surface.dart';
 import 'editor_canvas_view.dart';
 import 'editor_layers_view.dart';
 import 'editor_image_editor_view.dart';
+import 'editor_history_view.dart';
+import 'editor_templates_view.dart';
 import '../../music/view_models/page_music_controller.dart';
 import '../../music/views/music_picker_sheet.dart';
 import '../../../../widgets/entry_chrome.dart';
@@ -1266,6 +1268,29 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       backgroundColor: PaperPage.paper,
       showDragHandle: true,
       isScrollControlled: true,
+      builder: (context) => EditorTemplatesView(
+        templates: templates,
+        onInsert: (template) => _editor.insertTemplate(
+          nodes: template.document.nodes,
+          offset: Offset(
+            PageViewport.modelPageSize.width / 2,
+            PageViewport.modelPageSize.height / 2,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Kept temporarily while downstream callers transition to
+  // [EditorTemplatesView].
+  // ignore: unused_element
+  void _showTemplatesLegacy() {
+    final templates = _editor.templates;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: PaperPage.paper,
+      showDragHandle: true,
+      isScrollControlled: true,
       builder: (context) => SafeArea(
         child: SizedBox(
           height: MediaQuery.sizeOf(context).height * 0.68,
@@ -1968,6 +1993,28 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   );
 
   void _showHistory() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: PaperPage.paper,
+      showDragHandle: true,
+      builder: (context) => EditorHistoryView(
+        checkpoints: _editor.checkpointsFor(_document.id),
+        onCreateCheckpoint: () => _editor.createCheckpoint(_document.id),
+        onRestore: (checkpoint) async {
+          final restored = await _editor.restoreCheckpoint(
+            checkpointId: checkpoint.id,
+            documentId: _document.id,
+          );
+          if (restored != null) _editor.replaceDocumentModel(restored);
+        },
+      ),
+    );
+  }
+
+  // Kept temporarily while downstream callers transition to
+  // [EditorHistoryView].
+  // ignore: unused_element
+  void _showHistoryLegacy() {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: PaperPage.paper,
