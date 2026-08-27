@@ -293,6 +293,25 @@ class EntryDocument {
     schemaVersion: entry.schemaVersion,
   );
 
+  /// Transitional storage-codec entry point for callers that still receive a
+  /// flattened legacy block graph. The mutable [Entry] adapter stays inside
+  /// this model/codec boundary instead of leaking into feature views.
+  factory EntryDocument.fromLegacyBlocks({
+    required String id,
+    required String title,
+    required DateTime createdAt,
+    required Iterable<ContentBlock> blocks,
+    BoardSettings board = const BoardSettings(),
+  }) => EntryDocument.fromEntry(
+    Entry(
+      id: id,
+      title: title,
+      createdAt: createdAt,
+      blocks: blocks.map((block) => block.clone()).toList(),
+      board: board,
+    ),
+  );
+
   factory EntryDocument.fromJson(Map<String, dynamic> json) => EntryDocument(
     id: json['id'] as String,
     title: json['title'] as String? ?? '',
