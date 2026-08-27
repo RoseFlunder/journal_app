@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -11,7 +10,6 @@ import 'package:uuid/uuid.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../editor/editor_state.dart';
-import '../../../../editor/entry_canvas.dart';
 import '../../../../models/document.dart';
 import '../../../../models/page_music.dart';
 import '../../../../models/sticker.dart';
@@ -27,6 +25,9 @@ import 'editor_history_view.dart';
 import 'editor_templates_view.dart';
 import 'editor_toolbar_view.dart';
 import 'editor_more_tools_view.dart';
+import 'editor_shape_picker_view.dart';
+import 'editor_alignment_view.dart';
+import 'editor_transform_inspector_view.dart';
 import '../../music/view_models/page_music_controller.dart';
 import '../../music/views/music_picker_sheet.dart';
 import '../../../../widgets/entry_chrome.dart';
@@ -717,33 +718,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   Future<void> _addShape() async {
-    const shapes = <({String value, String label, IconData icon})>[
-      (value: 'rectangle', label: 'Rectangle', icon: Icons.rectangle_outlined),
-      (value: 'ellipse', label: 'Ellipse', icon: Icons.circle_outlined),
-      (value: 'line', label: 'Line', icon: Icons.horizontal_rule),
-      (value: 'arrow', label: 'Arrow', icon: Icons.arrow_right_alt),
-    ];
     final shape = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: PaperPage.paper,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const ListTile(
-              leading: Icon(Icons.category_outlined),
-              title: Text('Add shape'),
-            ),
-            for (final option in shapes)
-              ListTile(
-                leading: Icon(option.icon),
-                title: Text(option.label),
-                onTap: () => Navigator.pop(context, option.value),
-              ),
-          ],
-        ),
-      ),
+      builder: (context) => const EditorShapePickerView(),
     );
     if (!mounted || shape == null) return;
     final node = CanvasNode(
@@ -1197,63 +1176,14 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   void _showAlignment() {
-    const choices = <({String label, IconData icon, Alignment alignment})>[
-      (
-        label: 'Align left',
-        icon: Icons.format_align_left,
-        alignment: Alignment.centerLeft,
-      ),
-      (
-        label: 'Align center',
-        icon: Icons.format_align_center,
-        alignment: Alignment.center,
-      ),
-      (
-        label: 'Align right',
-        icon: Icons.format_align_right,
-        alignment: Alignment.centerRight,
-      ),
-      (
-        label: 'Align top',
-        icon: Icons.vertical_align_top,
-        alignment: Alignment.topCenter,
-      ),
-      (
-        label: 'Align middle',
-        icon: Icons.vertical_align_center,
-        alignment: Alignment.center,
-      ),
-      (
-        label: 'Align bottom',
-        icon: Icons.vertical_align_bottom,
-        alignment: Alignment.bottomCenter,
-      ),
-    ];
-    showModalBottomSheet<void>(
+    showModalBottomSheet<Alignment>(
       context: context,
       backgroundColor: PaperPage.paper,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const ListTile(
-              leading: Icon(Icons.align_horizontal_center_outlined),
-              title: Text('Align selection'),
-            ),
-            for (final choice in choices)
-              ListTile(
-                leading: Icon(choice.icon),
-                title: Text(choice.label),
-                onTap: () {
-                  _editor.align(choice.alignment);
-                  Navigator.pop(context);
-                },
-              ),
-          ],
-        ),
-      ),
-    );
+      builder: (context) => const EditorAlignmentView(),
+    ).then((alignment) {
+      if (alignment != null) _editor.align(alignment);
+    });
   }
 
   void _deleteSelected() {
@@ -1283,162 +1213,33 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   void _showTransformInspector() {
-    final block = _editor.primaryNode;
-    if (block == null) return;
-    final x = TextEditingController(text: block.x.toStringAsFixed(1));
-    final y = TextEditingController(text: block.y.toStringAsFixed(1));
-    final width = TextEditingController(text: block.w.toStringAsFixed(1));
-    final height = TextEditingController(text: block.h.toStringAsFixed(1));
-    final rotation = TextEditingController(
-      text: (block.rotation * 180 / math.pi).toStringAsFixed(1),
-    );
-    final opacity = TextEditingController(
-      text: (block.opacity * 100).round().toString(),
-    );
-    Future<void> apply() async {
-      final nextX = double.tryParse(x.text);
-      final nextY = double.tryParse(y.text);
-      final nextWidth = double.tryParse(width.text);
-      final nextHeight = double.tryParse(height.text);
-      final degrees = double.tryParse(rotation.text);
-      final nextOpacity = double.tryParse(opacity.text);
-      if ([
-        nextX,
-        nextY,
-        nextWidth,
-        nextHeight,
-        degrees,
-        nextOpacity,
-      ].any((value) => value == null)) {
-        return;
-      }
-      _editor.beginTransaction('Precise transform');
-      _editor.replaceNodeWorldTransform(
-        block.id,
-        Transform2D(
-          x: nextX!,
-          y: nextY!,
-          width: math.max(EntryCanvas.minWidth, nextWidth!),
-          height: math.max(EntryCanvas.minHeight, nextHeight!),
-          rotation: degrees! * math.pi / 180,
-        ),
-        label: 'Precise transform',
-      );
-      _editor.updateNode(
-        block.id,
-        (node) => node.copyWith(
-          opacity: (nextOpacity! / 100).clamp(0.0, 1.0).toDouble(),
-        ),
-        label: 'Precise transform',
-      );
-      await _editor.commitTransaction();
-    }
-
+    final node = _editor.primaryNode;
+    if (node == null) return;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: PaperPage.paper,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            0,
-            20,
-            MediaQuery.viewInsetsOf(context).bottom + 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Precise transform', style: TextStyle(fontSize: 22)),
-              if (block.locked)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    'Unlock this block before editing its transform.',
-                  ),
-                ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: _numberField('X', x)),
-                  const SizedBox(width: 12),
-                  Expanded(child: _numberField('Y', y)),
-                ],
-              ),
-              Row(
-                children: [
-                  Expanded(child: _numberField('Width', width)),
-                  const SizedBox(width: 12),
-                  Expanded(child: _numberField('Height', height)),
-                ],
-              ),
-              Row(
-                children: [
-                  Expanded(child: _numberField('Rotation °', rotation)),
-                  const SizedBox(width: 12),
-                  Expanded(child: _numberField('Opacity %', opacity)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 4,
-                children: [
-                  _nudgeButton('←', const Offset(-1, 0)),
-                  _nudgeButton('↑', const Offset(0, -1)),
-                  _nudgeButton('↓', const Offset(0, 1)),
-                  _nudgeButton('→', const Offset(1, 0)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton(
-                  onPressed: block.locked
-                      ? null
-                      : () async {
-                          await apply();
-                          if (context.mounted) Navigator.pop(context);
-                        },
-                  child: const Text('Apply'),
-                ),
-              ),
-            ],
-          ),
-        ),
+      builder: (context) => EditorTransformInspectorView(
+        node: node,
+        onApply: (transform, opacity) async {
+          _editor.beginTransaction('Precise transform');
+          _editor.replaceNodeWorldTransform(
+            node.id,
+            transform,
+            label: 'Precise transform',
+          );
+          _editor.updateNode(
+            node.id,
+            (current) => current.copyWith(opacity: opacity),
+            label: 'Precise transform',
+          );
+          await _editor.commitTransaction();
+        },
+        onNudge: _editor.nudge,
       ),
-    ).whenComplete(() {
-      x.dispose();
-      y.dispose();
-      width.dispose();
-      height.dispose();
-      rotation.dispose();
-      opacity.dispose();
-    });
+    );
   }
-
-  Widget _numberField(String label, TextEditingController controller) =>
-      Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: TextField(
-          controller: controller,
-          keyboardType: const TextInputType.numberWithOptions(
-            decimal: true,
-            signed: true,
-          ),
-          decoration: InputDecoration(labelText: label),
-        ),
-      );
-
-  Widget _nudgeButton(String label, Offset delta) => Semantics(
-    button: true,
-    label: 'Nudge $label',
-    child: OutlinedButton(
-      onPressed: () => _editor.nudge(delta),
-      child: Text(label),
-    ),
-  );
 
   void _showHistory() {
     showModalBottomSheet<void>(
