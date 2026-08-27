@@ -546,6 +546,37 @@ void main() {
     expect(saved.single.nodes.single.transform.x, 6);
   });
 
+  test('undo and clipboard snapshots retain referenced media IDs', () async {
+    final controller = EditorController(
+      document: EntryDocument(
+        id: 'asset-retention',
+        title: 'Assets',
+        createdAt: DateTime.utc(2026),
+        modifiedAt: DateTime.utc(2026),
+        nodes: [
+          CanvasNode(
+            id: 'image',
+            type: BlockType.image,
+            transform: const Transform2D(width: 40, height: 40),
+            payload: const {'assetId': 'asset-1'},
+          ),
+        ],
+      ),
+      persistDocument: (next) async {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.select('image');
+    controller.copySelection();
+    controller.deleteSelection();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.document.nodes, isEmpty);
+    expect(controller.retainedAssetIds, contains('asset-1'));
+    await controller.undo();
+    expect(controller.retainedAssetIds, contains('asset-1'));
+  });
+
   test('document-native group movement preserves local child transforms', () async {
     final document = EntryDocument(
       id: 'nested-editor',

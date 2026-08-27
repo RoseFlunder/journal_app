@@ -67,6 +67,10 @@ sealed class EditorCommand {
   final String label;
   final Set<String> affectedIds;
 
+  /// Immutable documents whose assets must remain available while this
+  /// command is reachable through undo/redo.
+  Iterable<EntryDocument> get retainedDocuments => const <EntryDocument>[];
+
   EditorDocumentSnapshot apply(EditorDocumentSnapshot state);
 
   EditorDocumentSnapshot revert(EditorDocumentSnapshot state);
@@ -229,6 +233,9 @@ final class NodeEditorCommand extends EditorCommand {
   final EditorDocumentSnapshot before;
   final EditorDocumentSnapshot after;
 
+  @override
+  Iterable<EntryDocument> get retainedDocuments => [before.document, after.document];
+
   static NodeEditorCommand? tryCreate({
     required String label,
     required EditorDocumentSnapshot before,
@@ -285,6 +292,9 @@ final class StructuralEditorCommand extends EditorCommand {
   final EditorDocumentSnapshot after;
 
   @override
+  Iterable<EntryDocument> get retainedDocuments => [before.document, after.document];
+
+  @override
   EditorDocumentSnapshot apply(EditorDocumentSnapshot state) => after;
 
   @override
@@ -303,6 +313,9 @@ final class DocumentReplacementCommand extends EditorCommand {
 
   final EditorDocumentSnapshot before;
   final EditorDocumentSnapshot after;
+
+  @override
+  Iterable<EntryDocument> get retainedDocuments => [before.document, after.document];
 
   @override
   EditorDocumentSnapshot apply(EditorDocumentSnapshot state) => after;
@@ -324,6 +337,31 @@ class EditorHistory {
   bool get canUndo => _undo.isNotEmpty;
   bool get canRedo => _redo.isNotEmpty;
   bool get inTransaction => _transactionStart != null;
+
+  /// Asset IDs referenced by all reachable command snapshots and the active
+  /// transaction's starting document.
+  Set<String> get retainedAssetIds {
+    final ids = <String>{};
+    void collect(EntryDocument document) {
+      void visit(Iterable<CanvasNode> nodes) {
+        for (final node in nodes) {
+          if (node.assetId != null) ids.add(node.assetId!);
+          if (node.children.isNotEmpty) visit(node.children);
+        }
+      }
+
+      visit(document.nodes);
+    }
+
+    final start = _transactionStart;
+    if (start != null) collect(start.document);
+    for (final command in [..._undo, ..._redo]) {
+      for (final document in command.retainedDocuments) {
+        collect(document);
+      }
+    }
+    return Set.unmodifiable(ids);
+  }
 
   void begin(EditorDocumentSnapshot snapshot, String label) {
     if (inTransaction) return;

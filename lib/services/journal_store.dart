@@ -351,8 +351,10 @@ class JournalStore extends ChangeNotifier {
   /// Removes only assets that are not referenced by a live document,
   /// checkpoint, template, or retained clipboard payload. Asset bytes are
   /// immutable, so this is safe to run after destructive document operations.
-  Future<void> collectUnreferencedAssets() async {
-    final referenced = <String>{};
+  Future<void> collectUnreferencedAssets({
+    Iterable<String> retainedAssetIds = const <String>[],
+  }) async {
+    final referenced = <String>{...retainedAssetIds};
     void collectBlocks(Iterable<ContentBlock> blocks) {
       for (final block in blocks) {
         if (block.assetId != null) referenced.add(block.assetId!);

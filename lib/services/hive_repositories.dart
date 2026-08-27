@@ -95,8 +95,10 @@ class HiveAssetRepository implements AssetRepository {
   String? assetMime(String id) => _source.getAssetMime(id);
 
   @override
-  Future<void> collectUnreferencedAssets() =>
-      _source.collectUnreferencedAssets();
+  Future<void> collectUnreferencedAssets({
+    Iterable<String> retainedAssetIds = const <String>[],
+  }) =>
+      _source.collectUnreferencedAssets(retainedAssetIds: retainedAssetIds);
 }
 
 class HiveCheckpointRepository implements CheckpointRepository {

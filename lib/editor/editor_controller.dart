@@ -75,6 +75,11 @@ class EditorController extends ChangeNotifier {
   bool get canRedo => _history.canRedo;
   bool get inTransaction => _history.inTransaction;
   bool get canPaste => _clipboard.isNotEmpty;
+  /// Asset IDs kept alive by clipboard and undo/redo snapshots.
+  Set<String> get retainedAssetIds => Set.unmodifiable({
+    ..._history.retainedAssetIds,
+    ..._assetIdsInNodes(_clipboard),
+  });
   bool get canGroup => _expandedSelectedBlocks.length > 1;
   bool get canUngroup =>
       _expandedSelectedBlocks.any((block) => block.groupId != null);
@@ -999,6 +1004,19 @@ class EditorController extends ChangeNotifier {
 
   static List<ContentBlock> _cloneBlocks(List<ContentBlock> blocks) =>
       blocks.map((block) => block.clone()).toList();
+
+  static Set<String> _assetIdsInNodes(Iterable<CanvasNode> nodes) {
+    final ids = <String>{};
+    void visit(Iterable<CanvasNode> candidates) {
+      for (final node in candidates) {
+        if (node.assetId != null) ids.add(node.assetId!);
+        if (node.children.isNotEmpty) visit(node.children);
+      }
+    }
+
+    visit(nodes);
+    return ids;
+  }
 }
 
 EntryDocument _legacyDocument(

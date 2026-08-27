@@ -25,7 +25,9 @@ abstract interface class AssetRepository {
 
   String? assetMime(String id);
 
-  Future<void> collectUnreferencedAssets();
+  Future<void> collectUnreferencedAssets({
+    Iterable<String> retainedAssetIds,
+  });
 }
 
 abstract interface class CheckpointRepository {

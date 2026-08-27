@@ -75,6 +75,13 @@ class EntryEditorViewModel extends EditorController {
   ArchiveRepository get archiveRepository => _archives!;
   Uint8List? readAsset(String id) => assetRepository.readAsset(id);
 
+  /// Runs media cleanup without deleting assets still reachable from this
+  /// editor's immutable undo/redo or clipboard snapshots.
+  Future<void> collectUnreferencedAssets() =>
+      assetRepository.collectUnreferencedAssets(
+        retainedAssetIds: retainedAssetIds,
+      );
+
   /// Presentation/tool state that must stay consistent with the document
   /// selection. Flutter-only focus, dialogs, and animations remain in views.
   bool get editing => _editing;

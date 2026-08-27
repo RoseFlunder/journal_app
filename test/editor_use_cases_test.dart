@@ -110,7 +110,9 @@ class _FakeAssets implements AssetRepository {
   String? assetMime(String id) => 'image/jpeg';
 
   @override
-  Future<void> collectUnreferencedAssets() async {}
+  Future<void> collectUnreferencedAssets({
+    Iterable<String> retainedAssetIds = const <String>[],
+  }) async {}
 }
 
 class _FakeTemplates implements TemplateRepository {
