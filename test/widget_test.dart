@@ -14,7 +14,7 @@ import 'package:journal_app/models/sticker.dart';
 import 'package:journal_app/services/journal_store.dart';
 import 'package:journal_app/services/hive_repositories.dart';
 import 'package:journal_app/editor/block_widget.dart';
-import 'package:journal_app/editor/editor_toolbar.dart';
+import 'package:journal_app/ui/features/editor/views/editor_toolbar_view.dart';
 import 'package:journal_app/editor/entry_canvas.dart';
 import 'package:journal_app/widgets/paper_page.dart';
 import 'package:journal_app/widgets/page_viewport.dart';
@@ -68,7 +68,7 @@ void main() {
           child: Scaffold(
             body: Align(
               alignment: Alignment.bottomCenter,
-              child: EditorToolbar(
+              child: EditorToolbarView(
                 editing: true,
                 hasSelection: hasSelection,
                 textEditing: false,

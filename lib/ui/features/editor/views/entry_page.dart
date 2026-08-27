@@ -10,7 +10,6 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../../editor/editor_toolbar.dart';
 import '../../../../editor/editor_state.dart';
 import '../../../../editor/entry_canvas.dart';
 import '../../../../models/document.dart';
@@ -26,6 +25,8 @@ import 'editor_layers_view.dart';
 import 'editor_image_editor_view.dart';
 import 'editor_history_view.dart';
 import 'editor_templates_view.dart';
+import 'editor_toolbar_view.dart';
+import 'editor_more_tools_view.dart';
 import '../../music/view_models/page_music_controller.dart';
 import '../../music/views/music_picker_sheet.dart';
 import '../../../../widgets/entry_chrome.dart';
@@ -1166,244 +1167,45 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       backgroundColor: PaperPage.paper,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.72,
-          minChildSize: 0.35,
-          maxChildSize: 0.94,
-          builder: (context, scrollController) => SafeArea(
-            child: ListView(
-              controller: scrollController,
-              padding: const EdgeInsets.only(bottom: 16),
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.undo),
-                  title: const Text('Undo'),
-                  enabled: _editor.canUndo,
-                  onTap: _editor.canUndo
-                      ? () {
-                          Navigator.pop(context);
-                          _undo();
-                        }
-                      : null,
-                ),
-                ListTile(
-                  leading: const Icon(Icons.redo),
-                  title: const Text('Redo'),
-                  enabled: _editor.canRedo,
-                  onTap: _editor.canRedo
-                      ? () {
-                          Navigator.pop(context);
-                          _redo();
-                        }
-                      : null,
-                ),
-                ListTile(
-                  leading: const Icon(Icons.category_outlined),
-                  title: const Text('Add shape'),
-                  subtitle: const Text('Rectangle, ellipse, line, or arrow'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _addShape();
-                  },
-                ),
-                if (_imageSelection() != null)
-                  ListTile(
-                    leading: const Icon(Icons.image_outlined),
-                    title: const Text('Edit image'),
-                    subtitle: const Text('Crop, flip, mask, and opacity'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showImageEditor();
-                    },
-                  ),
-                ListTile(
-                  leading: const Icon(Icons.dashboard_customize_outlined),
-                  title: const Text('Save selection as template'),
-                  subtitle: const Text('Reuse selected objects locally'),
-                  enabled: _editor.hasSelection,
-                  onTap: !_editor.hasSelection
-                      ? null
-                      : () {
-                          Navigator.pop(context);
-                          _saveTemplate();
-                        },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.library_books_outlined),
-                  title: const Text('Insert template'),
-                  subtitle: const Text(
-                    'Add a saved board at the camera center',
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showTemplates();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.file_upload_outlined),
-                  title: const Text('Export .cozyjournal backup'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _exportArchive();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.file_download_outlined),
-                  title: const Text('Import .cozyjournal backup'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _importArchive();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.group_work_outlined),
-                  title: const Text('Group selection'),
-                  subtitle: const Text('Keep selected objects together'),
-                  enabled: _editor.canGroup,
-                  onTap: _editor.canGroup
-                      ? () {
-                          _editor.groupSelection();
-                          Navigator.pop(context);
-                        }
-                      : null,
-                ),
-                ListTile(
-                  leading: const Icon(Icons.group_off_outlined),
-                  title: const Text('Ungroup selection'),
-                  enabled: _editor.canUngroup,
-                  onTap: _editor.canUngroup
-                      ? () {
-                          _editor.ungroupSelection();
-                          Navigator.pop(context);
-                        }
-                      : null,
-                ),
-                ListTile(
-                  leading: const Icon(Icons.align_horizontal_center_outlined),
-                  title: const Text('Align selection'),
-                  subtitle: const Text(
-                    'Align selected objects to their shared bounds',
-                  ),
-                  enabled: _editor.selection.length > 1,
-                  onTap: _editor.selection.length > 1
-                      ? () {
-                          Navigator.pop(context);
-                          _showAlignment();
-                        }
-                      : null,
-                ),
-                ListTile(
-                  leading: Icon(
-                    _selectMode ? Icons.select_all : Icons.select_all_outlined,
-                  ),
-                  title: Text(
-                    _selectMode ? 'Exit select mode' : 'Select multiple',
-                  ),
-                  subtitle: const Text(
-                    'Drag blank board space to lasso content',
-                  ),
-                  onTap: () {
-                    setState(() => _selectMode = !_selectMode);
-                    Navigator.pop(context);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(_drawMode ? Icons.draw : Icons.draw_outlined),
-                  title: Text(_drawMode ? 'Exit draw mode' : 'Draw'),
-                  subtitle: const Text('Draw a vector ink stroke on the board'),
-                  onTap: () {
-                    setState(() {
-                      _drawMode = !_drawMode;
-                      if (_drawMode) _selectMode = false;
-                    });
-                    Navigator.pop(context);
-                  },
-                ),
-                if (_drawMode)
-                  ListTile(
-                    key: const ValueKey('ink-settings'),
-                    leading: const Icon(Icons.tune),
-                    title: const Text('Ink settings'),
-                    subtitle: const Text('Color, width, and opacity'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showInkSettings();
-                    },
-                  ),
-                ListTile(
-                  key: const ValueKey('page-music-tool'),
-                  leading: const Icon(Icons.library_music_outlined),
-                  title: Text(
-                    _document.music == null
-                        ? 'Add page music'
-                        : 'Change page music',
-                  ),
-                  subtitle: const Text(
-                    'Stream Creative Commons music from Jamendo',
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    unawaited(_showMusicPicker());
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.layers_outlined),
-                  title: const Text('Layers'),
-                  subtitle: const Text('Reorder, show, hide, and lock content'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showLayers();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.tune),
-                  title: const Text('Precise transform'),
-                  subtitle: const Text(
-                    'Move, resize, rotate, and nudge without dragging',
-                  ),
-                  enabled: _editor.primaryNode != null,
-                  onTap: _editor.primaryNode == null
-                      ? null
-                      : () {
-                          Navigator.pop(context);
-                          _showTransformInspector();
-                        },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.history),
-                  title: const Text('History & recovery'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showHistory();
-                  },
-                ),
-                SwitchListTile(
-                  secondary: const Icon(Icons.grid_4x4_outlined),
-                  title: const Text('Snap to grid'),
-                  value: _editor.board.snapToGrid,
-                  onChanged: (value) {
-                    _editor.updateBoard(
-                      _editor.board.copyWith(snapToGrid: value),
-                    );
-                    setSheetState(() {});
-                  },
-                ),
-                SwitchListTile(
-                  secondary: const Icon(Icons.grid_on_outlined),
-                  title: const Text('Show grid'),
-                  value: _editor.board.gridVisible,
-                  onChanged: (value) {
-                    _editor.updateBoard(
-                      _editor.board.copyWith(gridVisible: value),
-                    );
-                    setSheetState(() {});
-                  },
-                ),
-              ],
-            ),
-          ),
+      builder: (context) => EditorMoreToolsView(
+        board: _editor.board,
+        hasSelection: _editor.hasSelection,
+        selectionCount: _editor.selection.length,
+        canUndo: _editor.canUndo,
+        canRedo: _editor.canRedo,
+        canGroup: _editor.canGroup,
+        canUngroup: _editor.canUngroup,
+        hasImageSelection: _imageSelection() != null,
+        hasPrimarySelection: _editor.primaryNode != null,
+        hasMusic: _document.music != null,
+        selectMode: _selectMode,
+        drawMode: _drawMode,
+        onUndo: _undo,
+        onRedo: _redo,
+        onAddShape: _addShape,
+        onEditImage: _showImageEditor,
+        onSaveTemplate: _saveTemplate,
+        onInsertTemplate: _showTemplates,
+        onExportArchive: _exportArchive,
+        onImportArchive: _importArchive,
+        onGroup: _editor.groupSelection,
+        onUngroup: _editor.ungroupSelection,
+        onAlign: _showAlignment,
+        onToggleSelectMode: () => _selectMode = !_selectMode,
+        onToggleDrawMode: () {
+          _drawMode = !_drawMode;
+          if (_drawMode) _selectMode = false;
+        },
+        onInkSettings: _showInkSettings,
+        onMusic: () => unawaited(_showMusicPicker()),
+        onLayers: _showLayers,
+        onTransform: _showTransformInspector,
+        onHistory: _showHistory,
+        onSnapToGridChanged: (value) => _editor.updateBoard(
+          _editor.board.copyWith(snapToGrid: value),
+        ),
+        onGridVisibilityChanged: (value) => _editor.updateBoard(
+          _editor.board.copyWith(gridVisible: value),
         ),
       ),
     );
@@ -2236,7 +2038,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                           _buildMusicChip(),
                           const SizedBox(height: 8),
                         ],
-                        EditorToolbar(
+                        EditorToolbarView(
                           editing: false,
                           hasSelection: false,
                           textEditing: false,
@@ -2309,7 +2111,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                   right: 8,
                   bottom: 8,
                   child: Center(
-                    child: EditorToolbar(
+                    child: EditorToolbarView(
                       editing: true,
                       hasSelection: _selectedId != null,
                       textEditing: _textEditingId != null,
