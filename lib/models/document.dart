@@ -339,6 +339,165 @@ class EntryDocument {
     schemaVersion: schemaVersion,
   );
 
+  /// Finds a node anywhere in the immutable document tree.
+  CanvasNode? nodeById(String id) {
+    CanvasNode? visit(Iterable<CanvasNode> candidates) {
+      for (final node in candidates) {
+        if (node.id == id) return node;
+        final nested = visit(node.children);
+        if (nested != null) return nested;
+      }
+      return null;
+    }
+
+    return visit(nodes);
+  }
+
+  /// Replaces one node without exposing mutable compatibility adapters.
+  EntryDocument replaceNode(CanvasNode replacement) {
+    var replaced = false;
+
+    List<CanvasNode> visit(Iterable<CanvasNode> candidates) => candidates
+        .map(
+          (node) {
+            if (node.id == replacement.id) {
+              replaced = true;
+              return replacement;
+            }
+            if (node.children.isEmpty) return node;
+            return node.copyWith(children: visit(node.children));
+          },
+        )
+        .toList(growable: false);
+
+    final next = visit(nodes);
+    return replaced ? copyWith(nodes: next) : this;
+  }
+
+  /// Inserts nodes at the root or as children of [parentId].
+  EntryDocument insertNodes(
+    Iterable<CanvasNode> additions, {
+    String? parentId,
+    int? index,
+  }) {
+    final incoming = List<CanvasNode>.unmodifiable(additions);
+    if (incoming.isEmpty) return this;
+    if (parentId == null) {
+      final next = List<CanvasNode>.from(nodes);
+      final insertion = (index ?? next.length).clamp(0, next.length).toInt();
+      next.insertAll(insertion, incoming);
+      return copyWith(nodes: next);
+    }
+
+    var inserted = false;
+    List<CanvasNode> visit(Iterable<CanvasNode> candidates) => candidates
+        .map(
+          (node) {
+            if (node.id == parentId) {
+              inserted = true;
+              final children = List<CanvasNode>.from(node.children);
+              final insertion =
+                  (index ?? children.length).clamp(0, children.length).toInt();
+              children.insertAll(insertion, incoming);
+              return node.copyWith(children: children);
+            }
+            if (node.children.isEmpty) return node;
+            return node.copyWith(children: visit(node.children));
+          },
+        )
+        .toList(growable: false);
+
+    final next = visit(nodes);
+    return inserted ? copyWith(nodes: next) : this;
+  }
+
+  /// Removes nodes by ID, including all descendants of a removed node.
+  EntryDocument removeNodes(Iterable<String> ids) {
+    final removals = ids.toSet();
+    if (removals.isEmpty) return this;
+    List<CanvasNode> visit(Iterable<CanvasNode> candidates) => candidates
+        .where((node) => !removals.contains(node.id))
+        .map(
+          (node) => node.children.isEmpty
+              ? node
+              : node.copyWith(children: visit(node.children)),
+        )
+        .toList(growable: false);
+
+    return copyWith(nodes: visit(nodes));
+  }
+
+  /// Applies world-space transforms while retaining each node's local
+  /// transform relative to its parent. Unspecified descendants inherit any
+  /// parent movement without being rewritten as world-space values.
+  EntryDocument replaceWorldTransforms(
+    Map<String, Transform2D> transforms,
+  ) {
+    if (transforms.isEmpty) return this;
+
+    List<CanvasNode> visit(
+      Iterable<CanvasNode> candidates,
+      Transform2D? parentWorld,
+    ) => candidates
+        .map((node) {
+          final currentWorld = parentWorld == null
+              ? node.transform
+              : _worldTransform(node.transform, parentWorld);
+          final desiredWorld = transforms[node.id] ?? currentWorld;
+          final local = parentWorld == null
+              ? desiredWorld
+              : _toLocal(desiredWorld, parentWorld);
+          final children = node.children.isEmpty
+              ? node.children
+              : visit(node.children, desiredWorld);
+          return node.copyWith(transform: local, children: children);
+        })
+        .toList(growable: false);
+
+    return copyWith(nodes: visit(nodes, null));
+  }
+
+  /// Replaces a legacy flattened block at the immutable boundary. This is a
+  /// transitional bridge for the current canvas and converts the block's
+  /// world transform back to the node's parent-local coordinates.
+  @Deprecated('Migrate callers to replaceNode or replaceWorldTransforms.')
+  EntryDocument replaceLegacyBlock(ContentBlock block) {
+    var replaced = false;
+
+    CanvasNode visit(CanvasNode node, Transform2D? parentWorld) {
+      final currentWorld = parentWorld == null
+          ? node.transform
+          : _worldTransform(node.transform, parentWorld);
+      if (node.id == block.id) {
+        replaced = true;
+        final world = Transform2D(
+          x: block.x,
+          y: block.y,
+          width: block.w,
+          height: block.h,
+          rotation: block.rotation,
+        );
+        final local = parentWorld == null ? world : _toLocal(world, parentWorld);
+        return CanvasNode.fromBlock(
+          block,
+          transform: local,
+          children: node.children,
+        );
+      }
+      if (node.children.isEmpty) return node;
+      return node.copyWith(
+        children: node.children
+            .map((child) => visit(child, currentWorld))
+            .toList(growable: false),
+      );
+    }
+
+    final next = nodes
+        .map((node) => visit(node, null))
+        .toList(growable: false);
+    return replaced ? copyWith(nodes: next) : this;
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,

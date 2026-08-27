@@ -8,42 +8,42 @@ import '../models/entry.dart';
 /// A detached, deeply immutable document state used by one editor command.
 class EditorDocumentSnapshot {
   EditorDocumentSnapshot(Iterable<ContentBlock> blocks, BoardSettings board)
-    : _data = _freeze(<String, dynamic>{
-        'blocks': blocks.map((block) => block.toJson()).toList(growable: false),
-        'board': board.toJson(),
-      });
+    : _document = EntryDocument.fromEntry(
+        Entry.newPage()
+          ..blocks = blocks.map((block) => block.clone()).toList()
+          ..board = board,
+      );
 
-  final Map<String, dynamic> _data;
+  /// Creates a snapshot without converting through mutable storage records.
+  EditorDocumentSnapshot.fromDocument(this._document);
+
+  final EntryDocument _document;
+
+  /// The immutable document represented by this snapshot.
+  EntryDocument get document => _document;
 
   /// Rehydrates detached mutable adapters only at the controller boundary.
-  List<ContentBlock> get blocks => _blocksFrom(_data['blocks']);
+  @Deprecated('Use document.nodes instead.')
+  List<ContentBlock> get blocks => _document.blocks;
 
-  BoardSettings get board => BoardSettings.fromJson(
-    Map<String, dynamic>.from(_data['board'] as Map<Object?, Object?>),
-  );
+  BoardSettings get board => _document.board;
 
   /// Returns a new snapshot with only node transforms changed.
   EditorDocumentSnapshot withTransforms(
     Iterable<NodeTransformChange> changes,
-  ) {
-    final next = blocks;
-    final byId = <String, ContentBlock>{
-      for (final block in next) block.id: block,
-    };
-    for (final change in changes) {
-      final block = byId[change.id];
-      if (block == null) continue;
-      block
-        ..x = change.after.x
-        ..y = change.after.y
-        ..w = change.after.width
-        ..h = change.after.height
-        ..rotation = change.after.rotation;
-    }
-    return EditorDocumentSnapshot(next, board);
-  }
+  ) => EditorDocumentSnapshot.fromDocument(
+    _document.replaceWorldTransforms({
+      for (final change in changes) change.id: change.after,
+    }),
+  );
 
-  Map<String, dynamic> toJson() => _copyMap(_data);
+  /// Returns the compact editor-state representation used to compare command
+  /// deltas. Document metadata is persisted by the repository and is not part
+  /// of an editor gesture command.
+  Map<String, dynamic> toJson() => {
+    'blocks': blocks.map((block) => block.toJson()).toList(growable: false),
+    'board': board.toJson(),
+  };
 }
 
 /// Immutable transform delta for one node in a typed transform command.
@@ -396,35 +396,3 @@ Map<String, dynamic> _withoutTransform(ContentBlock block) {
   }
   return json;
 }
-
-List<ContentBlock> _blocksFrom(Object? raw) {
-  if (raw is! List<Object?>) return <ContentBlock>[];
-  return raw
-      .whereType<Map<Object?, Object?>>()
-      .map((block) => ContentBlock.fromJson(_copyMap(block)))
-      .toList(growable: false);
-}
-
-Map<String, dynamic> _copyMap(Map<Object?, Object?> source) => <String, dynamic>{
-  for (final entry in source.entries)
-    entry.key.toString(): _copyValue(entry.value),
-};
-
-Object? _copyValue(Object? value) => switch (value) {
-  Map<Object?, Object?> map => _copyMap(map),
-  List<Object?> list => list.map(_copyValue).toList(growable: false),
-  _ => value,
-};
-
-Map<String, dynamic> _freeze(Map<String, dynamic> source) =>
-    Map<String, dynamic>.unmodifiable(
-      source.map((key, value) => MapEntry(key, _freezeValue(value))),
-    );
-
-Object? _freezeValue(Object? value) => switch (value) {
-  Map<Object?, Object?> map => _freeze(_copyMap(map)),
-  List<Object?> list => List<Object?>.unmodifiable(
-    list.map(_freezeValue).toList(growable: false),
-  ),
-  _ => value,
-};

@@ -494,4 +494,50 @@ void main() {
     expect(saved, hasLength(1));
     expect(saved.single.nodes.single.transform.x, 6);
   });
+
+  test('document-native group movement preserves local child transforms', () async {
+    final document = EntryDocument(
+      id: 'nested-editor',
+      title: 'Nested',
+      createdAt: DateTime.utc(2026),
+      modifiedAt: DateTime.utc(2026),
+      nodes: [
+        CanvasNode(
+          id: 'group',
+          type: BlockType.group,
+          transform: const Transform2D(x: 20, y: 30, width: 100, height: 80),
+          children: [
+            CanvasNode(
+              id: 'child',
+              type: BlockType.text,
+              transform: const Transform2D(x: 8, y: 12, width: 40, height: 20),
+              payload: const {'text': 'Child'},
+            ),
+          ],
+        ),
+      ],
+    );
+    final saved = <EntryDocument>[];
+    final controller = EditorController(
+      document: document,
+      persistDocument: (next) async => saved.add(next),
+    );
+    addTearDown(controller.dispose);
+
+    controller.select('group');
+    controller.beginTransaction('Move group');
+    controller.moveSelection(const Offset(5, 7));
+    await controller.commitTransaction();
+
+    final moved = controller.document.nodes.single;
+    expect(moved.transform.x, 25);
+    expect(moved.transform.y, 37);
+    expect(moved.children.single.transform.x, 8);
+    expect(moved.children.single.transform.y, 12);
+    expect(saved.single.nodes.single.children.single.transform.x, 8);
+
+    await controller.undo();
+    expect(controller.document.nodes.single.transform.x, 20);
+    expect(controller.document.nodes.single.children.single.transform.x, 8);
+  });
 }
