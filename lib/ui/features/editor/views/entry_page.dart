@@ -22,6 +22,7 @@ import '../../../../services/journal_transfer_service.dart';
 import '../view_models/entry_editor_view_model.dart';
 import 'entry_editor_surface.dart';
 import 'editor_canvas_view.dart';
+import 'editor_layers_view.dart';
 import '../../music/view_models/page_music_controller.dart';
 import '../../music/views/music_picker_sheet.dart';
 import '../../../../widgets/entry_chrome.dart';
@@ -62,25 +63,18 @@ class EntryPage extends StatefulWidget {
   State<EntryPage> createState() => _EntryPageState();
 }
 
-class _RenameLayerDialog extends StatefulWidget {
-  const _RenameLayerDialog({
-    this.initial = '',
-    this.title = 'Rename layer',
-    this.label = 'Layer name',
-  });
+class _TextPromptDialog extends StatefulWidget {
+  const _TextPromptDialog({required this.title, required this.label});
 
-  final String initial;
   final String title;
   final String label;
 
   @override
-  State<_RenameLayerDialog> createState() => _RenameLayerDialogState();
+  State<_TextPromptDialog> createState() => _TextPromptDialogState();
 }
 
-class _RenameLayerDialogState extends State<_RenameLayerDialog> {
-  late final TextEditingController _controller = TextEditingController(
-    text: widget.initial,
-  );
+class _TextPromptDialogState extends State<_TextPromptDialog> {
+  late final TextEditingController _controller = TextEditingController();
 
   @override
   void dispose() {
@@ -105,7 +99,7 @@ class _RenameLayerDialogState extends State<_RenameLayerDialog> {
       ),
       FilledButton(
         onPressed: () => Navigator.pop(context, _controller.text),
-        child: const Text('Rename'),
+        child: const Text('Save'),
       ),
     ],
   );
@@ -1219,7 +1213,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     if (selectedNodes.isEmpty) return;
     final name = await showDialog<String>(
       context: context,
-      builder: (context) => const _RenameLayerDialog(
+      builder: (context) => const _TextPromptDialog(
         title: 'Save template',
         label: 'Template name',
       ),
@@ -2182,151 +2176,38 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _renameLayer(CanvasRenderable block) async {
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => _RenameLayerDialog(initial: block.name ?? ''),
-    );
-    if (!mounted || name == null) return;
-    _editor.renameLayer(block.id, name);
-  }
-
   void _showLayers() {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: PaperPage.paper,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(context).height * 0.62,
-          child: Column(
-            children: [
-              const ListTile(
-                leading: Icon(Icons.layers_outlined),
-                title: Text('Layers'),
-                subtitle: Text('Top layers appear first'),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: ReorderableListView.builder(
-                  itemCount: _nodes.length,
-                  onReorderItem: (oldIndex, newIndex) {
-                    final visible = _nodes.reversed.toList();
-                    if (oldIndex < 0 || oldIndex >= visible.length) return;
-                    final targetIndex = (_nodes.length - newIndex - 1).clamp(
-                      0,
-                      _nodes.length,
-                    );
-                    _editor.reorderLayer(visible[oldIndex].id, targetIndex);
-                  },
-                  itemBuilder: (context, index) {
-                    final block = _nodes[_nodes.length - index - 1];
-                    final selected = _selectedId == block.id;
-                    final label =
-                        block.name ??
-                        switch (block.type) {
-                          BlockType.text =>
-                            block.text.isEmpty
-                                ? 'Text'
-                                : block.text.split('\n').first,
-                          BlockType.image => 'Photo',
-                          BlockType.sticker => 'Sticker',
-                          BlockType.ink => 'Drawing',
-                          BlockType.shape => 'Shape',
-                          BlockType.group => 'Group',
-                        };
-                    return ListTile(
-                      key: ValueKey('layer-${block.id}'),
-                      contentPadding: EdgeInsets.only(
-                        left: block.groupId == null ? 16 : 40,
-                        right: 8,
-                      ),
-                      selected: selected,
-                      leading: Icon(switch (block.type) {
-                        BlockType.text => Icons.text_fields,
-                        BlockType.image => Icons.photo_outlined,
-                        BlockType.sticker => Icons.emoji_emotions_outlined,
-                        BlockType.ink => Icons.draw_outlined,
-                        BlockType.shape => Icons.category_outlined,
-                        BlockType.group => Icons.folder_copy_outlined,
-                      }),
-                      title: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            tooltip: block.hidden ? 'Show layer' : 'Hide layer',
-                            onPressed: () {
-                              _editor.select(block.id);
-                              _editor.setHidden(!block.hidden);
-                            },
-                            icon: Icon(
-                              block.hidden
-                                  ? Icons.visibility_off
-                                  : Icons.visibility,
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: block.locked
-                                ? 'Unlock layer'
-                                : 'Lock layer',
-                            onPressed: () {
-                              _editor.select(block.id);
-                              _editor.setLocked(!block.locked);
-                            },
-                            icon: Icon(
-                              block.locked
-                                  ? Icons.lock
-                                  : Icons.lock_open_outlined,
-                            ),
-                          ),
-                          PopupMenuButton<String>(
-                            tooltip: 'Layer actions',
-                            onSelected: (action) {
-                              switch (action) {
-                                case 'rename':
-                                  _renameLayer(block);
-                                case 'forward':
-                                  _editor.select(block.id);
-                                  _editor.moveLayerForward();
-                                case 'backward':
-                                  _editor.select(block.id);
-                                  _editor.moveLayerBackward();
-                              }
-                            },
-                            itemBuilder: (context) => const [
-                              PopupMenuItem(
-                                value: 'rename',
-                                child: Text('Rename layer'),
-                              ),
-                              PopupMenuItem(
-                                value: 'forward',
-                                child: Text('Bring forward'),
-                              ),
-                              PopupMenuItem(
-                                value: 'backward',
-                                child: Text('Send backward'),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      onTap: () {
-                        _editor.select(block.id);
-                        setState(() => _selectedId = block.id);
-                        Navigator.pop(context);
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
+      builder: (context) => EditorLayersView(
+        nodes: _nodes,
+        selectedId: _selectedId,
+        onSelect: (id) {
+          _editor.select(id);
+          setState(() => _selectedId = id);
+        },
+        onToggleHidden: (id) {
+          _editor.select(id);
+          final node = _editor.document.nodeById(id);
+          if (node != null) _editor.setHidden(node.visible);
+        },
+        onToggleLocked: (id) {
+          _editor.select(id);
+          final node = _editor.document.nodeById(id);
+          if (node != null) _editor.setLocked(!node.locked);
+        },
+        onReorder: _editor.reorderLayer,
+        onMoveForward: (id) {
+          _editor.select(id);
+          _editor.moveLayerForward();
+        },
+        onMoveBackward: (id) {
+          _editor.select(id);
+          _editor.moveLayerBackward();
+        },
+        onRename: (id, name) async => _editor.renameLayer(id, name),
       ),
     );
   }
