@@ -44,7 +44,23 @@ class EditorController extends ChangeNotifier {
   /// New feature code should consume [document] and [nodes].
   @Deprecated('Use document.nodes or nodes instead.')
   List<ContentBlock> get blocks => _document.blocks;
+
+  /// Immutable leaf projection consumed by the modern canvas renderer.
+  List<CanvasNode> get renderNodes => _document.renderNodes;
   List<CanvasNode> get nodes => document.nodes;
+  /// Immutable structural projection used by layers and inspectors.
+  List<CanvasNode> get allNodes {
+    final result = <CanvasNode>[];
+    void visit(Iterable<CanvasNode> candidates) {
+      for (final node in candidates) {
+        result.add(node);
+        if (node.children.isNotEmpty) visit(node.children);
+      }
+    }
+
+    visit(_document.nodes);
+    return List<CanvasNode>.unmodifiable(result);
+  }
   EntryDocument get document => _document;
   BoardSettings get board => _document.board;
   Set<String> get selection => Set.unmodifiable(_selection);
@@ -79,6 +95,35 @@ class EditorController extends ChangeNotifier {
     final id = _selection.last;
     final block = _byId(id);
     return block?.clone();
+  }
+
+  /// Immutable primary selection for feature views. Unlike
+  /// [primarySelection], this never creates a mutable compatibility adapter.
+  CanvasNode? get primaryNode =>
+      _selection.isEmpty ? null : _document.nodeById(_selection.last);
+
+  /// Immutable drawable selections, including descendants of selected groups.
+  List<CanvasNode> get selectedDrawableNodes {
+    final result = <CanvasNode>[];
+    void collect(CanvasNode node) {
+      if (node.type == BlockType.group) {
+        for (final child in node.children) {
+          collect(child);
+        }
+      } else if (node.type == BlockType.ink || node.type == BlockType.shape) {
+        result.add(node);
+      }
+    }
+
+    void visit(Iterable<CanvasNode> candidates) {
+      for (final node in candidates) {
+        if (_selection.contains(node.id)) collect(node);
+        if (node.children.isNotEmpty) visit(node.children);
+      }
+    }
+
+    visit(_document.nodes);
+    return List<CanvasNode>.unmodifiable(result);
   }
 
   /// Replaces one immutable node at the editor boundary.

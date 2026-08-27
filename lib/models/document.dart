@@ -5,6 +5,10 @@ import 'dart:ui';
 import 'entry.dart';
 import 'page_music.dart';
 
+// Public render contracts used by feature views. Mutable Entry/ContentBlock
+// remain implementation details of the compatibility codec.
+export 'entry.dart' show BlockType, CanvasRenderable;
+
 /// Immutable world-space transform shared by every board node.
 class Transform2D {
   const Transform2D({
@@ -55,7 +59,7 @@ class Transform2D {
 /// Immutable discriminated board node. Payload remains JSON-compatible so
 /// RichText Delta, image adjustments, ink strokes, and future node types can
 /// evolve without changing the common transform contract.
-class CanvasNode {
+class CanvasNode implements CanvasRenderable {
   static const _unset = Object();
 
   CanvasNode({
@@ -71,15 +75,149 @@ class CanvasNode {
   }) : payload = _freezeMap(payload),
        children = UnmodifiableListView(List<CanvasNode>.from(children));
 
+  @override
   final String id;
+  @override
   final BlockType type;
   final Transform2D transform;
   final Map<String, dynamic> payload;
+  @override
   final double opacity;
+  @override
   final bool locked;
   final bool visible;
   final String? accessibilityLabel;
   final List<CanvasNode> children;
+
+  @override
+  String get text => payload['text'] as String? ?? '';
+
+  @override
+  String? get assetId => payload['assetId'] as String?;
+
+  @override
+  String? get stickerId => payload['stickerId'] as String?;
+
+  @override
+  double get x => transform.x;
+
+  @override
+  double get y => transform.y;
+
+  @override
+  double get w => transform.width;
+
+  @override
+  double get h => transform.height;
+
+  @override
+  double get rotation => transform.rotation;
+
+  @override
+  double get fontSize => _number('fontSize', 21);
+
+  @override
+  String? get fontFamily => payload['fontFamily'] as String?;
+
+  @override
+  int? get textColorValue => _integer('textColorValue');
+
+  @override
+  bool get bold => payload['bold'] as bool? ?? false;
+
+  @override
+  bool get italic => payload['italic'] as bool? ?? false;
+
+  @override
+  bool get hidden => !visible;
+
+  @override
+  String? get name => accessibilityLabel;
+
+  @override
+  List<dynamic>? get richTextDelta => payload['richTextDelta'] is List
+      ? List<dynamic>.from(payload['richTextDelta'] as List)
+      : null;
+
+  @override
+  Rect? get crop {
+    final value = payload['crop'];
+    if (value is! Map<Object?, Object?>) return null;
+    return Rect.fromLTRB(
+      _numberFrom(value['left']),
+      _numberFrom(value['top']),
+      _numberFrom(value['right'], fallback: 1),
+      _numberFrom(value['bottom'], fallback: 1),
+    );
+  }
+
+  @override
+  bool get flipX => payload['flipX'] as bool? ?? false;
+
+  @override
+  bool get flipY => payload['flipY'] as bool? ?? false;
+
+  @override
+  String get imageMask => payload['imageMask'] as String? ?? 'rectangle';
+
+  @override
+  double get cornerRadius => _number('cornerRadius');
+
+  @override
+  int? get frameColorValue => _integer('frameColorValue');
+
+  @override
+  double get frameWidth => _number('frameWidth');
+
+  @override
+  double get brightness => _number('brightness');
+
+  @override
+  double get contrast => _number('contrast');
+
+  @override
+  double get saturation => _number('saturation', 1);
+
+  @override
+  double get warmth => _number('warmth');
+
+  @override
+  String get shape => payload['shape'] as String? ?? 'rectangle';
+
+  @override
+  int? get strokeColorValue => _integer('strokeColorValue');
+
+  @override
+  int? get fillColorValue => _integer('fillColorValue');
+
+  @override
+  double get strokeWidth => _number('strokeWidth', 1);
+
+  @override
+  List<Map<String, dynamic>>? get inkPoints {
+    final value = payload['inkPoints'];
+    if (value is! List) return null;
+    return value
+        .whereType<Map<Object?, Object?>>()
+        .map((point) => Map<String, dynamic>.from(point))
+        .toList(growable: false);
+  }
+
+  @override
+  List<String>? get childIds => (payload['childIds'] as List?)
+      ?.whereType<String>()
+      .toList(growable: false);
+
+  @override
+  String? get groupId => payload['groupId'] as String?;
+
+  double _number(String key, [double fallback = 0]) =>
+      _numberFrom(payload[key], fallback: fallback);
+
+  int? _integer(String key) => (payload[key] as num?)?.toInt();
+
+  static double _numberFrom(Object? value, {double fallback = 0}) =>
+      (value as num?)?.toDouble() ?? fallback;
 
   CanvasNode copyWith({
     String? id,
@@ -105,6 +243,7 @@ class CanvasNode {
     children: children ?? this.children,
   );
 
+  @override
   Map<String, dynamic> toJson() => {
     'id': id,
     'type': type.name,
@@ -388,6 +527,35 @@ class EntryDocument {
     }
 
     return visit(nodes, null);
+  }
+
+  /// Returns the drawable leaf nodes in page/world coordinates.
+  ///
+  /// Group structure remains owned by the document tree; this projection is
+  /// read-only and is intended for renderers that should not depend on the
+  /// mutable [ContentBlock] adapter. Group containers are not themselves
+  /// drawable, while their visible descendants are flattened with resolved
+  /// world transforms.
+  List<CanvasNode> get renderNodes {
+    final rendered = <CanvasNode>[];
+
+    void visit(Iterable<CanvasNode> candidates, Transform2D? parentWorld) {
+      for (final node in candidates) {
+        if (!node.visible) continue;
+        final world = parentWorld == null
+            ? node.transform
+            : _worldTransform(node.transform, parentWorld);
+        if (node.type != BlockType.group) {
+          rendered.add(
+            node.copyWith(transform: world, children: const <CanvasNode>[]),
+          );
+        }
+        if (node.children.isNotEmpty) visit(node.children, world);
+      }
+    }
+
+    visit(nodes, null);
+    return List<CanvasNode>.unmodifiable(rendered);
   }
 
   /// Replaces one node without exposing mutable compatibility adapters.

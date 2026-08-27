@@ -67,7 +67,9 @@ class EntryCanvas extends StatefulWidget {
     this.cameraScale = 1,
   });
 
-  final List<ContentBlock> blocks;
+  /// Render-ready immutable nodes. Legacy [ContentBlock] lists remain valid
+  /// because ContentBlock implements the same read-only render contract.
+  final Iterable<CanvasRenderable> blocks;
   final BoardSettings board;
   final bool editing;
   final String? selectedId;
@@ -95,9 +97,9 @@ class EntryCanvas extends StatefulWidget {
   final CanvasNodeCreated? onInkNodeCreated;
   final Uint8List? Function(String assetId) imageBytes;
   final ImageProvider<Object>? Function(String assetId)? imageProvider;
-  final ValueChanged<ContentBlock> onOpenImage;
+  final ValueChanged<CanvasRenderable> onOpenImage;
   final ValueChanged<String>? onOpenImageId;
-  final ValueChanged<ContentBlock>? onEditImage;
+  final ValueChanged<CanvasRenderable>? onEditImage;
   final ValueChanged<String>? onEditImageId;
   final Size workspaceSize;
   final Offset worldOrigin;
@@ -192,7 +194,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final scale = PageViewport.modelToRenderScale;
-        ContentBlock? selectedBlock;
+        CanvasRenderable? selectedBlock;
         if (widget.editing && widget.selectedId != null) {
           for (final block in widget.blocks) {
             if (block.id == widget.selectedId) {
@@ -363,13 +365,16 @@ class _EntryCanvasState extends State<EntryCanvas> {
                                     if (onTextChanged != null) {
                                       onTextChanged(block.id, text);
                                     } else {
-                                      final next = block.clone()..text = text;
+                                      final next = _asLegacy(block).clone()
+                                        ..text = text;
                                       // Preserve the legacy callback contract
                                       // for standalone canvas consumers. The
                                       // configured editor path supplies
                                       // [onTextChanged] and never reaches this
                                       // mutable compatibility branch.
-                                      block.text = next.text;
+                                      if (block case final ContentBlock legacy) {
+                                        legacy.text = next.text;
+                                      }
                                       widget.onChanged(next);
                                     }
                                   },
@@ -431,11 +436,11 @@ class _EntryCanvasState extends State<EntryCanvas> {
       (defaultTargetPlatform != TargetPlatform.android &&
           defaultTargetPlatform != TargetPlatform.iOS);
 
-  bool _isSelected(ContentBlock block) => widget.selectedIds.isEmpty
+  bool _isSelected(CanvasRenderable block) => widget.selectedIds.isEmpty
       ? widget.selectedId == block.id
       : widget.selectedIds.contains(block.id);
 
-  Iterable<ContentBlock> _rotationTargets() => widget.blocks.where(
+  Iterable<CanvasRenderable> _rotationTargets() => widget.blocks.where(
     (block) => !block.hidden && _isSelected(block) && !block.locked,
   );
 
@@ -530,34 +535,41 @@ class _EntryCanvasState extends State<EntryCanvas> {
     return math.atan2(delta.dy, delta.dx);
   }
 
-  void _rotateBlockOrSelection(ContentBlock block, double delta) {
+  void _rotateBlockOrSelection(CanvasRenderable block, double delta) {
     if (block.locked || !_isSelected(block)) return;
     final rotateSelection = widget.onRotateSelection;
     if (rotateSelection != null) {
       rotateSelection(delta);
       return;
     }
-    final next = block.clone()..rotation += delta;
     _emitTransform(
       block.id,
       Transform2D(
-        x: next.x,
-        y: next.y,
-        width: next.w,
-        height: next.h,
-        rotation: next.rotation,
+        x: block.x,
+        y: block.y,
+        width: block.w,
+        height: block.h,
+        rotation: block.rotation + delta,
       ),
-      legacy: next,
-      legacyTarget: block,
+      legacy: _asLegacy(block),
+      legacyTarget: block is ContentBlock ? block : null,
     );
   }
 
-  ContentBlock _resizedBlock(
-    ContentBlock block,
+  Transform2D _resizedTransform(
+    CanvasRenderable block,
     _BlockResizeSession session,
     Offset pointer,
   ) {
-    if (block.locked) return block;
+    if (block.locked) {
+      return Transform2D(
+        x: block.x,
+        y: block.y,
+        width: block.w,
+        height: block.h,
+        rotation: block.rotation,
+      );
+    }
     final localDelta = _rotate(
       pointer - session.startPointer,
       -session.rotation,
@@ -592,16 +604,18 @@ class _EntryCanvasState extends State<EntryCanvas> {
     );
     final center =
         session.oppositeAnchor - _rotate(oppositeLocal, session.rotation);
-    return block.clone()
-      ..x = center.dx - width / 2
-      ..y = center.dy - height / 2
-      ..w = width
-      ..h = height;
+    return Transform2D(
+      x: center.dx - width / 2,
+      y: center.dy - height / 2,
+      width: width,
+      height: height,
+      rotation: block.rotation,
+    );
   }
 
   void _startMove(
     BuildContext canvasContext,
-    ContentBlock block,
+    CanvasRenderable block,
     Offset globalPosition,
   ) {
     if (block.locked || _selectionRotating) return;
@@ -621,7 +635,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
 
   void _updateMove(
     BuildContext canvasContext,
-    ContentBlock block,
+    CanvasRenderable block,
     Offset globalPosition,
   ) {
     if (block.locked || _selectionRotating) return;
@@ -635,20 +649,17 @@ class _EntryCanvasState extends State<EntryCanvas> {
       return;
     }
     final position = pointer - session.grabOffset;
-    final next = block.clone()
-      ..x = position.dx
-      ..y = position.dy;
     _emitTransform(
       block.id,
       Transform2D(
-        x: next.x,
-        y: next.y,
-        width: next.w,
-        height: next.h,
-        rotation: next.rotation,
+        x: position.dx,
+        y: position.dy,
+        width: block.w,
+        height: block.h,
+        rotation: block.rotation,
       ),
-      legacy: next,
-      legacyTarget: block,
+      legacy: _asLegacy(block),
+      legacyTarget: block is ContentBlock ? block : null,
     );
   }
 
@@ -660,7 +671,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
 
   void _startResize(
     BuildContext canvasContext,
-    ContentBlock block,
+    CanvasRenderable block,
     Offset globalPosition,
     _ResizeHandle handle,
   ) {
@@ -692,25 +703,18 @@ class _EntryCanvasState extends State<EntryCanvas> {
 
   void _updateResize(
     BuildContext canvasContext,
-    ContentBlock block,
+    CanvasRenderable block,
     Offset globalPosition,
   ) {
     final session = _resizeSession;
     if (session == null || session.blockId != block.id) return;
     final pointer = _resizePointerToModel(globalPosition);
     if (pointer == null) return;
-    final next = _resizedBlock(block, session, pointer);
     _emitTransform(
       block.id,
-      Transform2D(
-        x: next.x,
-        y: next.y,
-        width: next.w,
-        height: next.h,
-        rotation: next.rotation,
-      ),
-      legacy: next,
-      legacyTarget: block,
+      _resizedTransform(block, session, pointer),
+      legacy: _asLegacy(block),
+      legacyTarget: block is ContentBlock ? block : null,
     );
   }
 
@@ -815,7 +819,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
 
   List<Widget> _buildResizeHandles(
     BuildContext canvasContext,
-    ContentBlock block,
+    CanvasRenderable block,
     double scale,
   ) => _ResizeHandle.values.map((handle) {
     final width = math.max(EntryCanvas.minWidth, block.w);
@@ -936,7 +940,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
     }
   }
 
-  void _openImage(ContentBlock block) {
+  void _openImage(CanvasRenderable block) {
     final callback = widget.onOpenImageId;
     if (callback != null) {
       callback(block.id);
@@ -945,7 +949,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
     }
   }
 
-  void _editImage(ContentBlock block) {
+  void _editImage(CanvasRenderable block) {
     final callback = widget.onEditImageId;
     if (callback != null) {
       callback(block.id);
@@ -954,7 +958,11 @@ class _EntryCanvasState extends State<EntryCanvas> {
     }
   }
 
-  bool _containsResizeHandle(Offset point, ContentBlock block, double scale) {
+  bool _containsResizeHandle(
+    Offset point,
+    CanvasRenderable block,
+    double scale,
+  ) {
     final width = math.max(EntryCanvas.minWidth, block.w);
     final height = math.max(EntryCanvas.minHeight, block.h);
     final center = Offset(
@@ -992,7 +1000,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
         widget.worldOrigin;
   }
 
-  bool _containsBlock(Offset point, ContentBlock block, double scale) =>
+  bool _containsBlock(Offset point, CanvasRenderable block, double scale) =>
       HitTestService.containsBlock(
         point,
         block,
@@ -1002,8 +1010,14 @@ class _EntryCanvasState extends State<EntryCanvas> {
         minHeight: EntryCanvas.minHeight,
       );
 
-  String? _visualId(ContentBlock block) =>
+  String? _visualId(CanvasRenderable block) =>
       block.type == BlockType.sticker ? block.stickerId : block.assetId;
+
+  ContentBlock _asLegacy(CanvasRenderable block) => switch (block) {
+    ContentBlock legacy => legacy,
+    CanvasNode node => node.toBlock(),
+    _ => ContentBlock.fromJson(block.toJson()),
+  };
 }
 
 class _BlockMoveSession {

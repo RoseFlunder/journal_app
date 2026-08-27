@@ -76,7 +76,53 @@ class BoardSettings {
 /// Position and size are stored in logical workspace units, independent of
 /// screen size. Coordinates may be negative or extend beyond the initial
 /// workspace area.
-class ContentBlock {
+///
+/// This read-only contract is implemented by both the immutable document node
+/// and the legacy storage adapter. Renderers can therefore migrate to nodes
+/// without taking mutable setters across the feature boundary.
+abstract interface class CanvasRenderable {
+  String get id;
+  BlockType get type;
+  String get text;
+  String? get assetId;
+  String? get stickerId;
+  double get x;
+  double get y;
+  double get w;
+  double get h;
+  double get rotation;
+  double get fontSize;
+  String? get fontFamily;
+  int? get textColorValue;
+  bool get bold;
+  bool get italic;
+  bool get locked;
+  bool get hidden;
+  double get opacity;
+  String? get name;
+  List<dynamic>? get richTextDelta;
+  Rect? get crop;
+  bool get flipX;
+  bool get flipY;
+  String get imageMask;
+  double get cornerRadius;
+  int? get frameColorValue;
+  double get frameWidth;
+  double get brightness;
+  double get contrast;
+  double get saturation;
+  double get warmth;
+  String get shape;
+  int? get strokeColorValue;
+  int? get fillColorValue;
+  double get strokeWidth;
+  List<Map<String, dynamic>>? get inkPoints;
+  List<String>? get childIds;
+  String? get groupId;
+  Map<String, dynamic> toJson();
+}
+
+class ContentBlock implements CanvasRenderable {
   ContentBlock({
     required this.id,
     required this.type,
@@ -118,69 +164,108 @@ class ContentBlock {
     this.groupId,
   });
 
+  @override
   final String id;
+  @override
   BlockType type;
 
   /// Content of a [BlockType.text] block.
+  @override
   String text;
 
   /// Asset id (key in the assets box) for a [BlockType.image] block.
+  @override
   String? assetId;
 
   /// Bundled sticker id for a [BlockType.sticker] block. Sticker files live
   /// in the Flutter asset bundle and are never copied into Hive.
+  @override
   String? stickerId;
 
+  @override
   double x;
+  @override
   double y;
+  @override
   double w;
+  @override
   double h;
+  @override
   double rotation;
 
   /// Text styling. These fields are ignored for image and sticker blocks.
+  @override
   double fontSize;
+  @override
   String? fontFamily;
+  @override
   int? textColorValue;
+  @override
   bool bold;
+  @override
   bool italic;
 
   /// Board-level metadata. The legacy renderer ignores these until the new
   /// controller consumes them, preserving older journals unchanged.
+  @override
   bool locked;
+  @override
   bool hidden;
+  @override
   double opacity;
+  @override
   String? name;
 
   /// Quill-compatible Delta JSON. [text] remains the legacy/search fallback.
+  @override
   List<dynamic>? richTextDelta;
 
   /// Normalized crop coordinates for image and sticker nodes.
+  @override
   Rect? crop;
+  @override
   bool flipX;
+  @override
   bool flipY;
 
   /// Non-destructive image presentation settings. Original asset bytes stay
   /// untouched and these values are shared by image and sticker nodes.
+  @override
   String imageMask;
+  @override
   double cornerRadius;
+  @override
   int? frameColorValue;
+  @override
   double frameWidth;
+  @override
   double brightness;
+  @override
   double contrast;
+  @override
   double saturation;
+  @override
   double warmth;
 
   /// Forward-compatible shape, ink, and group payloads.
+  @override
   String shape;
+  @override
   int? strokeColorValue;
+  @override
   int? fillColorValue;
+  @override
   double strokeWidth;
+  @override
   List<Map<String, dynamic>>? inkPoints;
+  @override
   List<String>? childIds;
+  @override
   String? groupId;
 
   ContentBlock clone() => ContentBlock.fromJson(toJson());
 
+  @override
   Map<String, dynamic> toJson() => {
     'id': id,
     'type': type.name,

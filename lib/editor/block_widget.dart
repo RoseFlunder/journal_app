@@ -33,7 +33,7 @@ class BlockWidget extends StatefulWidget {
     this.onEditImage,
   });
 
-  final ContentBlock block;
+  final CanvasRenderable block;
   final bool selected;
   final bool editing;
   final bool locked;
@@ -455,7 +455,7 @@ class _BlockWidgetState extends State<BlockWidget> {
     );
   }
 
-  ColorFilter _imageFilter(ContentBlock block) {
+  ColorFilter _imageFilter(CanvasRenderable block) {
     final saturation = block.saturation.clamp(0.0, 2.0).toDouble();
     final inverse = 1 - saturation;
     final red = 0.213 * inverse;
@@ -540,7 +540,7 @@ class _BlockWidgetState extends State<BlockWidget> {
 class _ShapePainter extends CustomPainter {
   const _ShapePainter(this.block);
 
-  final ContentBlock block;
+  final CanvasRenderable block;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -604,7 +604,7 @@ class _ShapePainter extends CustomPainter {
 class _InkPainter extends CustomPainter {
   const _InkPainter(this.block);
 
-  final ContentBlock block;
+  final CanvasRenderable block;
 
   @override
   void paint(Canvas canvas, Size size) {

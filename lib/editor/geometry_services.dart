@@ -18,13 +18,13 @@ class TransformService {
   }
 
   static Size effectiveBlockSize(
-    ContentBlock block, {
+    CanvasRenderable block, {
     required double minWidth,
     required double minHeight,
   }) => Size(math.max(minWidth, block.w), math.max(minHeight, block.h));
 
   static Offset blockCenter(
-    ContentBlock block, {
+    CanvasRenderable block, {
     required Offset worldOrigin,
     required double scale,
     required double minWidth,
@@ -49,7 +49,7 @@ class HitTestService {
 
   static bool containsBlock(
     Offset point,
-    ContentBlock block, {
+    CanvasRenderable block, {
     required Offset worldOrigin,
     required double scale,
     required double minWidth,
@@ -80,7 +80,7 @@ class HitTestService {
 class BoundsService {
   const BoundsService._();
 
-  static Rect axisAligned(Iterable<ContentBlock> blocks) {
+  static Rect axisAligned(Iterable<CanvasRenderable> blocks) {
     final items = blocks.toList(growable: false);
     if (items.isEmpty) return Rect.zero;
     var bounds = _blockRect(items.first);
@@ -90,7 +90,7 @@ class BoundsService {
     return bounds;
   }
 
-  static Rect rotated(Iterable<ContentBlock> blocks) {
+  static Rect rotated(Iterable<CanvasRenderable> blocks) {
     final items = blocks.toList(growable: false);
     if (items.isEmpty) return Rect.zero;
     var bounds = _rotatedBlockRect(items.first);
@@ -100,10 +100,10 @@ class BoundsService {
     return bounds;
   }
 
-  static Rect _blockRect(ContentBlock block) =>
+  static Rect _blockRect(CanvasRenderable block) =>
       Rect.fromLTWH(block.x, block.y, block.w, block.h);
 
-  static Rect _rotatedBlockRect(ContentBlock block) {
+  static Rect _rotatedBlockRect(CanvasRenderable block) {
     final rect = _blockRect(block);
     final center = rect.center;
     final corners = <Offset>[

@@ -456,6 +456,57 @@ void main() {
     );
   });
 
+  test('immutable render projection flattens visible leaves in world space', () {
+    final document = EntryDocument(
+      id: 'render-projection',
+      title: 'Render',
+      createdAt: DateTime.utc(2026),
+      modifiedAt: DateTime.utc(2026),
+      nodes: [
+        CanvasNode(
+          id: 'group',
+          type: BlockType.group,
+          transform: const Transform2D(
+            x: 20,
+            y: 30,
+            width: 100,
+            height: 80,
+          ),
+          children: [
+            CanvasNode(
+              id: 'visible-child',
+              type: BlockType.text,
+              transform: const Transform2D(
+                x: 8,
+                y: 12,
+                width: 40,
+                height: 20,
+              ),
+              payload: const {'text': 'Child'},
+            ),
+            CanvasNode(
+              id: 'hidden-child',
+              type: BlockType.shape,
+              transform: const Transform2D(x: 4, y: 4, width: 20, height: 20),
+              visible: false,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final renderNodes = document.renderNodes;
+    expect(renderNodes, hasLength(1));
+    expect(renderNodes.single.id, 'visible-child');
+    expect(renderNodes.single.transform.x, 28);
+    expect(renderNodes.single.transform.y, 42);
+    expect(renderNodes.single.children, isEmpty);
+    expect(
+      () => renderNodes.add(renderNodes.single),
+      throwsUnsupportedError,
+    );
+  });
+
   test('immutable editor APIs detach legacy adapters and persist documents', () async {
     final document = EntryDocument(
       id: 'immutable-editor',

@@ -12,7 +12,7 @@ class CanvasGeometry {
   }
 
   static Size effectiveBlockSize(
-    ContentBlock block, {
+    CanvasRenderable block, {
     required double minWidth,
     required double minHeight,
   }) => TransformService.effectiveBlockSize(
@@ -22,7 +22,7 @@ class CanvasGeometry {
   );
 
   static Offset blockCenter(
-    ContentBlock block, {
+    CanvasRenderable block, {
     required Offset worldOrigin,
     required double scale,
     required double minWidth,
@@ -36,7 +36,7 @@ class CanvasGeometry {
   );
   static bool containsBlock(
     Offset point,
-    ContentBlock block, {
+    CanvasRenderable block, {
     required Offset worldOrigin,
     required double scale,
     required double minWidth,

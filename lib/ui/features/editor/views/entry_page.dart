@@ -20,7 +20,6 @@ import '../../../../models/view_state.dart';
 import '../../../../services/image_source.dart';
 import '../../../../services/journal_transfer_service.dart';
 import '../../../../services/audio_playback.dart';
-import '../../../../services/legacy_editor_codec.dart';
 import '../../../../services/repositories.dart';
 import '../view_models/entry_editor_view_model.dart';
 import 'entry_editor_surface.dart';
@@ -170,17 +169,17 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   String? get _selectedId => _editor.selectedId;
   set _selectedId(String? value) => _editor.select(value);
 
-  List<LegacyCanvasBlock> get _blocks => _editor.blocks;
+  List<CanvasNode> get _nodes => _editor.allNodes;
 
-  LegacyCanvasBlock? get _activeStrokeBlock {
-    final primary = _editor.primarySelection;
+  CanvasNode? get _activeStrokeBlock {
+    final primary = _editor.primaryNode;
     if (primary != null &&
         _isDrawable(primary) &&
         !primary.locked &&
         !primary.hidden) {
       return primary;
     }
-    for (final block in _editor.selectedDrawableBlocks) {
+    for (final block in _editor.selectedDrawableNodes) {
       if (!block.locked && !block.hidden) return block;
     }
     return null;
@@ -202,8 +201,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
           .withValues(alpha: _inkOpacity.clamp(0.0, 1.0).toDouble())
           .toARGB32();
 
-  bool _isDrawable(LegacyCanvasBlock block) =>
-      block.type == LegacyBlockType.ink || block.type == LegacyBlockType.shape;
+  bool _isDrawable(CanvasRenderable block) =>
+      block.type == BlockType.ink || block.type == BlockType.shape;
 
   @override
   void initState() {
@@ -333,23 +332,23 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     widget.onEditingChanged(false);
   }
 
-  LegacyCanvasBlock? get _editingTextBlock {
+  CanvasNode? get _editingTextBlock {
     final id = _textEditingId;
     if (id == null) return null;
-    for (final block in _blocks) {
-      if (block.id == id && block.type == LegacyBlockType.text) return block;
+    for (final block in _nodes) {
+      if (block.id == id && block.type == BlockType.text) return block;
     }
     return null;
   }
 
-  LegacyCanvasBlock? get _activeTextBlock {
+  CanvasNode? get _activeTextBlock {
     if (_titleFocused) return null;
     final editing = _editingTextBlock;
     if (editing != null) return editing;
     final selectedId = _selectedId;
     if (selectedId == null) return null;
-    for (final block in _blocks) {
-      if (block.id == selectedId && block.type == LegacyBlockType.text) return block;
+    for (final block in _nodes) {
+      if (block.id == selectedId && block.type == BlockType.text) return block;
     }
     return null;
   }
@@ -689,21 +688,22 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       );
 
   void _addText() {
-    final block = LegacyCanvasBlock(
+    final node = CanvasNode(
       id: _uuid.v4(),
-      type: LegacyBlockType.text,
-      text: '',
-      x: -20,
-      y: 12 + (_blocks.length * 8) % 80,
-      w: 30,
-      h: 11,
-      fontSize: 26,
+      type: BlockType.text,
+      transform: Transform2D(
+        x: -20,
+        y: 12 + (_nodes.length * 8) % 80,
+        width: 30,
+        height: 11,
+      ),
+      payload: const {'text': '', 'fontSize': 26},
     );
-    _editor.addNode(CanvasNode.fromBlock(block));
+    _editor.addNode(node);
     setState(() {
       _titleFocused = false;
-      _selectedId = block.id;
-      _textEditingId = block.id;
+      _selectedId = node.id;
+      _textEditingId = node.id;
     });
   }
 
@@ -737,24 +737,27 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       ),
     );
     if (!mounted || shape == null) return;
-    final block = LegacyCanvasBlock(
+    final node = CanvasNode(
       id: _uuid.v4(),
-      type: LegacyBlockType.shape,
-      name: shape[0].toUpperCase() + shape.substring(1),
-      shape: shape,
-      x: -10,
-      y: 28 + (_blocks.length * 7) % 70,
-      w: shape == 'line' || shape == 'arrow' ? 42 : 32,
-      h: shape == 'line' || shape == 'arrow' ? 18 : 24,
-      strokeColorValue: _inkColorValue,
+      type: BlockType.shape,
+      transform: Transform2D(
+        x: -10,
+        y: 28 + (_nodes.length * 7) % 70,
+        width: shape == 'line' || shape == 'arrow' ? 42 : 32,
+        height: shape == 'line' || shape == 'arrow' ? 18 : 24,
+      ),
       opacity: _inkOpacity,
-      fillColorValue: shape == 'rectangle' || shape == 'ellipse'
-          ? const Color(0x33C97068).toARGB32()
-          : null,
-      strokeWidth: 1.5,
+      accessibilityLabel: shape[0].toUpperCase() + shape.substring(1),
+      payload: {
+        'shape': shape,
+        'strokeColorValue': _inkColorValue,
+        if (shape == 'rectangle' || shape == 'ellipse')
+          'fillColorValue': const Color(0x33C97068).toARGB32(),
+        'strokeWidth': 1.5,
+      },
     );
-    _editor.addNode(CanvasNode.fromBlock(block));
-    setState(() => _selectedId = block.id);
+    _editor.addNode(node);
+    setState(() => _selectedId = node.id);
   }
 
   Future<void> _addImage() async {
@@ -772,17 +775,19 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       final assetId = stored.assetId;
       if (!mounted) return;
       final size = imageBlockSize(image.width, image.height);
-      final block = LegacyCanvasBlock(
+      final node = CanvasNode(
         id: _uuid.v4(),
-        type: LegacyBlockType.image,
-        assetId: assetId,
-        x: -20,
-        y: 12 + (_blocks.length * 8) % 80,
-        w: size.width,
-        h: size.height,
+        type: BlockType.image,
+        transform: Transform2D(
+          x: -20,
+          y: 12 + (_nodes.length * 8) % 80,
+          width: size.width,
+          height: size.height,
+        ),
+        payload: {'assetId': assetId},
       );
-      _editor.addNode(CanvasNode.fromBlock(block));
-      setState(() => _selectedId = block.id);
+      _editor.addNode(node);
+      setState(() => _selectedId = node.id);
     } on FormatException catch (error) {
       if (mounted) _showImageError(error.message);
     } catch (error) {
@@ -854,17 +859,19 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       ),
     );
     if (!mounted || sticker == null) return;
-    final block = LegacyCanvasBlock(
+    final node = CanvasNode(
       id: _uuid.v4(),
-      type: LegacyBlockType.sticker,
-      stickerId: sticker.id,
-      x: 8,
-      y: 40 + (_blocks.length * 5) % 60,
-      w: sticker.defaultSize.width,
-      h: sticker.defaultSize.height,
+      type: BlockType.sticker,
+      transform: Transform2D(
+        x: 8,
+        y: 40 + (_nodes.length * 5) % 60,
+        width: sticker.defaultSize.width,
+        height: sticker.defaultSize.height,
+      ),
+      payload: {'stickerId': sticker.id},
     );
-    _editor.addNode(CanvasNode.fromBlock(block));
-    setState(() => _selectedId = block.id);
+    _editor.addNode(node);
+    setState(() => _selectedId = node.id);
   }
 
   ImageProvider<Object>? _imageProvider(String assetId) {
@@ -885,7 +892,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _openImage(LegacyCanvasBlock block) async {
+  Future<void> _openImage(CanvasRenderable block) async {
     final assetId = block.assetId;
     final bytes = assetId == null
         ? null
@@ -904,14 +911,13 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
   }
 
-  LegacyCanvasBlock? _imageSelection() {
-    final block = _editor.primarySelection;
+  CanvasNode? _imageSelection() {
+    final block = _editor.primaryNode;
     if (block == null ||
-        (block.type != LegacyBlockType.image &&
-            block.type != LegacyBlockType.sticker)) {
+        (block.type != BlockType.image && block.type != BlockType.sticker)) {
       return null;
     }
-    return block;
+    return _editor.primaryNode;
   }
 
   void _commitImageEdit(
@@ -1588,8 +1594,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                   subtitle: const Text(
                     'Move, resize, rotate, and nudge without dragging',
                   ),
-                  enabled: _editor.primarySelection != null,
-                  onTap: _editor.primarySelection == null
+                  enabled: _editor.primaryNode != null,
+                  onTap: _editor.primaryNode == null
                       ? null
                       : () {
                           Navigator.pop(context);
@@ -1744,12 +1750,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void _sendToBack() => _editor.sendToBack();
 
   void _toggleSelectedLock() {
-    final block = _editor.primarySelection;
+    final block = _editor.primaryNode;
     if (block != null) _editor.setLocked(!block.locked);
   }
 
   void _showTransformInspector() {
-    final block = _editor.primarySelection;
+    final block = _editor.primaryNode;
     if (block == null) return;
     final x = TextEditingController(text: block.x.toStringAsFixed(1));
     final y = TextEditingController(text: block.y.toStringAsFixed(1));
@@ -2165,7 +2171,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _renameLayer(LegacyCanvasBlock block) async {
+  Future<void> _renameLayer(CanvasRenderable block) async {
     final name = await showDialog<String>(
       context: context,
       builder: (context) => _RenameLayerDialog(initial: block.name ?? ''),
@@ -2192,31 +2198,31 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
               const Divider(height: 1),
               Expanded(
                 child: ReorderableListView.builder(
-                  itemCount: _blocks.length,
+                  itemCount: _nodes.length,
                   onReorderItem: (oldIndex, newIndex) {
-                    final visible = _blocks.reversed.toList();
+                    final visible = _nodes.reversed.toList();
                     if (oldIndex < 0 || oldIndex >= visible.length) return;
-                    final targetIndex = (_blocks.length - newIndex - 1).clamp(
+                    final targetIndex = (_nodes.length - newIndex - 1).clamp(
                       0,
-                      _blocks.length,
+                      _nodes.length,
                     );
                     _editor.reorderLayer(visible[oldIndex].id, targetIndex);
                   },
                   itemBuilder: (context, index) {
-                    final block = _blocks[_blocks.length - index - 1];
+                    final block = _nodes[_nodes.length - index - 1];
                     final selected = _selectedId == block.id;
                     final label =
                         block.name ??
                         switch (block.type) {
-                          LegacyBlockType.text =>
+                          BlockType.text =>
                             block.text.isEmpty
                                 ? 'Text'
                                 : block.text.split('\n').first,
-                          LegacyBlockType.image => 'Photo',
-                          LegacyBlockType.sticker => 'Sticker',
-                          LegacyBlockType.ink => 'Drawing',
-                          LegacyBlockType.shape => 'Shape',
-                          LegacyBlockType.group => 'Group',
+                          BlockType.image => 'Photo',
+                          BlockType.sticker => 'Sticker',
+                          BlockType.ink => 'Drawing',
+                          BlockType.shape => 'Shape',
+                          BlockType.group => 'Group',
                         };
                     return ListTile(
                       key: ValueKey('layer-${block.id}'),
@@ -2226,12 +2232,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       ),
                       selected: selected,
                       leading: Icon(switch (block.type) {
-                        LegacyBlockType.text => Icons.text_fields,
-                        LegacyBlockType.image => Icons.photo_outlined,
-                        LegacyBlockType.sticker => Icons.emoji_emotions_outlined,
-                        LegacyBlockType.ink => Icons.draw_outlined,
-                        LegacyBlockType.shape => Icons.category_outlined,
-                        LegacyBlockType.group => Icons.folder_copy_outlined,
+                        BlockType.text => Icons.text_fields,
+                        BlockType.image => Icons.photo_outlined,
+                        BlockType.sticker => Icons.emoji_emotions_outlined,
+                        BlockType.ink => Icons.draw_outlined,
+                        BlockType.shape => Icons.category_outlined,
+                        BlockType.group => Icons.folder_copy_outlined,
                       }),
                       title: Text(
                         label,
@@ -2360,13 +2366,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                         child: EntryCanvas(
                           workspaceSize: _workspaceSize,
                           worldOrigin: _worldOrigin,
-                          // The canvas receives detached render adapters, but
-                          // gesture updates are emitted as immutable node
-                          // intents. The controller remains the sole owner of
-                          // the document and transaction boundary.
-                          blocks: _blocks
-                              .map((block) => block.clone())
-                              .toList(),
+                          // The canvas renders the immutable document
+                          // projection. Gesture updates are emitted as node
+                          // intents and committed by the controller.
+                          blocks: _editor.renderNodes,
                           board: _editor.board,
                           cameraScale: _cameraScale,
                           editing: _editing,
@@ -2453,10 +2456,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                           imageProvider: _imageProvider,
                           onOpenImage: _openImage,
                           onOpenImageId: (id) {
-                            final block = _blocks
-                                .where((candidate) => candidate.id == id)
-                                .firstOrNull;
-                            if (block != null) unawaited(_openImage(block));
+                            final node = _editor.document.nodeById(id);
+                            if (node != null) unawaited(_openImage(node));
                           },
                         ),
                       ),
@@ -2636,7 +2637,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                           inkColorValue: _inkPickerValue,
                           inkColorAvailable:
                               _drawMode &&
-                              _activeStrokeBlock?.type != LegacyBlockType.shape,
+                              _activeStrokeBlock?.type != BlockType.shape,
                           onInkColorChanged: _applyInkColorValue,
                           onToggleBold: _toggleBold,
                           onToggleItalic: _toggleItalic,
@@ -2651,7 +2652,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                           onDuplicate: _duplicateSelected,
                           onSendToBack: _sendToBack,
                           onToggleLock: _toggleSelectedLock,
-                          locked: _editor.primarySelection?.locked ?? false,
+                          locked: _editor.primaryNode?.locked ?? false,
                         ),
                       ],
                     ),
@@ -2679,16 +2680,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                         if (block != null) {
                           _stopTextEditing();
                         } else {
-                          final selected = _selectedId == null
-                              ? null
-                              : _blocks.firstWhere(
-                                  (block) => block.id == _selectedId,
-                                  orElse: () => LegacyCanvasBlock(
-                                    id: '',
-                                    type: LegacyBlockType.image,
-                                  ),
-                                );
-                          if (selected?.type == LegacyBlockType.text) {
+                          final selected = _editor.primaryNode;
+                          if (selected?.type == BlockType.text) {
                             _beginTextEditing(selected!.id);
                           }
                         }
@@ -2722,7 +2715,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       inkColorValue: _inkPickerValue,
                       inkColorAvailable:
                           _drawMode &&
-                          _activeStrokeBlock?.type != LegacyBlockType.shape,
+                          _activeStrokeBlock?.type != BlockType.shape,
                       onInkColorChanged: _applyInkColorValue,
                       onToggleBold: _toggleBold,
                       onToggleItalic: _toggleItalic,
@@ -2737,7 +2730,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       onDuplicate: _duplicateSelected,
                       onSendToBack: _sendToBack,
                       onToggleLock: _toggleSelectedLock,
-                      locked: _editor.primarySelection?.locked ?? false,
+                      locked: _editor.primaryNode?.locked ?? false,
                     ),
                   ),
                 ),
