@@ -3,9 +3,10 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-26 on top of commit `f08470d` (`Add Jamendo page music
-and external build defines`). The architecture slices analyze cleanly and the
-full Flutter test suite passes.
+Last audited: 2026-08-27 on top of commit `53d07c1` (`refactor: move screens
+into feature views`). The immutable editor, canvas-intent, feature-state, and
+screen-extraction slices analyze cleanly and the full Flutter widget suite
+passes.
 
 Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
@@ -14,15 +15,16 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 ### Foundation and persistence
 
 - [~] Immutable `EntryDocument`, `CanvasNode`, `Transform2D`, and
-  `EditorDocumentSnapshot` boundaries exist. `EditorController` now exposes
-  immutable documents and detached legacy blocks; the active canvas still uses
-  mutable adapters at the compatibility edge.
+  `EditorDocumentSnapshot` boundaries are now the controller's working state.
+  The active renderer still consumes detached legacy adapters at one explicit
+  compatibility edge; no editor mutation is performed through those aliases.
 - [x] Fresh-data startup; legacy migration is out of scope.
 - [x] `EditorController` owns selection, transactions, clipboard, 100-step
   undo/redo, text coalescing, and save state.
 - [x] Completed transform gestures produce one undo entry and one save.
-- [~] Typed immutable `EditorCommand` values now back undo/redo, with a
-  transitional whole-document replacement command for non-transform edits.
+- [~] Typed immutable `EditorCommand` values now back undo/redo for transform,
+  board, node, and structural edits. A transitional whole-document replacement
+  command remains only for legacy snapshot operations.
 - [x] Five-minute checkpoint scheduling no longer resets after every save.
 - [~] Manual checkpoint creation, pruning, listing, and restore UI exist;
   background checkpoint creation is missing.
@@ -81,9 +83,11 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
 - [x] Structural groups preserve move, align, lock, hide, delete, duplicate,
   clipboard, template insertion, and reorder semantics.
-- [~] The immutable adapter nests group children and remaps graph IDs.
+- [x] The immutable document nests group children, remaps graph IDs, and
+  applies world-space gesture transforms while retaining parent-local child
+  coordinates.
 - [~] Group children are serialized as local transforms and flattened back to
-  world coordinates; active manipulation still uses the legacy flat adapter.
+  world coordinates for the current renderer; node-native rendering remains.
 - [!] Groups remain hidden structural blocks without bounding-box resize,
   rotation, or reliable nested-group behavior.
 - [x] Layers support selection, rename, visibility, locking, drag reorder,
@@ -154,17 +158,19 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
 ## Next Implementation Order
 
-1. **Correctness hardening**
+1. **Complete the document-model migration**
+   - Replace the remaining renderer-facing `ContentBlock` adapter with a
+     node-native render model and remove the legacy editor codec from feature
+     views.
+   - Split editor orchestration into feature-native canvas, toolbar, layers,
+     image, history, template, and settings views; keep workflows in focused
+     use cases/view-model methods.
+   - Account for undo and clipboard during asset retention.
+
+2. **Correctness hardening**
    - Fix image edge resizing, image-sheet state, lifecycle ordering, visible
      content bounds, template scope, and ink width conversion.
    - Add regression tests for the text Done sequence and scrollable More sheet.
-   - Replace snapshot commands with typed immutable commands.
-
-2. **True document and group model**
-   - Make immutable nodes the editor’s working state rather than using
-     mutable compatibility adapters in the active controller.
-   - Keep group serialization local and migrate manipulation to nested nodes.
-   - Account for undo and clipboard during asset retention.
 
 3. **Complete page interaction overlay**
    - Render visible nodes and interaction chrome in their correct coordinate
