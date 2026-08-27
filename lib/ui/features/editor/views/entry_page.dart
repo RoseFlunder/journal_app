@@ -21,6 +21,7 @@ import '../../../../services/image_source.dart';
 import '../../../../services/journal_transfer_service.dart';
 import '../view_models/entry_editor_view_model.dart';
 import 'entry_editor_surface.dart';
+import 'editor_canvas_view.dart';
 import '../../music/view_models/page_music_controller.dart';
 import '../../music/views/music_picker_sheet.dart';
 import '../../../../widgets/entry_chrome.dart';
@@ -2373,13 +2374,13 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                         child: PaperPage(child: const SizedBox.expand()),
                       ),
                       Positioned.fill(
-                        child: EntryCanvas(
+                        child: EditorCanvasView(
                           workspaceSize: _workspaceSize,
                           worldOrigin: _worldOrigin,
                           // The canvas renders the immutable document
                           // projection. Gesture updates are emitted as node
                           // intents and committed by the controller.
-                          blocks: _editor.renderNodes,
+                          nodes: _editor.renderNodes,
                           board: _editor.board,
                           cameraScale: _cameraScale,
                           editing: _editing,
@@ -2413,20 +2414,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                             });
                           },
                           onEditText: _beginTextEditing,
-                          onEditImage: (block) {
-                            _editor.select(block.id);
-                            setState(() => _selectedId = block.id);
-                            _showImageEditor();
-                          },
                           onEditImageId: (id) {
                             _editor.select(id);
                             setState(() => _selectedId = id);
                             _showImageEditor();
                           },
-                          // Legacy standalone canvases still expose
-                          // [onChanged]; the configured editor uses the
-                          // immutable transform/text intent callbacks.
-                          onChanged: (_) {},
                           onTransformChanged: (id, transform) =>
                               _editor.replaceNodeWorldTransform(id, transform),
                           onTextChanged: _editor.replaceText,
