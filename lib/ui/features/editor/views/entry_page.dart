@@ -23,6 +23,7 @@ import '../view_models/entry_editor_view_model.dart';
 import 'entry_editor_surface.dart';
 import 'editor_canvas_view.dart';
 import 'editor_layers_view.dart';
+import 'editor_image_editor_view.dart';
 import '../../music/view_models/page_music_controller.dart';
 import '../../music/views/music_picker_sheet.dart';
 import '../../../../widgets/entry_chrome.dart';
@@ -964,6 +965,31 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       _withNodePayload(node, key, value);
 
   Future<void> _showImageEditor() async {
+    final node = _imageSelection();
+    if (node == null) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: PaperPage.paper,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => EditorImageEditorView(
+        node: node,
+        onCommit: (id, update, label) {
+          _editor.updateNode(id, update, label: label);
+          unawaited(_editor.commitTransaction());
+        },
+        onPreview: (id, update, label) =>
+            _editor.updateNode(id, update, label: label),
+        onBeginTransaction: _editor.beginTransaction,
+        onEndTransaction: () => unawaited(_editor.commitTransaction()),
+      ),
+    );
+  }
+
+  // Kept temporarily for downstream embedders that still reference the
+  // pre-extraction implementation while the image view rolls out.
+  // ignore: unused_element
+  Future<void> _showImageEditorLegacy() async {
     final block = _imageSelection();
     if (block == null) return;
     var crop = block.crop;
