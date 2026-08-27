@@ -17,14 +17,24 @@ ContentBlock _text({String id = 'text', double x = 0, double y = 0}) =>
       h: 20,
     );
 
+EntryDocument _documentFromBlocks(
+  Iterable<ContentBlock> blocks, {
+  BoardSettings board = const BoardSettings(),
+}) => EntryDocument.fromLegacyBlocks(
+  id: 'test-entry',
+  title: 'Test entry',
+  createdAt: DateTime.utc(2026),
+  blocks: blocks,
+  board: board,
+);
+
 void main() {
   test(
     'a transform transaction produces one save and supports undo/redo',
     () async {
       var saves = 0;
       final controller = EditorController(
-        blocks: [_text()],
-        initialBoard: const BoardSettings(),
+        document: _documentFromBlocks([_text()]),
         persistDocument: (EntryDocument _) async => saves++,
       );
       addTearDown(controller.dispose);
@@ -55,8 +65,7 @@ void main() {
 
   test('locked content cannot be changed or deleted', () async {
     final controller = EditorController(
-      blocks: [_text()..locked = true],
-      initialBoard: const BoardSettings(),
+      document: _documentFromBlocks([_text()..locked = true]),
       persistDocument: (EntryDocument _) async {},
     );
     addTearDown(controller.dispose);
@@ -77,7 +86,7 @@ void main() {
     () async {
       var saves = 0;
       final controller = EditorController(
-        blocks: [
+        document: _documentFromBlocks([
           ContentBlock(
             id: 'ink',
             type: BlockType.ink,
@@ -104,8 +113,7 @@ void main() {
             locked: true,
           ),
           _text(id: 'text'),
-        ],
-        initialBoard: const BoardSettings(),
+        ]),
         persistDocument: (EntryDocument _) async => saves++,
       );
       addTearDown(controller.dispose);
@@ -147,12 +155,11 @@ void main() {
   test('touch rotation orbits unlocked blocks around a fixed pivot in one transaction', () async {
     var saves = 0;
     final controller = EditorController(
-      blocks: [
+      document: _documentFromBlocks([
         _text(id: 'one'),
         _text(id: 'two', x: 50),
         _text(id: 'locked', x: 100)..locked = true,
-      ],
-      initialBoard: const BoardSettings(),
+      ]),
       persistDocument: (EntryDocument _) async => saves++,
     );
     addTearDown(controller.dispose);
@@ -194,11 +201,10 @@ void main() {
 
   test('additive selection keeps both blocks selected', () {
     final controller = EditorController(
-      blocks: [
+      document: _documentFromBlocks([
         _text(id: 'one'),
         _text(id: 'two', x: 50),
-      ],
-      initialBoard: const BoardSettings(),
+      ]),
       persistDocument: (EntryDocument _) async {},
     );
     addTearDown(controller.dispose);
@@ -212,11 +218,10 @@ void main() {
 
   test('grouping persists membership and moves children together', () async {
     final controller = EditorController(
-      blocks: [
+      document: _documentFromBlocks([
         _text(id: 'one'),
         _text(id: 'two', x: 50),
-      ],
-      initialBoard: const BoardSettings(),
+      ]),
       persistDocument: (EntryDocument _) async {},
     );
     addTearDown(controller.dispose);
@@ -258,11 +263,10 @@ void main() {
 
   test('duplicate and clipboard preserve group membership', () async {
     final controller = EditorController(
-      blocks: [
+      document: _documentFromBlocks([
         _text(id: 'one'),
         _text(id: 'two', x: 50),
-      ],
-      initialBoard: const BoardSettings(),
+      ]),
       persistDocument: (EntryDocument _) async {},
     );
     addTearDown(controller.dispose);
@@ -299,12 +303,11 @@ void main() {
 
   test('layer commands rename and reorder without breaking groups', () async {
     final controller = EditorController(
-      blocks: [
+      document: _documentFromBlocks([
         _text(id: 'one'),
         _text(id: 'two', x: 50),
         _text(id: 'top', x: 90),
-      ],
-      initialBoard: const BoardSettings(),
+      ]),
       persistDocument: (EntryDocument _) async {},
     );
     addTearDown(controller.dispose);
@@ -330,8 +333,7 @@ void main() {
     'template insertion remaps groups and is undoable as one command',
     () async {
       final controller = EditorController(
-        blocks: const [],
-        initialBoard: const BoardSettings(),
+        document: _documentFromBlocks(const []),
         persistDocument: (EntryDocument _) async {},
       );
       addTearDown(controller.dispose);

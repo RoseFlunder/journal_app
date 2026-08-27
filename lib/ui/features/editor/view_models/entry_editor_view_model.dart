@@ -1,6 +1,6 @@
 // The public constructor keeps capability names stable while storing them in
 // private fields; initializing-formal linting cannot express that distinction.
-// ignore_for_file: prefer_initializing_formals
+// ignore_for_file: prefer_initializing_formals, use_super_parameters
 
 import 'dart:ui';
 import 'dart:typed_data';

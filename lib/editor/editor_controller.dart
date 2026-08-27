@@ -1,3 +1,5 @@
+// ignore_for_file: prefer_initializing_formals
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -16,16 +18,10 @@ import 'geometry_services.dart';
 /// only this controller; persistence happens once when a transaction commits.
 class EditorController extends ChangeNotifier {
   EditorController({
-    EntryDocument? document,
-    List<ContentBlock>? blocks,
-    BoardSettings? initialBoard,
+    required EntryDocument document,
     required Future<void> Function(EntryDocument) persistDocument,
     this.maxHistory = 100,
-  }) : assert(
-         document != null || (blocks != null && initialBoard != null),
-         'Provide either document or the legacy blocks/initialBoard pair.',
-       ),
-       _document = document ?? _legacyDocument(blocks!, initialBoard!),
+  }) : _document = document,
        _onSave = persistDocument;
 
   static const _uuid = Uuid();
@@ -1050,18 +1046,4 @@ class EditorController extends ChangeNotifier {
     visit(nodes);
     return ids;
   }
-}
-
-EntryDocument _legacyDocument(
-  List<ContentBlock> blocks,
-  BoardSettings board,
-) {
-  final entry = Entry.newPage();
-  return EntryDocument.fromLegacyBlocks(
-    id: entry.id,
-    title: entry.title,
-    createdAt: entry.createdAt,
-    blocks: blocks,
-    board: board,
-  );
 }
