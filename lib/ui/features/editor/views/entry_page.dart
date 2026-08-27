@@ -291,10 +291,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     });
   }
 
-  void _changeBlock(LegacyCanvasBlock block) {
-    _editor.replaceBlockSnapshot(block, label: 'Edit ${block.type.name}');
-  }
-
   void _beginTextEditing(String blockId) {
     _editor.select(blockId);
     setState(() {
@@ -388,7 +384,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     final block = _activeTextBlock;
     if (block != null) {
       _editor.beginTransaction('Format text');
-      _editor.updateBlock(block.id, (target) => target.fontFamily = fontFamily);
+      _editor.updateNode(
+        block.id,
+        (node) => _withNodePayload(node, 'fontFamily', fontFamily),
+        label: 'Format text',
+      );
       unawaited(_editor.commitTransaction());
     } else if (_titleFocused) {
       _publishDocument(
@@ -416,7 +416,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         .toDouble();
     if (block != null) {
       _editor.beginTransaction('Format text');
-      _editor.updateBlock(block.id, (target) => target.fontSize = size);
+      _editor.updateNode(
+        block.id,
+        (node) => _withNodePayload(node, 'fontSize', size),
+        label: 'Format text',
+      );
       unawaited(_editor.commitTransaction());
     } else {
       _publishDocument(
@@ -431,7 +435,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     if (block == null && !_titleFocused) return;
     if (block != null) {
       _editor.beginTransaction('Format text');
-      _editor.updateBlock(block.id, (target) => target.bold = !target.bold);
+      _editor.updateNode(
+        block.id,
+        (node) => _withNodePayload(node, 'bold', !block.bold),
+        label: 'Format text',
+      );
       unawaited(_editor.commitTransaction());
     } else {
       _publishDocument(
@@ -449,7 +457,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     if (block == null && !_titleFocused) return;
     if (block != null) {
       _editor.beginTransaction('Format text');
-      _editor.updateBlock(block.id, (target) => target.italic = !target.italic);
+      _editor.updateNode(
+        block.id,
+        (node) => _withNodePayload(node, 'italic', !block.italic),
+        label: 'Format text',
+      );
       unawaited(_editor.commitTransaction());
     } else {
       _publishDocument(
@@ -465,7 +477,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void _changeTextColor(int? value) {
     final block = _activeTextBlock;
     if (block != null) {
-      _editor.updateBlock(block.id, (target) => target.textColorValue = value);
+      _editor.updateNode(
+        block.id,
+        (node) => _withNodePayload(node, 'textColorValue', value),
+        label: 'Format text',
+      );
     } else if (_titleFocused) {
       _publishDocument(
         _document.copyWith(
@@ -683,7 +699,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       h: 11,
       fontSize: 26,
     );
-    _editor.add(block);
+    _editor.addNode(CanvasNode.fromBlock(block));
     setState(() {
       _titleFocused = false;
       _selectedId = block.id;
@@ -737,7 +753,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
           : null,
       strokeWidth: 1.5,
     );
-    _editor.add(block);
+    _editor.addNode(CanvasNode.fromBlock(block));
     setState(() => _selectedId = block.id);
   }
 
@@ -765,7 +781,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         w: size.width,
         h: size.height,
       );
-      _editor.add(block);
+      _editor.addNode(CanvasNode.fromBlock(block));
       setState(() => _selectedId = block.id);
     } on FormatException catch (error) {
       if (mounted) _showImageError(error.message);
@@ -847,7 +863,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       w: sticker.defaultSize.width,
       h: sticker.defaultSize.height,
     );
-    _editor.add(block);
+    _editor.addNode(CanvasNode.fromBlock(block));
     setState(() => _selectedId = block.id);
   }
 
@@ -900,27 +916,41 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
 
   void _commitImageEdit(
     String blockId,
-    void Function(LegacyCanvasBlock block) mutate, {
+    CanvasNode Function(CanvasNode node) update, {
     String label = 'Edit image',
   }) {
-    final source = _blocks.where((block) => block.id == blockId).firstOrNull;
-    if (source == null || source.locked) return;
-    final next = source.clone();
-    mutate(next);
-    unawaited(_editor.replaceBlockAndCommit(next, label: label));
+    _editor.updateNode(blockId, update, label: label);
+    unawaited(_editor.commitTransaction());
   }
 
   void _previewImageEdit(
     String blockId,
-    void Function(LegacyCanvasBlock block) mutate, {
+    CanvasNode Function(CanvasNode node) update, {
     String label = 'Edit image',
   }) {
-    final source = _blocks.where((block) => block.id == blockId).firstOrNull;
-    if (source == null || source.locked) return;
-    final next = source.clone();
-    mutate(next);
-    _editor.replaceBlockSnapshot(next, label: label);
+    _editor.updateNode(blockId, update, label: label);
   }
+
+  CanvasNode _withNodePayload(
+    CanvasNode node,
+    String key,
+    Object? value,
+  ) {
+    final payload = Map<String, dynamic>.from(node.payload);
+    if (value == null) {
+      payload.remove(key);
+    } else {
+      payload[key] = value;
+    }
+    return node.copyWith(payload: payload);
+  }
+
+  CanvasNode _withImagePayload(
+    CanvasNode node,
+    String key,
+    Object? value,
+  ) =>
+      _withNodePayload(node, key, value);
 
   Future<void> _showImageEditor() async {
     final block = _imageSelection();
@@ -965,7 +995,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       selected: crop == null,
                       onTap: () {
                         setSheetState(() => crop = null);
-                        _commitImageEdit(block.id, (next) => next.crop = null);
+                        _commitImageEdit(
+                          block.id,
+                          (next) => _withImagePayload(next, 'crop', null),
+                        );
                       },
                     ),
                     _cropChoice(
@@ -976,7 +1009,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                         setSheetState(() => crop = _squareCrop);
                         _commitImageEdit(
                           block.id,
-                          (next) => next.crop = _squareCrop,
+                          (next) => _withImagePayload(next, 'crop', {
+                            'left': _squareCrop.left,
+                            'top': _squareCrop.top,
+                            'right': _squareCrop.right,
+                            'bottom': _squareCrop.bottom,
+                          }),
                         );
                       },
                     ),
@@ -988,7 +1026,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                         setSheetState(() => crop = _portraitCrop);
                         _commitImageEdit(
                           block.id,
-                          (next) => next.crop = _portraitCrop,
+                          (next) => _withImagePayload(next, 'crop', {
+                            'left': _portraitCrop.left,
+                            'top': _portraitCrop.top,
+                            'right': _portraitCrop.right,
+                            'bottom': _portraitCrop.bottom,
+                          }),
                         );
                       },
                     ),
@@ -1000,7 +1043,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                         setSheetState(() => crop = _wideCrop);
                         _commitImageEdit(
                           block.id,
-                          (next) => next.crop = _wideCrop,
+                          (next) => _withImagePayload(next, 'crop', {
+                            'left': _wideCrop.left,
+                            'top': _wideCrop.top,
+                            'right': _wideCrop.right,
+                            'bottom': _wideCrop.bottom,
+                          }),
                         );
                       },
                     ),
@@ -1023,7 +1071,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     setSheetState(() {});
                     _previewImageEdit(
                       block.id,
-                      (next) => next.opacity = value,
+                      (next) => next.copyWith(opacity: value),
                       label: 'Image opacity',
                     );
                   },
@@ -1040,7 +1088,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     setSheetState(() => brightness = value);
                     _previewImageEdit(
                       block.id,
-                      (next) => next.brightness = value,
+                      (next) => _withImagePayload(next, 'brightness', value),
                       label: 'Image brightness',
                     );
                   },
@@ -1057,7 +1105,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     setSheetState(() => contrast = value);
                     _previewImageEdit(
                       block.id,
-                      (next) => next.contrast = value,
+                      (next) => _withImagePayload(next, 'contrast', value),
                       label: 'Image contrast',
                     );
                   },
@@ -1074,7 +1122,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     setSheetState(() => saturation = value);
                     _previewImageEdit(
                       block.id,
-                      (next) => next.saturation = value,
+                      (next) => _withImagePayload(next, 'saturation', value),
                       label: 'Image saturation',
                     );
                   },
@@ -1087,7 +1135,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     FilledButton.tonalIcon(
                       onPressed: () => _commitImageEdit(
                         block.id,
-                        (next) => next.rotation += math.pi / 2,
+                        (next) => next.copyWith(
+                          transform: next.transform.copyWith(
+                            rotation: next.transform.rotation + math.pi / 2,
+                          ),
+                        ),
                       ),
                       icon: const Icon(Icons.rotate_90_degrees_ccw),
                       label: const Text('Rotate 90°'),
@@ -1095,7 +1147,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     FilledButton.tonalIcon(
                       onPressed: () => _commitImageEdit(
                         block.id,
-                        (next) => next.flipX = !next.flipX,
+                        (next) => _withImagePayload(
+                          next,
+                          'flipX',
+                          next.payload['flipX'] != true,
+                        ),
                       ),
                       icon: const Icon(Icons.flip),
                       label: const Text('Flip horizontal'),
@@ -1103,7 +1159,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     FilledButton.tonalIcon(
                       onPressed: () => _commitImageEdit(
                         block.id,
-                        (next) => next.flipY = !next.flipY,
+                        (next) => _withImagePayload(
+                          next,
+                          'flipY',
+                          next.payload['flipY'] != true,
+                        ),
                       ),
                       icon: const Icon(Icons.flip_camera_android),
                       label: const Text('Flip vertical'),
@@ -1125,7 +1185,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     setSheetState(() => imageMask = nextMask);
                     _commitImageEdit(
                       block.id,
-                      (next) => next.imageMask = nextMask,
+                      (next) => _withImagePayload(next, 'imageMask', nextMask),
                     );
                   },
                 ),
@@ -1719,15 +1779,24 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         return;
       }
       _editor.beginTransaction('Precise transform');
-      _editor.updateBlock(block.id, (target) {
-        target
-          ..x = nextX!
-          ..y = nextY!
-          ..w = math.max(EntryCanvas.minWidth, nextWidth!)
-          ..h = math.max(EntryCanvas.minHeight, nextHeight!)
-          ..rotation = degrees! * math.pi / 180
-          ..opacity = (nextOpacity! / 100).clamp(0.0, 1.0).toDouble();
-      });
+      _editor.replaceNodeWorldTransform(
+        block.id,
+        Transform2D(
+          x: nextX!,
+          y: nextY!,
+          width: math.max(EntryCanvas.minWidth, nextWidth!),
+          height: math.max(EntryCanvas.minHeight, nextHeight!),
+          rotation: degrees! * math.pi / 180,
+        ),
+        label: 'Precise transform',
+      );
+      _editor.updateNode(
+        block.id,
+        (node) => node.copyWith(
+          opacity: (nextOpacity! / 100).clamp(0.0, 1.0).toDouble(),
+        ),
+        label: 'Precise transform',
+      );
       await _editor.commitTransaction();
     }
 
@@ -2341,7 +2410,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                             setState(() => _selectedId = id);
                             _showImageEditor();
                           },
-                          onChanged: _changeBlock,
+                          // Legacy standalone canvases still expose
+                          // [onChanged]; the configured editor uses the
+                          // immutable transform/text intent callbacks.
+                          onChanged: (_) {},
                           onTransformChanged: (id, transform) =>
                               _editor.replaceNodeWorldTransform(id, transform),
                           onTextChanged: _editor.replaceText,

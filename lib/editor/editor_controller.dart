@@ -188,18 +188,6 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Updates only an unlocked block. Call [commitTransaction] after the last
-  /// pointer event to produce one undo entry and one persistent write.
-  void updateBlock(String id, void Function(ContentBlock block) mutate) {
-    final block = _byId(id);
-    if (block == null || block.locked) return;
-    final next = block.clone();
-    mutate(next);
-    next.opacity = next.opacity.clamp(0.0, 1.0).toDouble();
-    _document = _document.replaceLegacyBlock(next);
-    notifyListeners();
-  }
-
   /// Updates the stroke presentation of every selected, unlocked drawable.
   ///
   /// The caller owns the surrounding transaction so a continuous color
@@ -228,34 +216,6 @@ class EditorController extends ChangeNotifier {
     }
     notifyListeners();
   }
-
-  /// Applies a detached block snapshot at the command boundary.
-  ///
-  /// Widgets and overlays should use this method when they preview a
-  /// transform. The controller owns the stored instance and clones the
-  /// submitted value before it becomes part of the working document.
-  void replaceBlockSnapshot(ContentBlock next, {String label = 'Edit block'}) {
-    final current = _byId(next.id);
-    if (current == null || current.locked) return;
-    if (!_history.inTransaction) beginTransaction(label);
-    final replacement = next.clone()
-      ..opacity = next.opacity.clamp(0.0, 1.0).toDouble();
-    _document = _document.replaceLegacyBlock(replacement);
-    notifyListeners();
-  }
-
-  /// Replaces a block and commits it as one command for non-gesture edits.
-  Future<void> replaceBlockAndCommit(
-    ContentBlock next, {
-    String label = 'Edit block',
-  }) async {
-    replaceBlockSnapshot(next, label: label);
-    await commitTransaction();
-  }
-
-  /// Records a visual update made by a legacy canvas callback during an active
-  /// transaction. New tools should prefer [updateBlock].
-  void markChanged() => notifyListeners();
 
   void moveSelection(Offset delta, {bool snap = false}) {
     final transforms = <String, Transform2D>{};
