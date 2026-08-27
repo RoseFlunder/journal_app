@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../models/entry.dart';
+import '../models/document.dart';
 import 'geometry_services.dart';
 
 /// Pure world/screen geometry used by canvas interaction code.

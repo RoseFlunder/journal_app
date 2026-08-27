@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image;
 import 'package:journal_app/models/document.dart';
-import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/template.dart';
 import 'package:journal_app/services/image_source.dart';
 import 'package:journal_app/services/repositories.dart';

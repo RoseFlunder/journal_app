@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../models/entry.dart';
+import '../models/document.dart';
 
 /// Pure transform calculations shared by rendering and interaction code.
 class TransformService {

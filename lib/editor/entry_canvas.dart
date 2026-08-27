@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../models/document.dart';
 import '../models/entry.dart';
 import '../widgets/page_viewport.dart';
+import '../services/legacy_editor_codec.dart';
 import 'block_widget.dart';
 import 'geometry_services.dart';
 
@@ -786,28 +787,32 @@ class _EntryCanvasState extends State<EntryCanvas> {
       maxY = math.max(maxY, point.dy);
     }
     const padding = 2.0;
-    final block = ContentBlock(
+    final node = CanvasNode(
       id: _uuid.v4(),
       type: BlockType.ink,
-      x: minX - padding,
-      y: minY - padding,
-      w: math.max(EntryCanvas.minWidth, maxX - minX + padding * 2),
-      h: math.max(EntryCanvas.minHeight, maxY - minY + padding * 2),
-      strokeColorValue: widget.inkColorValue,
-      strokeWidth: widget.inkWidth,
+      transform: Transform2D(
+        x: minX - padding,
+        y: minY - padding,
+        width: math.max(EntryCanvas.minWidth, maxX - minX + padding * 2),
+        height: math.max(EntryCanvas.minHeight, maxY - minY + padding * 2),
+      ),
       opacity: widget.inkOpacity,
-      inkPoints: [
-        for (final point in _inkPoints)
-          {'x': point.dx - minX + padding, 'y': point.dy - minY + padding},
-      ],
+      payload: {
+        'strokeColorValue': widget.inkColorValue,
+        'strokeWidth': widget.inkWidth,
+        'inkPoints': [
+          for (final point in _inkPoints)
+            {'x': point.dx - minX + padding, 'y': point.dy - minY + padding},
+        ],
+      },
     );
     _inkPoints.clear();
     setState(() {});
     final onInkNodeCreated = widget.onInkNodeCreated;
     if (onInkNodeCreated != null) {
-      onInkNodeCreated(CanvasNode.fromBlock(block));
+      onInkNodeCreated(node);
     } else {
-      widget.onInkCreated?.call(block);
+      widget.onInkCreated?.call(toLegacyCanvasBlock(node));
     }
   }
 
@@ -1013,11 +1018,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
   String? _visualId(CanvasRenderable block) =>
       block.type == BlockType.sticker ? block.stickerId : block.assetId;
 
-  ContentBlock _asLegacy(CanvasRenderable block) => switch (block) {
-    ContentBlock legacy => legacy,
-    CanvasNode node => node.toBlock(),
-    _ => ContentBlock.fromJson(block.toJson()),
-  };
+  ContentBlock _asLegacy(CanvasRenderable block) => toLegacyCanvasBlock(block);
 }
 
 class _BlockMoveSession {

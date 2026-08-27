@@ -7,7 +7,7 @@ import 'page_music.dart';
 
 // Public render contracts used by feature views. Mutable Entry/ContentBlock
 // remain implementation details of the compatibility codec.
-export 'entry.dart' show BlockType, CanvasRenderable;
+export 'entry.dart' show BlockType, BoardSettings, CanvasRenderable, JournalFonts;
 
 /// Immutable world-space transform shared by every board node.
 class Transform2D {

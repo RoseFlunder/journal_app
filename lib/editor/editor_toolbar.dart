@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../models/entry.dart';
+import '../models/document.dart';
 
 class EditorToolbar extends StatelessWidget {
   const EditorToolbar({
