@@ -12,7 +12,7 @@ class CheckpointRecoveryUseCase {
   final CheckpointRepository checkpoints;
   final DocumentRepository documents;
 
-  List<EntryCheckpoint> forDocument(String documentId) =>
+  List<CheckpointInfo> forDocument(String documentId) =>
       checkpoints.checkpointsFor(documentId);
 
   Future<void> create(String documentId) =>

@@ -139,8 +139,8 @@ class _FakeCheckpointRepository implements CheckpointRepository {
   final List<String> scheduledDocumentIds = <String>[];
 
   @override
-  List<EntryCheckpoint> checkpointsFor(String documentId) =>
-      const <EntryCheckpoint>[];
+  List<CheckpointInfo> checkpointsFor(String documentId) =>
+      const <CheckpointInfo>[];
 
   @override
   void scheduleCheckpoint(String documentId) {

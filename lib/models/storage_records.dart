@@ -1,7 +1,5 @@
 import 'entry.dart';
-
-/// Kinds of binary assets stored by the journal data layer.
-enum AssetKind { image, audio }
+import 'asset_kind.dart';
 
 /// A binary asset owned by a journal document.
 class AssetRecord {

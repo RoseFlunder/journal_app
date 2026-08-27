@@ -105,8 +105,16 @@ class HiveCheckpointRepository implements CheckpointRepository {
   final JournalStore _source;
 
   @override
-  List<EntryCheckpoint> checkpointsFor(String documentId) =>
-      _source.checkpointsFor(documentId);
+  List<CheckpointInfo> checkpointsFor(String documentId) => _source
+      .checkpointsFor(documentId)
+      .map(
+        (checkpoint) => CheckpointInfo(
+          id: checkpoint.id,
+          documentId: checkpoint.entryId,
+          createdAt: checkpoint.createdAt,
+        ),
+      )
+      .toList(growable: false);
 
   @override
   void scheduleCheckpoint(String documentId) =>

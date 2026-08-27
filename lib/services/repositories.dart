@@ -1,15 +1,17 @@
 import 'dart:typed_data';
 
 import '../models/document.dart';
+import '../models/asset_kind.dart';
+import '../models/checkpoint.dart';
 import '../models/page_music.dart';
-import '../models/storage_records.dart';
 import '../models/template.dart';
 import 'journal_archive.dart';
 
 // Capability-owned value type; storage record classes remain private to the
 // Hive adapters while repositories may still describe asset kind in a method
 // contract.
-export '../models/storage_records.dart' show AssetKind, EntryCheckpoint;
+export '../models/asset_kind.dart' show AssetKind;
+export '../models/checkpoint.dart' show CheckpointInfo;
 
 abstract interface class AssetRepository {
   Future<String> putAsset(
@@ -27,7 +29,7 @@ abstract interface class AssetRepository {
 }
 
 abstract interface class CheckpointRepository {
-  List<EntryCheckpoint> checkpointsFor(String documentId);
+  List<CheckpointInfo> checkpointsFor(String documentId);
 
   void scheduleCheckpoint(String documentId);
 

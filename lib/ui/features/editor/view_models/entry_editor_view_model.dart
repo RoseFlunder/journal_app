@@ -152,7 +152,7 @@ class EntryEditorViewModel extends EditorController {
         this,
       );
 
-  List<EntryCheckpoint> checkpointsFor(String id) =>
+  List<CheckpointInfo> checkpointsFor(String id) =>
       _checkpointRecovery.forDocument(id);
 
   Future<void> createCheckpoint(String id) => _checkpointRecovery.create(id);

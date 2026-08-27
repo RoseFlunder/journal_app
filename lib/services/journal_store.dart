@@ -5,13 +5,14 @@ import 'package:uuid/uuid.dart';
 
 import '../models/document.dart';
 import '../models/entry.dart';
+import '../models/asset_kind.dart';
 import '../models/storage_records.dart';
 import '../models/template.dart';
 import 'journal_archive.dart';
 import 'hive_journal_data_source.dart';
 
-export '../models/storage_records.dart'
-    show AssetKind, AssetRecord, EntryCheckpoint;
+export '../models/asset_kind.dart' show AssetKind;
+export '../models/storage_records.dart' show AssetRecord, EntryCheckpoint;
 
 /// Loads, owns and persists all journal data.
 ///
