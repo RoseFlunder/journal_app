@@ -178,7 +178,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   bool get _strokeColorAvailable =>
-      _editor.selectedDrawableBlocks.any((block) => !block.locked);
+      _editor.selectedDrawableNodes.any((node) => !node.locked);
 
   int? get _activeStrokeColorValue {
     final block = _activeStrokeBlock;

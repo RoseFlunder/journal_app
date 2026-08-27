@@ -49,26 +49,13 @@ class EditorController extends ChangeNotifier {
   List<CanvasNode> get renderNodes => _document.renderNodes;
   List<CanvasNode> get nodes => document.nodes;
   /// Immutable structural projection used by layers and inspectors.
-  List<CanvasNode> get allNodes {
-    final result = <CanvasNode>[];
-    void visit(Iterable<CanvasNode> candidates) {
-      for (final node in candidates) {
-        result.add(node);
-        if (node.children.isNotEmpty) visit(node.children);
-      }
-    }
-
-    visit(_document.nodes);
-    return List<CanvasNode>.unmodifiable(result);
-  }
+  List<CanvasNode> get allNodes => _allDocumentNodes;
   EntryDocument get document => _document;
   BoardSettings get board => _document.board;
   Set<String> get selection => Set.unmodifiable(_selection);
-  List<ContentBlock> get selectedDrawableBlocks => _expandedSelectedBlocks
-      .where(
-        (block) => block.type == BlockType.ink || block.type == BlockType.shape,
-      )
-      .map((block) => block.clone())
+  @Deprecated('Use selectedDrawableNodes instead.')
+  List<ContentBlock> get selectedDrawableBlocks => selectedDrawableNodes
+      .map((node) => node.toBlock())
       .toList(growable: false);
   bool get hasSelection => _selection.isNotEmpty;
   bool get canUndo => _history.canUndo;
@@ -80,9 +67,10 @@ class EditorController extends ChangeNotifier {
     ..._history.retainedAssetIds,
     ..._assetIdsInNodes(_clipboard),
   });
-  bool get canGroup => _expandedSelectedBlocks.length > 1;
+  bool get canGroup => _expandedSelectedNodes.length > 1;
   bool get canUngroup =>
-      _expandedSelectedBlocks.any((block) => block.groupId != null);
+      _expandedSelectedNodes.any((node) => node.groupId != null) ||
+      _selectedNodes.any((node) => node.type == BlockType.group);
   EditorSaveState get saveState => _saveState;
 
   EditorState get state => EditorState(
@@ -95,12 +83,8 @@ class EditorController extends ChangeNotifier {
     saveState: saveState,
   );
 
-  ContentBlock? get primarySelection {
-    if (_selection.isEmpty) return null;
-    final id = _selection.last;
-    final block = _byId(id);
-    return block?.clone();
-  }
+  @Deprecated('Use primaryNode instead.')
+  ContentBlock? get primarySelection => primaryNode?.toBlock();
 
   /// Immutable primary selection for feature views. Unlike
   /// [primarySelection], this never creates a mutable compatibility adapter.
@@ -109,26 +93,11 @@ class EditorController extends ChangeNotifier {
 
   /// Immutable drawable selections, including descendants of selected groups.
   List<CanvasNode> get selectedDrawableNodes {
-    final result = <CanvasNode>[];
-    void collect(CanvasNode node) {
-      if (node.type == BlockType.group) {
-        for (final child in node.children) {
-          collect(child);
-        }
-      } else if (node.type == BlockType.ink || node.type == BlockType.shape) {
-        result.add(node);
-      }
-    }
-
-    void visit(Iterable<CanvasNode> candidates) {
-      for (final node in candidates) {
-        if (_selection.contains(node.id)) collect(node);
-        if (node.children.isNotEmpty) visit(node.children);
-      }
-    }
-
-    visit(_document.nodes);
-    return List<CanvasNode>.unmodifiable(result);
+    return List<CanvasNode>.unmodifiable(
+      _expandedSelectedNodes.where(
+        (node) => node.type == BlockType.ink || node.type == BlockType.shape,
+      ),
+    );
   }
 
   /// Replaces one immutable node at the editor boundary.
@@ -198,9 +167,9 @@ class EditorController extends ChangeNotifier {
   }
 
   void selectAll() {
-    final next = blocks
-        .where((block) => !block.hidden)
-        .map((b) => b.id)
+    final next = _allDocumentNodes
+        .where((node) => node.type != BlockType.group && node.visible)
+        .map((node) => node.id)
         .toSet();
     if (setEquals(next, _selection)) return;
     _selection
@@ -246,17 +215,17 @@ class EditorController extends ChangeNotifier {
     required int colorValue,
     required double opacity,
   }) {
-    final ids = _expandedSelectedBlocks
+    final ids = _expandedSelectedNodes
         .where(
-          (block) =>
-              block.type == BlockType.ink || block.type == BlockType.shape,
+          (node) =>
+              node.type == BlockType.ink || node.type == BlockType.shape,
         )
-        .map((block) => block.id)
+        .map((node) => node.id)
         .toSet();
     if (ids.isEmpty) return;
     beginTransaction('Stroke');
     for (final id in ids) {
-      final node = _document.nodeById(id);
+      final node = _nodeById(id);
       if (node == null || node.locked) continue;
       final payload = Map<String, dynamic>.from(node.payload)
         ..['strokeColorValue'] = colorValue;
@@ -269,15 +238,16 @@ class EditorController extends ChangeNotifier {
 
   void moveSelection(Offset delta, {bool snap = false}) {
     final transforms = <String, Transform2D>{};
-    for (final block in _expandedSelectedBlocks) {
-      if (block.locked) continue;
+    for (final node in _expandedSelectedNodes) {
+      final block = _worldNode(node);
+      if (node.locked) continue;
       var x = block.x + delta.dx;
       var y = block.y + delta.dy;
       if (snap && board.snapToGrid) {
         x = _snap(x);
         y = _snap(y);
       }
-      transforms[block.id] = Transform2D(
+      transforms[node.id] = Transform2D(
         x: x,
         y: y,
         width: block.w,
@@ -295,9 +265,10 @@ class EditorController extends ChangeNotifier {
   /// committed as one undoable command.
   void rotateSelection(double delta) {
     final transforms = <String, Transform2D>{};
-    for (final block in _expandedSelectedBlocks) {
-      if (block.locked) continue;
-      transforms[block.id] = Transform2D(
+    for (final node in _expandedSelectedNodes) {
+      final block = _worldNode(node);
+      if (node.locked) continue;
+      transforms[node.id] = Transform2D(
         x: block.x,
         y: block.y,
         width: block.w,
@@ -324,29 +295,26 @@ class EditorController extends ChangeNotifier {
     final cosine = math.cos(delta);
     final sine = math.sin(delta);
     final requestedIds = blockIds.toSet();
-    final currentBlocks = blocks;
-    final groupIds = currentBlocks
-        .where((block) => requestedIds.contains(block.id))
-        .expand(
-          (block) => [
-            block.groupId,
-            if (block.type == BlockType.group) block.id,
-          ],
-        )
-        .whereType<String>()
-        .toSet();
-    final targetIds = currentBlocks
-        .where(
-          (block) =>
-              requestedIds.contains(block.id) ||
-              (block.type != BlockType.group &&
-                  groupIds.contains(block.groupId)),
-        )
-        .map((block) => block.id);
+    final currentNodes = _allDocumentNodes;
+    final targetIds = <String>{...requestedIds};
+    for (final node in currentNodes.where(
+      (node) => requestedIds.contains(node.id),
+    )) {
+      if (node.type == BlockType.group) {
+        targetIds.addAll(_descendantIds(node));
+      } else {
+        final parentId = _parentById[node.id];
+        final parent = parentId == null ? null : _nodeById(parentId);
+        if (parent?.type == BlockType.group) {
+          targetIds.addAll(_descendantIds(parent!));
+        }
+      }
+    }
     final transforms = <String, Transform2D>{};
     for (final id in targetIds) {
-      final block = _byId(id);
-      if (block == null || block.locked || block.hidden) continue;
+      final node = _nodeById(id);
+      if (node == null || node.locked || !node.visible) continue;
+      final block = _worldNode(node);
       final center = Offset(block.x + block.w / 2, block.y + block.h / 2);
       final relative = center - pivot;
       final rotatedCenter =
@@ -374,9 +342,10 @@ class EditorController extends ChangeNotifier {
   void snapSelection() {
     if (!board.snapToGrid || _selection.isEmpty) return;
     final transforms = <String, Transform2D>{};
-    for (final block in _expandedSelectedBlocks) {
-      if (block.locked) continue;
-      transforms[block.id] = Transform2D(
+    for (final node in _expandedSelectedNodes) {
+      final block = _worldNode(node);
+      if (node.locked) continue;
+      transforms[node.id] = Transform2D(
         x: _snap(block.x),
         y: _snap(block.y),
         width: block.w,
@@ -412,19 +381,7 @@ class EditorController extends ChangeNotifier {
   }
 
   void add(ContentBlock block, {bool select = true}) {
-    beginTransaction('Add ${block.type.name}');
-    final nodes = _nodesFromLegacyGraph([block]);
-    final next = nodes.isEmpty
-        ? <CanvasNode>[CanvasNode.fromBlock(block)]
-        : nodes;
-    _document = _document.insertNodes(next);
-    if (select) {
-      _selection
-        ..clear()
-        ..addAll(next.map((node) => node.id));
-    }
-    notifyListeners();
-    unawaited(commitTransaction());
+    addNode(CanvasNode.fromBlock(block), select: select);
   }
 
   /// Inserts a complete template graph as one command, remapping every node
@@ -474,48 +431,52 @@ class EditorController extends ChangeNotifier {
     Offset offset = Offset.zero,
     String label = 'Insert template',
   }) {
-    final sourceList = sources.map((block) => block.clone()).toList();
+    final sourceList = sources.toList(growable: false);
     if (sourceList.isEmpty) return;
-    final sourceNodes = _nodesFromLegacyGraph(sourceList);
-    insertNodeGraph(sourceNodes, offset: offset, label: label);
+    final sourceDocument = EntryDocument.fromLegacyBlocks(
+      id: _document.id,
+      title: _document.title,
+      createdAt: _document.createdAt,
+      blocks: sourceList,
+      board: _document.board,
+    );
+    insertNodeGraph(sourceDocument.nodes, offset: offset, label: label);
   }
 
   void deleteSelection() {
     if (_selection.isEmpty) return;
     beginTransaction('Delete');
-    final expanded = _expandedSelectedBlocks;
+    final expanded = _expandedSelectedNodes;
     final selected = expanded
-        .where((block) => !block.locked)
-        .map((block) => block.id)
+        .where((node) => !node.locked)
+        .map((node) => node.id)
         .toSet();
-    final remaining = blocks.where((block) => !selected.contains(block.id));
+    final remaining = _allDocumentNodes.where((node) => !selected.contains(node.id));
     final liveGroupIds = remaining
-        .where((block) => block.groupId != null)
-        .map((block) => block.groupId!)
+        .where((node) => node.groupId != null)
+        .map((node) => node.groupId!)
         .toSet();
-    final emptyGroups = blocks
+    final emptyGroups = _allDocumentNodes
         .where(
-          (block) =>
-              block.type == BlockType.group &&
-              !liveGroupIds.contains(block.id),
+          (node) =>
+              node.type == BlockType.group && !liveGroupIds.contains(node.id),
         )
-        .map((block) => block.id);
+        .map((node) => node.id);
     _document = _document.removeNodes({...selected, ...emptyGroups});
-    _selection.removeWhere((id) => _byId(id) == null);
+    _selection.removeWhere((id) => _nodeById(id) == null);
     notifyListeners();
     unawaited(commitTransaction());
   }
 
   void duplicateSelection() {
-    final selected = _selectedGraphBlocks;
+    final selected = _selectedGraphNodes;
     if (selected.isEmpty) return;
     beginTransaction('Duplicate');
     final selectedIds = Set<String>.from(_selection);
     final idMap = <String, String>{
-      for (final id in _collectLegacyIds(selected)) id: _uuid.v4(),
+      for (final id in _collectNodeIds(selected)) id: _uuid.v4(),
     };
-    final sourceNodes = _nodesFromLegacyGraph(selected);
-    final copies = sourceNodes
+    final copies = selected
         .map(
           (node) => _remapClipboardNode(
             node,
@@ -546,7 +507,7 @@ class EditorController extends ChangeNotifier {
   }
 
   void copySelection() {
-    _clipboard = _nodesFromLegacyGraph(_selectedGraphBlocks);
+    _clipboard = _selectedGraphNodes;
     _clipboardSelection = Set<String>.from(_selection);
     notifyListeners();
   }
@@ -604,7 +565,7 @@ class EditorController extends ChangeNotifier {
   void bringToFront() {
     if (_selection.isEmpty) return;
     beginTransaction('Bring to front');
-    final ids = _expandedSelectedBlocks.map((block) => block.id).toSet();
+    final ids = _expandedSelectedNodes.map((node) => node.id).toSet();
     _document = _document.reorderNodes(ids, toEnd: true);
     notifyListeners();
     unawaited(commitTransaction());
@@ -613,30 +574,30 @@ class EditorController extends ChangeNotifier {
   void sendToBack() {
     if (_selection.isEmpty) return;
     beginTransaction('Send to back');
-    final ids = _expandedSelectedBlocks.map((block) => block.id).toSet();
+    final ids = _expandedSelectedNodes.map((node) => node.id).toSet();
     _document = _document.reorderNodes(ids, toEnd: false);
     notifyListeners();
     unawaited(commitTransaction());
   }
 
   void moveLayerForward() {
-    final block = primarySelection;
-    if (block == null) return;
-    final index = blocks.indexWhere((item) => item.id == block.id);
-    if (index < 0 || index >= blocks.length - 1) return;
-    reorderLayer(block.id, index + 1);
+    final node = primaryNode;
+    if (node == null) return;
+    final index = _siblingIndex(node.id);
+    if (index < 0 || index >= _siblingCount(node.id) - 1) return;
+    reorderLayer(node.id, index + 1);
   }
 
   void moveLayerBackward() {
-    final block = primarySelection;
-    if (block == null) return;
-    final index = blocks.indexWhere((item) => item.id == block.id);
+    final node = primaryNode;
+    if (node == null) return;
+    final index = _siblingIndex(node.id);
     if (index <= 0) return;
-    reorderLayer(block.id, index - 1);
+    reorderLayer(node.id, index - 1);
   }
 
   void reorderLayer(String blockId, int targetIndex) {
-    final source = _byId(blockId);
+    final source = _nodeById(blockId);
     if (source == null) return;
     beginTransaction('Reorder layer');
     _document = _document.reorderNode(blockId, targetIndex);
@@ -667,7 +628,10 @@ class EditorController extends ChangeNotifier {
   }
 
   void align(Alignment alignment) {
-    final selected = _expandedSelectedBlocks;
+    final selected = _expandedSelectedNodes
+        .where((node) => node.type != BlockType.group)
+        .map(_worldNode)
+        .toList(growable: false);
     if (selected.length < 2) return;
     beginTransaction('Align');
     final bounds = _boundsFor(selected);
@@ -719,26 +683,28 @@ class EditorController extends ChangeNotifier {
   }
 
   void groupSelection() {
-    final children = _expandedSelectedBlocks
-        .where((block) => block.type != BlockType.group)
+    final children = _expandedSelectedNodes
+        .where((node) => node.type != BlockType.group)
         .toList();
     if (children.length < 2) return;
     beginTransaction('Group');
     final groupId = _uuid.v4();
     _document = _document.groupNodes(
-      children.map((block) => block.id),
+      children.map((node) => node.id),
       groupId: groupId,
     );
     _selection
       ..clear()
-      ..addAll(children.map((block) => block.id));
+      ..addAll(children.map((node) => node.id));
     notifyListeners();
     unawaited(commitTransaction());
   }
 
   void ungroupSelection() {
-    final groupIds = _expandedSelectedBlocks
-        .map((block) => block.groupId)
+    final parents = _parentById;
+    final groupIds = _expandedSelectedNodes
+        .where((node) => node.type == BlockType.group || parents[node.id] != null)
+        .map((node) => node.type == BlockType.group ? node.id : parents[node.id])
         .whereType<String>()
         .toSet();
     if (groupIds.isEmpty) return;
@@ -791,33 +757,38 @@ class EditorController extends ChangeNotifier {
     await _persist();
   }
 
+  @Deprecated('Use document or nodes instead.')
   List<ContentBlock> snapshotBlocks() => _document.blocks;
 
   /// Returns the selected structural graph as detached snapshots for local
   /// templates and clipboard consumers.
-  List<ContentBlock> selectedGraphSnapshot() => _selectedGraphBlocks
-      .map((block) => block.clone())
-      .toList(growable: false);
+  @Deprecated('Use selectedNodeGraphSnapshot instead.')
+  List<ContentBlock> selectedGraphSnapshot() => EntryDocument(
+    id: _document.id,
+    title: _document.title,
+    createdAt: _document.createdAt,
+    modifiedAt: _document.modifiedAt,
+    nodes: _selectedGraphNodes,
+    board: _document.board,
+  ).blocks;
 
   /// Returns the selected structural graph as immutable nodes for feature
   /// workflows such as template persistence and insertion.
   List<CanvasNode> selectedNodeGraphSnapshot() =>
-      List<CanvasNode>.unmodifiable(_nodesFromLegacyGraph(_selectedGraphBlocks));
+      _selectedGraphNodes;
 
   /// Replaces the working document after a checkpoint restore or archive
   /// import. History intentionally starts fresh at the restored version.
+  @Deprecated('Use replaceDocumentModel instead.')
   void replaceDocument(List<ContentBlock> blocks, BoardSettings board) {
-    _textTimer?.cancel();
-    _document = _document.copyWith(
-      nodes: EntryDocument.fromEntry(
-        _document.toEntry()..blocks = _cloneBlocks(blocks),
-      ).nodes,
+    final next = EntryDocument.fromLegacyBlocks(
+      id: _document.id,
+      title: _document.title,
+      createdAt: _document.createdAt,
+      blocks: blocks,
       board: board,
     );
-    _selection.clear();
-    _history.reset();
-    _saveState = EditorSaveState.saved;
-    notifyListeners();
+    replaceDocumentModel(_document.copyWith(nodes: next.nodes, board: board));
   }
 
   /// Replaces the immutable working document after recovery or import.
@@ -864,7 +835,7 @@ class EditorController extends ChangeNotifier {
   ) {
     if (_selection.isEmpty) return;
     beginTransaction(label);
-    for (final id in _expandedSelectedBlocks.map((block) => block.id).toSet()) {
+    for (final id in _expandedSelectedNodes.map((node) => node.id).toSet()) {
       final node = _document.nodeById(id);
       if (node == null) continue;
       _document = _document.replaceNode(update(node));
@@ -873,53 +844,116 @@ class EditorController extends ChangeNotifier {
     unawaited(commitTransaction());
   }
 
-  List<ContentBlock> get _selectedBlocks =>
-      blocks.where((block) => _selection.contains(block.id)).toList();
-
-  /// Returns the complete structural graph for clipboard/duplicate actions,
-  /// including hidden group parents that are not rendered as selectable
-  /// blocks. Transform operations continue to use [_expandedSelectedBlocks]
-  /// so a group move changes its children exactly once.
-  List<ContentBlock> get _selectedGraphBlocks {
-    final groupIds = _selectedBlocks
-        .expand(
-          (block) => [
-            block.groupId,
-            if (block.type == BlockType.group) block.id,
-          ],
-        )
-        .whereType<String>()
-        .toSet();
-    final ids = _expandedSelectedBlocks.map((block) => block.id).toSet()
-      ..addAll(groupIds);
-    return blocks.where((block) => ids.contains(block.id)).toList();
-  }
-
-  List<ContentBlock> get _expandedSelectedBlocks {
-    final groupIds = _selectedBlocks
-        .expand(
-          (block) => [
-            block.groupId,
-            if (block.type == BlockType.group) block.id,
-          ],
-        )
-        .whereType<String>()
-        .toSet();
-    return blocks
-        .where(
-          (block) =>
-              _selection.contains(block.id) ||
-              (block.type != BlockType.group &&
-                  groupIds.contains(block.groupId)),
-        )
-        .toList();
-  }
-
-  ContentBlock? _byId(String id) {
-    for (final block in blocks) {
-      if (block.id == id) return block;
+  List<CanvasNode> get _allDocumentNodes {
+    final result = <CanvasNode>[];
+    void visit(Iterable<CanvasNode> candidates) {
+      for (final node in candidates) {
+        result.add(node);
+        if (node.children.isNotEmpty) visit(node.children);
+      }
     }
-    return null;
+
+    visit(_document.nodes);
+    return List<CanvasNode>.unmodifiable(result);
+  }
+
+  List<CanvasNode> get _selectedNodes => List<CanvasNode>.unmodifiable(
+    _allDocumentNodes.where((node) => _selection.contains(node.id)),
+  );
+
+  Map<String, String?> get _parentById {
+    final parents = <String, String?>{};
+    void visit(Iterable<CanvasNode> candidates, String? parentId) {
+      for (final node in candidates) {
+        parents[node.id] = parentId;
+        visit(node.children, node.id);
+      }
+    }
+
+    visit(_document.nodes, null);
+    return parents;
+  }
+
+  Set<String> _descendantIds(CanvasNode node) {
+    final ids = <String>{};
+    void visit(Iterable<CanvasNode> children) {
+      for (final child in children) {
+        ids.add(child.id);
+        visit(child.children);
+      }
+    }
+
+    visit(node.children);
+    return ids;
+  }
+
+  /// Expands a selection to the drawable siblings controlled by a selected
+  /// group, without converting immutable nodes through legacy blocks.
+  List<CanvasNode> get _expandedSelectedNodes {
+    final ids = <String>{..._selection};
+    final parents = _parentById;
+    for (final selected in _selectedNodes) {
+      if (selected.type == BlockType.group) {
+        ids.addAll(_descendantIds(selected));
+        continue;
+      }
+      final parentId = parents[selected.id];
+      if (parentId == null) continue;
+      final parent = _nodeById(parentId);
+      if (parent != null) ids.addAll(_descendantIds(parent));
+    }
+    return List<CanvasNode>.unmodifiable(
+      _allDocumentNodes.where((node) => ids.contains(node.id)),
+    );
+  }
+
+  /// Returns complete immutable roots for clipboard/duplicate/template
+  /// actions, including the parent group when a child is selected.
+  List<CanvasNode> get _selectedGraphNodes {
+    final ids = _expandedSelectedNodes.map((node) => node.id).toSet();
+    final parents = _parentById;
+    for (final id in _selection) {
+      var parentId = parents[id];
+      while (parentId != null) {
+        ids.add(parentId);
+        parentId = parents[parentId];
+      }
+    }
+
+    List<CanvasNode> copyRoots(Iterable<CanvasNode> candidates) => candidates
+        .map(
+          (node) {
+            if (!ids.contains(node.id)) return null;
+            final children = copyRoots(node.children);
+            return node.copyWith(children: children);
+          },
+        )
+        .whereType<CanvasNode>()
+        .toList(growable: false);
+
+    return List<CanvasNode>.unmodifiable(copyRoots(_document.nodes));
+  }
+
+  CanvasNode? _nodeById(String id) => _document.nodeById(id);
+
+  CanvasNode _worldNode(CanvasNode node) => node.copyWith(
+    transform: _document.worldTransformFor(node.id) ?? node.transform,
+    children: const <CanvasNode>[],
+  );
+
+  int _siblingIndex(String id) {
+    final parentId = _parentById[id];
+    final siblings = parentId == null
+        ? _document.nodes
+        : _nodeById(parentId)?.children ?? const <CanvasNode>[];
+    return siblings.toList(growable: false).indexWhere((node) => node.id == id);
+  }
+
+  int _siblingCount(String id) {
+    final parentId = _parentById[id];
+    return parentId == null
+        ? _document.nodes.length
+        : _nodeById(parentId)?.children.length ?? 0;
   }
 
   double _snap(double value) {
@@ -931,12 +965,7 @@ class EditorController extends ChangeNotifier {
 
   void _restore(EditorDocumentSnapshot snapshot) {
     _document = snapshot.document;
-    _selection.removeWhere((id) => _byId(id) == null);
-  }
-
-  List<CanvasNode> _nodesFromLegacyGraph(Iterable<ContentBlock> graph) {
-    final entry = _document.toEntry()..blocks = _cloneBlocks(graph.toList());
-    return EntryDocument.fromEntry(entry).nodes;
+    _selection.removeWhere((id) => _nodeById(id) == null);
   }
 
   CanvasNode _remapClipboardNode(
@@ -971,16 +1000,13 @@ class EditorController extends ChangeNotifier {
     );
   }
 
-  static Set<String> _collectLegacyIds(Iterable<ContentBlock> blocks) {
-    final ids = <String>{for (final block in blocks) block.id};
-    final byId = {for (final block in blocks) block.id: block};
-    final pending = List<ContentBlock>.from(blocks);
+  static Set<String> _collectNodeIds(Iterable<CanvasNode> nodes) {
+    final ids = <String>{};
+    final pending = List<CanvasNode>.from(nodes);
     while (pending.isNotEmpty) {
-      final block = pending.removeLast();
-      for (final childId in block.childIds ?? const <String>[]) {
-        final child = byId[childId];
-        if (child != null && ids.add(child.id)) pending.add(child);
-      }
+      final node = pending.removeLast();
+      if (!ids.add(node.id)) continue;
+      pending.addAll(node.children);
     }
     return ids;
   }
@@ -992,7 +1018,7 @@ class EditorController extends ChangeNotifier {
     }
   }
 
-  static Rect _boundsFor(List<ContentBlock> blocks) {
+  static Rect _boundsFor(List<CanvasNode> blocks) {
     var bounds = Rect.fromLTWH(
       blocks.first.x,
       blocks.first.y,
@@ -1012,9 +1038,6 @@ class EditorController extends ChangeNotifier {
     EditorDocumentSnapshot right,
   ) => jsonEncode(left.toJson()) == jsonEncode(right.toJson());
 
-  static List<ContentBlock> _cloneBlocks(List<ContentBlock> blocks) =>
-      blocks.map((block) => block.clone()).toList();
-
   static Set<String> _assetIdsInNodes(Iterable<CanvasNode> nodes) {
     final ids = <String>{};
     void visit(Iterable<CanvasNode> candidates) {
@@ -1033,8 +1056,12 @@ EntryDocument _legacyDocument(
   List<ContentBlock> blocks,
   BoardSettings board,
 ) {
-  final entry = Entry.newPage()
-    ..blocks = EditorController._cloneBlocks(blocks)
-    ..board = board;
-  return EntryDocument.fromEntry(entry);
+  final entry = Entry.newPage();
+  return EntryDocument.fromLegacyBlocks(
+    id: entry.id,
+    title: entry.title,
+    createdAt: entry.createdAt,
+    blocks: blocks,
+    board: board,
+  );
 }
