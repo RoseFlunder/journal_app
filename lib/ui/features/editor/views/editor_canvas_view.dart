@@ -80,7 +80,7 @@ class EditorCanvasView extends StatelessWidget {
   Widget build(BuildContext context) => EntryCanvas(
           workspaceSize: workspaceSize,
           worldOrigin: worldOrigin,
-          blocks: nodes,
+          nodes: nodes,
           board: board,
           cameraScale: cameraScale,
           editing: editing,
@@ -90,7 +90,6 @@ class EditorCanvasView extends StatelessWidget {
           onResizeActiveChanged: onResizeActiveChanged,
           onSelect: onSelect,
           onEditText: onEditText,
-          onChanged: (_) {},
           onTransformChanged: onTransformChanged,
           onTextChanged: onTextChanged,
           onInteractionStart: onInteractionStart,

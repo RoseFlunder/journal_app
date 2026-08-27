@@ -30,9 +30,10 @@ typedef CanvasTransformChanged = void Function(
 typedef CanvasNodeCreated = ValueChanged<CanvasNode>;
 
 class EntryCanvas extends StatefulWidget {
-  const EntryCanvas({
+  EntryCanvas({
     super.key,
-    required this.blocks,
+    Iterable<CanvasNode>? nodes,
+    @Deprecated('Use nodes instead.') Iterable<CanvasRenderable>? blocks,
     this.board = const BoardSettings(),
     required this.editing,
     required this.selectedId,
@@ -40,7 +41,7 @@ class EntryCanvas extends StatefulWidget {
     required this.textEditingId,
     required this.onSelect,
     required this.onEditText,
-    required this.onChanged,
+    this.onChanged,
     this.onTransformChanged,
     this.onTextChanged,
     this.onResizeActiveChanged,
@@ -66,11 +67,17 @@ class EntryCanvas extends StatefulWidget {
     this.workspaceSize = PageViewport.pageSize,
     this.worldOrigin = Offset.zero,
     this.cameraScale = 1,
-  });
+  }) : nodes = nodes ??
+           blocks?.map(toCanvasNode).toList(growable: false) ??
+           const <CanvasNode>[],
+       blocks = blocks;
 
-  /// Render-ready immutable nodes. Legacy [ContentBlock] lists remain valid
-  /// because ContentBlock implements the same read-only render contract.
-  final Iterable<CanvasRenderable> blocks;
+  /// Render-ready immutable nodes used by the configured feature canvas.
+  final Iterable<CanvasNode> nodes;
+
+  /// Transitional input for standalone callers still passing mutable blocks.
+  @Deprecated('Use nodes instead.')
+  final Iterable<CanvasRenderable>? blocks;
   final BoardSettings board;
   final bool editing;
   final String? selectedId;
@@ -78,7 +85,7 @@ class EntryCanvas extends StatefulWidget {
   final String? textEditingId;
   final ValueChanged<String?> onSelect;
   final ValueChanged<String> onEditText;
-  final ValueChanged<ContentBlock> onChanged;
+  final ValueChanged<ContentBlock>? onChanged;
   final CanvasTransformChanged? onTransformChanged;
   final void Function(String blockId, String text, {List<dynamic>? delta})?
   onTextChanged;
@@ -167,7 +174,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
         resizeSelectionChanged ||
         rotationSelectionChanged ||
         activeBlockIds.any(
-          (id) => !widget.blocks.any((block) => block.id == id),
+          (id) => !widget.nodes.any((block) => block.id == id),
         )) {
       if (_selectionRotating) _finishSelectionRotation();
       _moveSession = null;
@@ -197,7 +204,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
         final scale = PageViewport.modelToRenderScale;
         CanvasRenderable? selectedBlock;
         if (widget.editing && widget.selectedId != null) {
-          for (final block in widget.blocks) {
+          for (final block in widget.nodes) {
             if (block.id == widget.selectedId) {
               selectedBlock = block;
               break;
@@ -243,7 +250,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
                               )) {
                             return;
                           }
-                          final hitsBlock = widget.blocks.any(
+                          final hitsBlock = widget.nodes.any(
                             (block) =>
                                 !block.hidden &&
                                 _containsBlock(point, block, scale),
@@ -299,7 +306,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
                       : null,
                   child: Stack(
                     children: [
-                      for (final block in widget.blocks.where(
+                      for (final block in widget.nodes.where(
                         (block) => !block.hidden,
                       ))
                         Positioned(
@@ -366,17 +373,16 @@ class _EntryCanvasState extends State<EntryCanvas> {
                                     if (onTextChanged != null) {
                                       onTextChanged(block.id, text);
                                     } else {
-                                      final next = _asLegacy(block).clone()
-                                        ..text = text;
+                                      final next =
+                                          _legacyBlockById(block.id) ??
+                                          _asLegacy(block);
+                                      next.text = text;
                                       // Preserve the legacy callback contract
                                       // for standalone canvas consumers. The
                                       // configured editor path supplies
                                       // [onTextChanged] and never reaches this
                                       // mutable compatibility branch.
-                                      if (block case final ContentBlock legacy) {
-                                        legacy.text = next.text;
-                                      }
-                                      widget.onChanged(next);
+                                      widget.onChanged?.call(next);
                                     }
                                   },
                                   onRichTextChanged: (text, delta) => widget
@@ -441,7 +447,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
       ? widget.selectedId == block.id
       : widget.selectedIds.contains(block.id);
 
-  Iterable<CanvasRenderable> _rotationTargets() => widget.blocks.where(
+  Iterable<CanvasRenderable> _rotationTargets() => widget.nodes.where(
     (block) => !block.hidden && _isSelected(block) && !block.locked,
   );
 
@@ -746,7 +752,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
     if (start == null || end == null) return;
     final selection = Rect.fromPoints(start, end);
     if (selection.width > 8 || selection.height > 8) {
-      final ids = widget.blocks
+      final ids = widget.nodes
           .where((block) => !block.hidden)
           .where((block) {
             final rect = Rect.fromLTWH(
@@ -935,13 +941,13 @@ class _EntryCanvasState extends State<EntryCanvas> {
       // Legacy tests/embedders historically observe the detached block
       // instance changing in place. Keep that adapter behavior only when no
       // immutable intent sink is configured.
-      (legacyTarget ?? legacy)
+      (legacyTarget ?? _legacyBlockById(id) ?? legacy)
         ..x = transform.x
         ..y = transform.y
         ..w = transform.width
         ..h = transform.height
         ..rotation = transform.rotation;
-      widget.onChanged(legacy);
+      widget.onChanged?.call(legacyTarget ?? _legacyBlockById(id) ?? legacy);
     }
   }
 
@@ -1019,6 +1025,15 @@ class _EntryCanvasState extends State<EntryCanvas> {
       block.type == BlockType.sticker ? block.stickerId : block.assetId;
 
   ContentBlock _asLegacy(CanvasRenderable block) => toLegacyCanvasBlock(block);
+
+  ContentBlock? _legacyBlockById(String id) {
+    final blocks = widget.blocks;
+    if (blocks == null) return null;
+    for (final block in blocks) {
+      if (block.id == id && block is ContentBlock) return block;
+    }
+    return null;
+  }
 }
 
 class _BlockMoveSession {

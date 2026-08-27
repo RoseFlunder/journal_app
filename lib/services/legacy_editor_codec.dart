@@ -7,6 +7,13 @@ import '../models/document.dart';
 typedef LegacyCanvasBlock = ContentBlock;
 typedef LegacyBlockType = BlockType;
 
+/// Converts a legacy render value once at the canvas compatibility edge.
+CanvasNode toCanvasNode(CanvasRenderable block) => switch (block) {
+  CanvasNode node => node,
+  ContentBlock legacy => CanvasNode.fromBlock(legacy),
+  _ => CanvasNode.fromJson(block.toJson()),
+};
+
 /// Converts a read-only render value for compatibility callbacks that still
 /// expose the legacy mutable block shape. This is the only conversion used by
 /// the renderer compatibility edge; document and feature code stays node
