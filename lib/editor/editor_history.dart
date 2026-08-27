@@ -32,7 +32,7 @@ class EditorDocumentSnapshot {
   EditorDocumentSnapshot withTransforms(
     Iterable<NodeTransformChange> changes,
   ) => EditorDocumentSnapshot.fromDocument(
-    _document.replaceWorldTransforms({
+    _document.replaceLocalTransforms({
       for (final change in changes) change.id: change.after,
     }),
   );
@@ -95,8 +95,8 @@ sealed class EditorCommand {
       after: after,
     );
     if (nodes != null) return nodes;
-    final beforeIds = before.blocks.map((block) => block.id).toSet();
-    final afterIds = after.blocks.map((block) => block.id).toSet();
+    final beforeIds = _nodeMap(before.document).keys.toSet();
+    final afterIds = _nodeMap(after.document).keys.toSet();
     if (!setEquals(beforeIds, afterIds)) {
       return StructuralEditorCommand(
         label: label,
@@ -131,8 +131,8 @@ final class TransformEditorCommand extends EditorCommand {
         jsonEncode(after.board.toJson())) {
       return null;
     }
-    final beforeById = {for (final block in before.blocks) block.id: block};
-    final afterById = {for (final block in after.blocks) block.id: block};
+    final beforeById = _nodeMap(before.document);
+    final afterById = _nodeMap(after.document);
     if (beforeById.length != afterById.length ||
         !beforeById.keys.toSet().containsAll(afterById.keys)) {
       return null;
@@ -146,8 +146,8 @@ final class TransformEditorCommand extends EditorCommand {
           jsonEncode(_withoutTransform(right))) {
         return null;
       }
-      final leftTransform = _transformOf(left);
-      final rightTransform = _transformOf(right);
+      final leftTransform = left.transform;
+      final rightTransform = right.transform;
       if (jsonEncode(leftTransform.toJson()) !=
           jsonEncode(rightTransform.toJson())) {
         changes.add(
@@ -200,8 +200,8 @@ final class BoardEditorCommand extends EditorCommand {
     required EditorDocumentSnapshot before,
     required EditorDocumentSnapshot after,
   }) {
-    if (jsonEncode(before.blocks.map((block) => block.toJson()).toList()) !=
-        jsonEncode(after.blocks.map((block) => block.toJson()).toList())) {
+    if (jsonEncode(_nodeJson(before.document)) !=
+        jsonEncode(_nodeJson(after.document))) {
       return null;
     }
     if (jsonEncode(before.board.toJson()) == jsonEncode(after.board.toJson())) {
@@ -234,8 +234,8 @@ final class NodeEditorCommand extends EditorCommand {
     required EditorDocumentSnapshot before,
     required EditorDocumentSnapshot after,
   }) {
-    final beforeById = {for (final block in before.blocks) block.id: block};
-    final afterById = {for (final block in after.blocks) block.id: block};
+    final beforeById = _nodeMap(before.document);
+    final afterById = _nodeMap(after.document);
     if (beforeById.length != afterById.length ||
         !beforeById.keys.toSet().containsAll(afterById.keys) ||
         jsonEncode(before.board.toJson()) != jsonEncode(after.board.toJson())) {
@@ -247,8 +247,8 @@ final class NodeEditorCommand extends EditorCommand {
       final right = afterById[id]!;
       if (jsonEncode(_withoutTransform(left)) !=
               jsonEncode(_withoutTransform(right)) &&
-          jsonEncode(_transformOf(left).toJson()) ==
-              jsonEncode(_transformOf(right).toJson())) {
+          jsonEncode(left.transform.toJson()) ==
+              jsonEncode(right.transform.toJson())) {
         changed.add(id);
       }
     }
@@ -276,8 +276,8 @@ final class StructuralEditorCommand extends EditorCommand {
     required this.after,
   }) : super(
          affectedIds: {
-           ...before.blocks.map((block) => block.id),
-           ...after.blocks.map((block) => block.id),
+           ..._nodeMap(before.document).keys,
+           ..._nodeMap(after.document).keys,
          },
        );
 
@@ -381,18 +381,39 @@ class EditorHistory {
   int get redoLength => _redo.length;
 }
 
-Transform2D _transformOf(ContentBlock block) => Transform2D(
-  x: block.x,
-  y: block.y,
-  width: block.w,
-  height: block.h,
-  rotation: block.rotation,
-);
-
-Map<String, dynamic> _withoutTransform(ContentBlock block) {
-  final json = Map<String, dynamic>.from(block.toJson());
-  for (final key in const <String>['x', 'y', 'w', 'h', 'rotation']) {
-    json.remove(key);
+Map<String, CanvasNode> _nodeMap(EntryDocument document) {
+  final result = <String, CanvasNode>{};
+  void visit(Iterable<CanvasNode> nodes) {
+    for (final node in nodes) {
+      result[node.id] = node;
+      visit(node.children);
+    }
   }
+
+  visit(document.nodes);
+  return result;
+}
+
+List<Map<String, dynamic>> _nodeJson(EntryDocument document) => document.nodes
+    .map((node) => node.toJson())
+    .toList(growable: false);
+
+Map<String, dynamic> _withoutTransform(CanvasNode node) {
+  final json = Map<String, dynamic>.from(node.toJson());
+  json.remove('transform');
+  final payload = json['payload'];
+  if (payload is Map) {
+    final cleanPayload = Map<String, dynamic>.from(payload);
+    for (final key in const <String>['x', 'y', 'w', 'h', 'rotation']) {
+      cleanPayload.remove(key);
+    }
+    json['payload'] = cleanPayload;
+  }
+  // A nested transform is serialized as part of every group's child list.
+  // Normalize the full subtree so moving one descendant is still classified
+  // as a transform command rather than as a parent node payload edit.
+  json['children'] = node.children
+      .map(_withoutTransform)
+      .toList(growable: false);
   return json;
 }

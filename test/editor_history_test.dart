@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/editor/editor_history.dart';
+import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/entry.dart';
 
 void main() {
@@ -106,6 +107,50 @@ void main() {
         after: inserted,
       ),
       isA<StructuralEditorCommand>(),
+    );
+  });
+
+  test('transform commands apply nested node-local deltas', () {
+    final beforeDocument = EntryDocument(
+      id: 'history-nested',
+      title: 'Nested',
+      createdAt: DateTime.utc(2026),
+      modifiedAt: DateTime.utc(2026),
+      nodes: [
+        CanvasNode(
+          id: 'group',
+          type: BlockType.group,
+          transform: const Transform2D(x: 20, y: 30, width: 100, height: 80),
+          children: [
+            CanvasNode(
+              id: 'child',
+              type: BlockType.text,
+              transform: const Transform2D(x: 8, y: 12, width: 40, height: 20),
+              payload: const {'text': 'Child'},
+            ),
+          ],
+        ),
+      ],
+    );
+    final afterDocument = beforeDocument.replaceLocalTransforms({
+      'child': const Transform2D(x: 12, y: 12, width: 40, height: 20),
+    });
+    final before = EditorDocumentSnapshot.fromDocument(beforeDocument);
+    final after = EditorDocumentSnapshot.fromDocument(afterDocument);
+    final command = EditorCommand.fromStates(
+      label: 'Move child',
+      before: before,
+      after: after,
+    );
+
+    expect(command, isA<TransformEditorCommand>());
+    expect(
+      command.revert(after).document.nodes.single.children.single.transform.x,
+      8,
+    );
+    expect(
+      command.apply(before).document.nodes.single.children.single.transform.x,
+      12,
     );
   });
 }

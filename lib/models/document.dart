@@ -353,6 +353,24 @@ class EntryDocument {
     return visit(nodes);
   }
 
+  /// Returns a node's world-space transform, resolving every parent in its
+  /// path. The node itself remains stored in parent-local coordinates.
+  Transform2D? worldTransformFor(String id) {
+    Transform2D? visit(Iterable<CanvasNode> candidates, Transform2D? parent) {
+      for (final node in candidates) {
+        final world = parent == null
+            ? node.transform
+            : _worldTransform(node.transform, parent);
+        if (node.id == id) return world;
+        final nested = visit(node.children, world);
+        if (nested != null) return nested;
+      }
+      return null;
+    }
+
+    return visit(nodes, null);
+  }
+
   /// Replaces one node without exposing mutable compatibility adapters.
   EntryDocument replaceNode(CanvasNode replacement) {
     var replaced = false;
@@ -427,6 +445,158 @@ class EntryDocument {
     return copyWith(nodes: visit(nodes));
   }
 
+  /// Reorders a node among its current siblings without changing its parent.
+  EntryDocument reorderNode(String id, int targetIndex) {
+    ({List<CanvasNode> nodes, bool changed}) visit(
+      Iterable<CanvasNode> candidates,
+    ) {
+      final siblings = List<CanvasNode>.from(candidates);
+      final currentIndex = siblings.indexWhere((node) => node.id == id);
+      if (currentIndex >= 0) {
+        final node = siblings.removeAt(currentIndex);
+        final insertion = targetIndex.clamp(0, siblings.length).toInt();
+        siblings.insert(insertion, node);
+        return (nodes: siblings, changed: currentIndex != insertion);
+      }
+      for (var index = 0; index < siblings.length; index++) {
+        final node = siblings[index];
+        if (node.children.isEmpty) continue;
+        final result = visit(node.children);
+        if (!result.changed) continue;
+        siblings[index] = node.copyWith(children: result.nodes);
+        return (nodes: siblings, changed: true);
+      }
+      return (nodes: siblings, changed: false);
+    }
+
+    final result = visit(nodes);
+    return result.changed ? copyWith(nodes: result.nodes) : this;
+  }
+
+  /// Moves the selected sibling nodes to the front or back of their current
+  /// sibling list, preserving their relative order.
+  EntryDocument reorderNodes(
+    Iterable<String> ids, {
+    required bool toEnd,
+  }) {
+    final selectedIds = ids.toSet();
+    if (selectedIds.isEmpty) return this;
+
+    ({List<CanvasNode> nodes, bool changed}) visit(
+      Iterable<CanvasNode> candidates,
+    ) {
+      final siblings = List<CanvasNode>.from(candidates);
+      final selected = siblings
+          .where((node) => selectedIds.contains(node.id))
+          .toList(growable: false);
+      if (selected.isNotEmpty) {
+        final remaining = siblings
+            .where((node) => !selectedIds.contains(node.id))
+            .toList();
+        if (toEnd) {
+          remaining.addAll(selected);
+        } else {
+          remaining.insertAll(0, selected);
+        }
+        return (nodes: remaining, changed: true);
+      }
+      for (var index = 0; index < siblings.length; index++) {
+        final node = siblings[index];
+        if (node.children.isEmpty) continue;
+        final result = visit(node.children);
+        if (!result.changed) continue;
+        siblings[index] = node.copyWith(children: result.nodes);
+        return (nodes: siblings, changed: true);
+      }
+      return (nodes: siblings, changed: false);
+    }
+
+    final result = visit(nodes);
+    return result.changed ? copyWith(nodes: result.nodes) : this;
+  }
+
+  /// Creates a root group from existing nodes while converting their world
+  /// transforms into coordinates local to the new group.
+  EntryDocument groupNodes(
+    Iterable<String> ids, {
+    required String groupId,
+    String name = 'Group',
+  }) {
+    final selectedIds = ids.toSet();
+    if (selectedIds.isEmpty || nodeById(groupId) != null) return this;
+    final selected = selectedIds
+        .map(nodeById)
+        .whereType<CanvasNode>()
+        .where((node) => node.id != groupId)
+        .toList(growable: false);
+    if (selected.isEmpty) return this;
+    final world = <String, Transform2D>{
+      for (final node in selected)
+        node.id: worldTransformFor(node.id) ?? node.transform,
+    };
+    var bounds = Rect.fromLTWH(
+      world[selected.first.id]!.x,
+      world[selected.first.id]!.y,
+      world[selected.first.id]!.width,
+      world[selected.first.id]!.height,
+    );
+    for (final node in selected.skip(1)) {
+      final transform = world[node.id]!;
+      bounds = bounds.expandToInclude(
+        Rect.fromLTWH(
+          transform.x,
+          transform.y,
+          transform.width,
+          transform.height,
+        ),
+      );
+    }
+    final groupWorld = Transform2D(
+      x: bounds.left,
+      y: bounds.top,
+      width: bounds.width,
+      height: bounds.height,
+    );
+    final children = selected
+        .map(
+          (node) => node.copyWith(
+            transform: _toLocal(world[node.id]!, groupWorld),
+          ),
+        )
+        .toList(growable: false);
+    final group = CanvasNode(
+      id: groupId,
+      type: BlockType.group,
+      transform: groupWorld,
+      accessibilityLabel: name,
+      children: children,
+    );
+    return removeNodes(selectedIds).insertNodes([group]);
+  }
+
+  /// Removes groups and promotes their children to root nodes while
+  /// preserving each child's world-space transform.
+  EntryDocument ungroupNodes(Iterable<String> ids) {
+    final groups = ids
+        .map(nodeById)
+        .whereType<CanvasNode>()
+        .where((node) => node.type == BlockType.group)
+        .toList(growable: false);
+    if (groups.isEmpty) return this;
+    final promoted = <CanvasNode>[];
+    for (final group in groups) {
+      final groupWorld = worldTransformFor(group.id) ?? group.transform;
+      promoted.addAll(
+        group.children.map(
+          (child) => child.copyWith(
+            transform: _worldTransform(child.transform, groupWorld),
+          ),
+        ),
+      );
+    }
+    return removeNodes(groups.map((group) => group.id)).insertNodes(promoted);
+  }
+
   /// Applies world-space transforms while retaining each node's local
   /// transform relative to its parent. Unspecified descendants inherit any
   /// parent movement without being rewritten as world-space values.
@@ -455,6 +625,27 @@ class EntryDocument {
         .toList(growable: false);
 
     return copyWith(nodes: visit(nodes, null));
+  }
+
+  /// Applies parent-local transforms directly. This is used by immutable
+  /// history commands, whose deltas are captured from the node tree rather
+  /// than from a flattened world-space adapter.
+  EntryDocument replaceLocalTransforms(
+    Map<String, Transform2D> transforms,
+  ) {
+    if (transforms.isEmpty) return this;
+    List<CanvasNode> visit(Iterable<CanvasNode> candidates) => candidates
+        .map(
+          (node) => node.copyWith(
+            transform: transforms[node.id] ?? node.transform,
+            children: node.children.isEmpty
+                ? node.children
+                : visit(node.children),
+          ),
+        )
+        .toList(growable: false);
+
+    return copyWith(nodes: visit(nodes));
   }
 
   /// Replaces a legacy flattened block at the immutable boundary. This is a

@@ -366,12 +366,15 @@ class EditorController extends ChangeNotifier {
 
   void add(ContentBlock block, {bool select = true}) {
     beginTransaction('Add ${block.type.name}');
-    final next = _cloneBlocks(blocks)..add(block.clone());
-    _replaceLegacyBlocks(next);
+    final nodes = _nodesFromLegacyGraph([block]);
+    final next = nodes.isEmpty
+        ? <CanvasNode>[CanvasNode.fromBlock(block)]
+        : nodes;
+    _document = _document.insertNodes(next);
     if (select) {
       _selection
         ..clear()
-        ..add(block.id);
+        ..addAll(next.map((node) => node.id));
     }
     notifyListeners();
     unawaited(commitTransaction());
@@ -388,30 +391,25 @@ class EditorController extends ChangeNotifier {
     if (sourceList.isEmpty) return;
     beginTransaction(label);
     final idMap = <String, String>{
-      for (final source in sourceList) source.id: _uuid.v4(),
+      for (final id in _collectLegacyIds(sourceList)) id: _uuid.v4(),
     };
-    final inserted = <ContentBlock>[];
-    for (final source in sourceList) {
-      final json = source.toJson()
-        ..['id'] = idMap[source.id]
-        ..['x'] = source.x + offset.dx
-        ..['y'] = source.y + offset.dy
-        ..['groupId'] = source.groupId == null ? null : idMap[source.groupId];
-      if (source.childIds != null) {
-        json['childIds'] = source.childIds
-            ?.map((id) => idMap[id] ?? id)
-            .toList();
-      }
-      inserted.add(ContentBlock.fromJson(json));
-    }
-    final next = _cloneBlocks(blocks)..addAll(inserted);
-    _replaceLegacyBlocks(next);
+    final sourceNodes = _nodesFromLegacyGraph(sourceList);
+    final inserted = sourceNodes
+        .map(
+          (node) => _remapClipboardNode(
+            node,
+            idMap,
+            offset: offset,
+          ),
+        )
+        .toList(growable: false);
+    _document = _document.insertNodes(inserted);
     _selection
       ..clear()
       ..addAll(
-        inserted
-            .where((block) => block.type != BlockType.group)
-            .map((block) => block.id),
+        _flattenNodeIds(inserted).where(
+          (id) => _document.nodeById(id)?.type != BlockType.group,
+        ),
       );
     notifyListeners();
     unawaited(commitTransaction());
@@ -420,20 +418,24 @@ class EditorController extends ChangeNotifier {
   void deleteSelection() {
     if (_selection.isEmpty) return;
     beginTransaction('Delete');
-    final selected = _expandedSelectedBlocks.map((block) => block.id).toSet();
-    final next = _cloneBlocks(blocks);
-    next.removeWhere(
-      (block) => selected.contains(block.id) && !block.locked,
-    );
-    final childGroupIds = next
+    final expanded = _expandedSelectedBlocks;
+    final selected = expanded
+        .where((block) => !block.locked)
+        .map((block) => block.id)
+        .toSet();
+    final remaining = blocks.where((block) => !selected.contains(block.id));
+    final liveGroupIds = remaining
         .where((block) => block.groupId != null)
         .map((block) => block.groupId!)
         .toSet();
-    next.removeWhere(
-      (block) =>
-          block.type == BlockType.group && !childGroupIds.contains(block.id),
-    );
-    _replaceLegacyBlocks(next);
+    final emptyGroups = blocks
+        .where(
+          (block) =>
+              block.type == BlockType.group &&
+              !liveGroupIds.contains(block.id),
+        )
+        .map((block) => block.id);
+    _document = _document.removeNodes({...selected, ...emptyGroups});
     _selection.removeWhere((id) => _byId(id) == null);
     notifyListeners();
     unawaited(commitTransaction());
@@ -445,26 +447,20 @@ class EditorController extends ChangeNotifier {
     beginTransaction('Duplicate');
     final selectedIds = Set<String>.from(_selection);
     final idMap = <String, String>{
-      for (final source in selected) source.id: _uuid.v4(),
+      for (final id in _collectLegacyIds(selected)) id: _uuid.v4(),
     };
-    final copies = <ContentBlock>[];
-    for (final source in selected) {
-      final copyJson = source.toJson()
-        ..['id'] = idMap[source.id]
-        ..['groupId'] = source.groupId == null ? null : idMap[source.groupId];
-      if (source.childIds != null) {
-        copyJson['childIds'] = source.childIds
-            ?.map((id) => idMap[id] ?? id)
-            .toList();
-      }
-      final copy = ContentBlock.fromJson(copyJson)
-        ..x += 4
-        ..y += 4
-        ..name = source.name == null ? null : '${source.name} copy';
-      copies.add(copy);
-    }
-    final next = _cloneBlocks(blocks)..addAll(copies);
-    _replaceLegacyBlocks(next);
+    final sourceNodes = _nodesFromLegacyGraph(selected);
+    final copies = sourceNodes
+        .map(
+          (node) => _remapClipboardNode(
+            node,
+            idMap,
+            offset: const Offset(4, 4),
+            rename: true,
+          ),
+        )
+        .toList(growable: false);
+    _document = _document.insertNodes(copies);
     _selection
       ..clear()
       ..addAll(
@@ -473,12 +469,12 @@ class EditorController extends ChangeNotifier {
             .whereType<String>()
             .followedBy(
               _selection.isEmpty
-                  ? copies.map((block) => block.id)
+                  ? copies.map((node) => node.id)
                   : const <String>[],
             ),
       );
     if (_selection.isEmpty) {
-      _selection.addAll(copies.map((block) => block.id));
+      _selection.addAll(copies.map((node) => node.id));
     }
     notifyListeners();
     unawaited(commitTransaction());
@@ -544,11 +540,7 @@ class EditorController extends ChangeNotifier {
     if (_selection.isEmpty) return;
     beginTransaction('Bring to front');
     final ids = _expandedSelectedBlocks.map((block) => block.id).toSet();
-    final next = _cloneBlocks(blocks);
-    final selected = next.where((block) => ids.contains(block.id)).toList();
-    next.removeWhere((block) => ids.contains(block.id));
-    next.addAll(selected);
-    _replaceLegacyBlocks(next);
+    _document = _document.reorderNodes(ids, toEnd: true);
     notifyListeners();
     unawaited(commitTransaction());
   }
@@ -557,11 +549,7 @@ class EditorController extends ChangeNotifier {
     if (_selection.isEmpty) return;
     beginTransaction('Send to back');
     final ids = _expandedSelectedBlocks.map((block) => block.id).toSet();
-    final next = _cloneBlocks(blocks);
-    final selected = next.where((block) => ids.contains(block.id)).toList();
-    next.removeWhere((block) => ids.contains(block.id));
-    next.insertAll(0, selected);
-    _replaceLegacyBlocks(next);
+    _document = _document.reorderNodes(ids, toEnd: false);
     notifyListeners();
     unawaited(commitTransaction());
   }
@@ -586,15 +574,7 @@ class EditorController extends ChangeNotifier {
     final source = _byId(blockId);
     if (source == null) return;
     beginTransaction('Reorder layer');
-    final unitIds = _layerUnitIds(source);
-    final next = _cloneBlocks(blocks);
-    final moving = next
-        .where((block) => unitIds.contains(block.id))
-        .toList();
-    next.removeWhere((block) => unitIds.contains(block.id));
-    final index = targetIndex.clamp(0, next.length).toInt();
-    next.insertAll(index, moving);
-    _replaceLegacyBlocks(next);
+    _document = _document.reorderNode(blockId, targetIndex);
     notifyListeners();
     unawaited(commitTransaction());
   }
@@ -622,42 +602,49 @@ class EditorController extends ChangeNotifier {
     if (selected.length < 2) return;
     beginTransaction('Align');
     final bounds = _boundsFor(selected);
-    final next = _cloneBlocks(blocks);
-    final byId = {for (final block in next) block.id: block};
-    for (final selectedBlock in selected) {
-      final block = byId[selectedBlock.id];
-      if (block == null || block.locked) continue;
+    final transforms = <String, Transform2D>{};
+    for (final block in selected) {
+      if (block.locked) continue;
+      var x = block.x;
+      var y = block.y;
       switch (alignment) {
         case Alignment.topLeft:
-          block.x = bounds.left;
-          block.y = bounds.top;
+          x = bounds.left;
+          y = bounds.top;
         case Alignment.topCenter:
-          block.x = bounds.center.dx - block.w / 2;
-          block.y = bounds.top;
+          x = bounds.center.dx - block.w / 2;
+          y = bounds.top;
         case Alignment.topRight:
-          block.x = bounds.right - block.w;
-          block.y = bounds.top;
+          x = bounds.right - block.w;
+          y = bounds.top;
         case Alignment.centerLeft:
-          block.x = bounds.left;
-          block.y = bounds.center.dy - block.h / 2;
+          x = bounds.left;
+          y = bounds.center.dy - block.h / 2;
         case Alignment.center:
-          block.x = bounds.center.dx - block.w / 2;
-          block.y = bounds.center.dy - block.h / 2;
+          x = bounds.center.dx - block.w / 2;
+          y = bounds.center.dy - block.h / 2;
         case Alignment.centerRight:
-          block.x = bounds.right - block.w;
-          block.y = bounds.center.dy - block.h / 2;
+          x = bounds.right - block.w;
+          y = bounds.center.dy - block.h / 2;
         case Alignment.bottomLeft:
-          block.x = bounds.left;
-          block.y = bounds.bottom - block.h;
+          x = bounds.left;
+          y = bounds.bottom - block.h;
         case Alignment.bottomCenter:
-          block.x = bounds.center.dx - block.w / 2;
-          block.y = bounds.bottom - block.h;
+          x = bounds.center.dx - block.w / 2;
+          y = bounds.bottom - block.h;
         case Alignment.bottomRight:
-          block.x = bounds.right - block.w;
-          block.y = bounds.bottom - block.h;
+          x = bounds.right - block.w;
+          y = bounds.bottom - block.h;
       }
+      transforms[block.id] = Transform2D(
+        x: x,
+        y: y,
+        width: block.w,
+        height: block.h,
+        rotation: block.rotation,
+      );
     }
-    _replaceLegacyBlocks(next);
+    _document = _document.replaceWorldTransforms(transforms);
     notifyListeners();
     unawaited(commitTransaction());
   }
@@ -668,28 +655,11 @@ class EditorController extends ChangeNotifier {
         .toList();
     if (children.length < 2) return;
     beginTransaction('Group');
-    final bounds = _boundsFor(children);
-    final group = ContentBlock(
-      id: _uuid.v4(),
-      type: BlockType.group,
-      name: 'Group',
-      x: bounds.left,
-      y: bounds.top,
-      w: bounds.width,
-      h: bounds.height,
-      childIds: children.map((block) => block.id).toList(),
-      // The group is a structural parent; its children remain the rendered
-      // objects and inherit group transforms through [_expandedSelectedBlocks].
-      hidden: true,
+    final groupId = _uuid.v4();
+    _document = _document.groupNodes(
+      children.map((block) => block.id),
+      groupId: groupId,
     );
-    final next = _cloneBlocks(blocks);
-    for (final child in next.where(
-      (block) => children.any((selected) => selected.id == block.id),
-    )) {
-      child.groupId = group.id;
-    }
-    next.add(group);
-    _replaceLegacyBlocks(next);
     _selection
       ..clear()
       ..addAll(children.map((block) => block.id));
@@ -704,14 +674,7 @@ class EditorController extends ChangeNotifier {
         .toSet();
     if (groupIds.isEmpty) return;
     beginTransaction('Ungroup');
-    final next = _cloneBlocks(blocks);
-    for (final child in next.where(
-      (block) => groupIds.contains(block.groupId),
-    )) {
-      child.groupId = null;
-    }
-    next.removeWhere((block) => groupIds.contains(block.id));
-    _replaceLegacyBlocks(next);
+    _document = _document.ungroupNodes(groupIds);
     notifyListeners();
     unawaited(commitTransaction());
   }
@@ -856,20 +819,6 @@ class EditorController extends ChangeNotifier {
     return blocks.where((block) => ids.contains(block.id)).toList();
   }
 
-  Set<String> _layerUnitIds(ContentBlock block) {
-    final groupId = block.type == BlockType.group ? block.id : block.groupId;
-    if (groupId == null) return {block.id};
-    return blocks
-        .where(
-          (item) =>
-              item.id == groupId ||
-              item.groupId == groupId ||
-              (item.type == BlockType.group && item.id == groupId),
-        )
-        .map((item) => item.id)
-        .toSet();
-  }
-
   List<ContentBlock> get _expandedSelectedBlocks {
     final groupIds = _selectedBlocks
         .expand(
@@ -923,6 +872,7 @@ class EditorController extends ChangeNotifier {
     CanvasNode node,
     Map<String, String> idMap, {
     Offset offset = Offset.zero,
+    bool rename = false,
   }) {
     final payload = Map<String, dynamic>.from(node.payload);
     final groupId = payload['groupId'];
@@ -941,10 +891,34 @@ class EditorController extends ChangeNotifier {
       id: idMap[node.id] ?? node.id,
       transform: transform,
       payload: payload,
+      accessibilityLabel: rename && node.accessibilityLabel != null
+          ? '${node.accessibilityLabel} copy'
+          : node.accessibilityLabel,
       children: node.children.map(
-        (child) => _remapClipboardNode(child, idMap),
+        (child) => _remapClipboardNode(child, idMap, rename: rename),
       ),
     );
+  }
+
+  static Set<String> _collectLegacyIds(Iterable<ContentBlock> blocks) {
+    final ids = <String>{for (final block in blocks) block.id};
+    final byId = {for (final block in blocks) block.id: block};
+    final pending = List<ContentBlock>.from(blocks);
+    while (pending.isNotEmpty) {
+      final block = pending.removeLast();
+      for (final childId in block.childIds ?? const <String>[]) {
+        final child = byId[childId];
+        if (child != null && ids.add(child.id)) pending.add(child);
+      }
+    }
+    return ids;
+  }
+
+  static Iterable<String> _flattenNodeIds(Iterable<CanvasNode> nodes) sync* {
+    for (final node in nodes) {
+      yield node.id;
+      yield* _flattenNodeIds(node.children);
+    }
   }
 
   static Rect _boundsFor(List<ContentBlock> blocks) {
