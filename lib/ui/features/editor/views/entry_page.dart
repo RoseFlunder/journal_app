@@ -16,13 +16,12 @@ import '../../../../editor/entry_canvas.dart';
 import '../../../../models/document.dart';
 import '../../../../models/page_music.dart';
 import '../../../../models/sticker.dart';
-import '../../../../models/template.dart';
 import '../../../../models/view_state.dart';
 import '../../../../services/image_source.dart';
 import '../../../../services/journal_transfer_service.dart';
 import '../../../../services/audio_playback.dart';
-import '../../../../services/repositories.dart';
 import '../../../../services/legacy_editor_codec.dart';
+import '../../../../services/repositories.dart';
 import '../view_models/entry_editor_view_model.dart';
 import 'entry_editor_surface.dart';
 import '../../music/view_models/page_music_controller.dart';
@@ -280,7 +279,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
 
   Future<void> _flushLifecycle() async {
     await _editor.persistence.flush();
-    await _editor.checkpointRepository.createCheckpoint(_document.id);
+    await _editor.createCheckpoint(_document.id);
     await _editor.persistence.flush();
   }
 
@@ -748,13 +747,13 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     try {
       final picked = await _imageSource.pickImage(context);
       if (!mounted || picked == null) return;
-      final image = widget.imageProcessor.process(picked.bytes);
-      final assetId = await _editor.assetRepository.putAsset(
-        _document.id,
-        AssetKind.image,
-        image.mime,
-        image.bytes,
+      final stored = await _editor.insertImageAsset(
+        ownerId: _document.id,
+        picked: picked,
+        processor: widget.imageProcessor,
       );
+      final image = stored.image;
+      final assetId = stored.assetId;
       if (!mounted) return;
       final size = imageBlockSize(image.width, image.height);
       final block = LegacyCanvasBlock(
@@ -860,7 +859,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         () => AssetImage(sticker.assetPath),
       );
     }
-    final bytes = _editor.assetRepository.readAsset(assetId);
+    final bytes = _editor.readAsset(assetId);
     if (bytes == null) return null;
     return _imageProviders.putIfAbsent(assetId, () => MemoryImage(bytes));
   }
@@ -874,7 +873,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     final assetId = block.assetId;
     final bytes = assetId == null
         ? null
-        : _editor.assetRepository.readAsset(assetId);
+        : _editor.readAsset(assetId);
     if (bytes == null || !mounted) return;
     await showDialog<void>(
       context: context,
@@ -1139,8 +1138,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   Future<void> _saveTemplate() async {
-    final selectedBlocks = _editor.selectedGraphSnapshot();
-    if (selectedBlocks.isEmpty) return;
+    final selectedNodes = _editor.selectedNodeGraphSnapshot();
+    if (selectedNodes.isEmpty) return;
     final name = await showDialog<String>(
       context: context,
       builder: (context) => const _RenameLayerDialog(
@@ -1150,19 +1149,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
     if (!mounted || name == null || name.trim().isEmpty) return;
     final now = DateTime.now();
-    await _editor.templateRepository.saveTemplate(
-      JournalTemplate(
-        id: _uuid.v4(),
-        name: name.trim(),
-        document: EntryDocument.fromLegacyBlocks(
-          id: _uuid.v4(),
-          title: _document.title,
-          createdAt: now,
-          blocks: selectedBlocks,
-          board: _editor.board,
-        ),
-        createdAt: now,
-      ),
+    await _editor.saveTemplateSelection(
+      name: name.trim(),
+      source: _document,
+      nodes: selectedNodes,
+      createdAt: now,
     );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1172,7 +1163,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   void _showTemplates() {
-    final templates = _editor.templateRepository.templates;
+    final templates = _editor.templates;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: PaperPage.paper,
@@ -1195,13 +1186,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       ),
                       onTap: () {
                         Navigator.pop(context);
-                        _editor.insertBlocks(
-                          template.document.blocks,
+                        _editor.insertTemplate(
+                          nodes: template.document.nodes,
                           offset: Offset(
                             PageViewport.modelPageSize.width / 2,
                             PageViewport.modelPageSize.height / 2,
                           ),
-                          label: 'Insert template',
                         );
                       },
                     );
@@ -1213,14 +1203,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   Future<void> _exportArchive() async {
-    final archive = _editor.archiveRepository.archiveForDocument(
-      _document.id,
-    );
-    if (archive == null || !mounted) return;
-    final exported = await widget.archiveService.exportArchive(
-      archive,
+    if (!mounted) return;
+    final exported = await _editor.exportArchive(
+      documentId: _document.id,
       fileName:
           '${_document.title.trim().isEmpty ? 'journal' : _document.title.trim()}.cozyjournal',
+      transfer: widget.archiveService,
     );
     if (mounted && exported) {
       ScaffoldMessenger.of(
@@ -1230,10 +1218,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   Future<void> _importArchive() async {
-    final archive = await widget.archiveService.importArchive();
-    if (!mounted || archive == null) return;
+    if (!mounted) return;
     try {
-      await _editor.archiveRepository.importArchive(archive);
+      final imported = await _editor.importArchive(widget.archiveService);
+      if (!mounted || imported == null) return;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1880,8 +1868,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       showDragHandle: true,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
-          final checkpoints = _editor.checkpointRepository
-              .checkpointsFor(_document.id);
+          final checkpoints = _editor.checkpointsFor(_document.id);
           return SafeArea(
             child: SizedBox(
               height: MediaQuery.sizeOf(context).height * 0.62,
@@ -1891,8 +1878,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     leading: const Icon(Icons.add_task_outlined),
                     title: const Text('Create recovery checkpoint'),
                     onTap: () async {
-                      await _editor.checkpointRepository
-                          .createCheckpoint(_document.id);
+                      await _editor.createCheckpoint(_document.id);
                       setModalState(() {});
                     },
                   ),
@@ -1917,14 +1903,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                                   'Restore this local version',
                                 ),
                                 onTap: () async {
-                                  await _editor.checkpointRepository
-                                      .restoreCheckpoint(checkpoint.id);
-                                  final restored = _editor.documentRepository
-                                      .documents
-                                      .firstWhere(
-                                        (document) =>
-                                            document.id == _document.id,
+                                  final restored = await _editor.restoreCheckpoint(
+                                        checkpointId: checkpoint.id,
+                                        documentId: _document.id,
                                       );
+                                  if (restored == null) return;
                                   _editor.replaceDocumentModel(restored);
                                   if (context.mounted) Navigator.pop(context);
                                 },
@@ -2394,7 +2377,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                             setState(() => _selectedId = node.id);
                           },
                           imageBytes:
-                              _editor.assetRepository.readAsset,
+                              _editor.readAsset,
                           imageProvider: _imageProvider,
                           onOpenImage: _openImage,
                           onOpenImageId: (id) {

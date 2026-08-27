@@ -1,6 +1,16 @@
+import 'dart:ui';
+import 'dart:typed_data';
+
 import '../../../../editor/editor_controller.dart';
 import '../../../../models/document.dart';
+import '../../../../models/template.dart';
+import '../../../../services/image_source.dart';
+import '../../../../services/journal_transfer_service.dart';
 import '../../../../services/repositories.dart';
+import '../use_cases/archive_transfer_use_case.dart';
+import '../use_cases/checkpoint_recovery_use_case.dart';
+import '../use_cases/image_insertion_use_case.dart';
+import '../use_cases/template_workflow.dart';
 
 typedef EntryEditorViewModelFactory = EntryEditorViewModel Function(
   EntryDocument document,
@@ -63,6 +73,7 @@ class EntryEditorViewModel extends EditorController {
   PreferencesRepository get preferenceRepository => _preferences!;
   PersistenceRepository get persistence => _persistence!;
   ArchiveRepository get archiveRepository => _archives!;
+  Uint8List? readAsset(String id) => assetRepository.readAsset(id);
 
   /// Presentation/tool state that must stay consistent with the document
   /// selection. Flutter-only focus, dialogs, and animations remain in views.
@@ -97,6 +108,79 @@ class EntryEditorViewModel extends EditorController {
   }
 
   String? get selectedId => selection.isEmpty ? null : selection.last;
+
+  late final TemplateWorkflow _templateWorkflow = TemplateWorkflow(
+    templates: templateRepository,
+  );
+  late final CheckpointRecoveryUseCase _checkpointRecovery =
+      CheckpointRecoveryUseCase(
+        checkpoints: checkpointRepository,
+        documents: documentRepository,
+      );
+
+  Future<({ProcessedImage image, String assetId})> insertImageAsset({
+    required String ownerId,
+    required PickedImage picked,
+    required ImageProcessor processor,
+  }) =>
+      ImageInsertionUseCase(
+        assets: assetRepository,
+        processor: processor,
+      ).processAndStore(ownerId: ownerId, picked: picked);
+
+  List<JournalTemplate> get templates => _templateWorkflow.available;
+
+  Future<void> saveTemplateSelection({
+    required String name,
+    required EntryDocument source,
+    required Iterable<CanvasNode> nodes,
+    required DateTime createdAt,
+  }) =>
+      _templateWorkflow.saveSelection(
+        name: name,
+        source: source,
+        nodes: nodes,
+        createdAt: createdAt,
+      );
+
+  void insertTemplate({
+    required Iterable<CanvasNode> nodes,
+    required Offset offset,
+  }) =>
+      _templateWorkflow.insert(
+        TemplateInsertion(nodes: List<CanvasNode>.unmodifiable(nodes), offset: offset),
+        this,
+      );
+
+  List<EntryCheckpoint> checkpointsFor(String id) =>
+      _checkpointRecovery.forDocument(id);
+
+  Future<void> createCheckpoint(String id) => _checkpointRecovery.create(id);
+
+  Future<EntryDocument?> restoreCheckpoint({
+    required String checkpointId,
+    required String documentId,
+  }) =>
+      _checkpointRecovery.restore(
+        checkpointId: checkpointId,
+        documentId: documentId,
+      );
+
+  Future<bool> exportArchive({
+    required String documentId,
+    required String fileName,
+    required JournalTransferService transfer,
+  }) =>
+      ArchiveTransferUseCase(
+        archives: archiveRepository,
+        transfer: transfer,
+      ).exportDocument(documentId: documentId, fileName: fileName);
+
+  Future<EntryDocument?> importArchive(JournalTransferService transfer) =>
+      ArchiveTransferUseCase(
+        archives: archiveRepository,
+        transfer: transfer,
+      ).importDocument();
 
   @override
   EntryDocument get document {

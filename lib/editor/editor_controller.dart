@@ -409,19 +409,26 @@ class EditorController extends ChangeNotifier {
 
   /// Inserts a complete template graph as one command, remapping every node
   /// and group reference so the source remains reusable.
-  void insertBlocks(
-    Iterable<ContentBlock> sources, {
+  void insertNodeGraph(
+    Iterable<CanvasNode> sources, {
     Offset offset = Offset.zero,
     String label = 'Insert template',
   }) {
-    final sourceList = sources.map((block) => block.clone()).toList();
+    final sourceList = List<CanvasNode>.unmodifiable(sources);
     if (sourceList.isEmpty) return;
     beginTransaction(label);
-    final idMap = <String, String>{
-      for (final id in _collectLegacyIds(sourceList)) id: _uuid.v4(),
-    };
-    final sourceNodes = _nodesFromLegacyGraph(sourceList);
-    final inserted = sourceNodes
+    final idMap = <String, String>{};
+    void collect(CanvasNode node) {
+      idMap[node.id] = _uuid.v4();
+      for (final child in node.children) {
+        collect(child);
+      }
+    }
+
+    for (final node in sourceList) {
+      collect(node);
+    }
+    final inserted = sourceList
         .map(
           (node) => _remapClipboardNode(
             node,
@@ -440,6 +447,17 @@ class EditorController extends ChangeNotifier {
       );
     notifyListeners();
     unawaited(commitTransaction());
+  }
+
+  void insertBlocks(
+    Iterable<ContentBlock> sources, {
+    Offset offset = Offset.zero,
+    String label = 'Insert template',
+  }) {
+    final sourceList = sources.map((block) => block.clone()).toList();
+    if (sourceList.isEmpty) return;
+    final sourceNodes = _nodesFromLegacyGraph(sourceList);
+    insertNodeGraph(sourceNodes, offset: offset, label: label);
   }
 
   void deleteSelection() {
@@ -760,6 +778,11 @@ class EditorController extends ChangeNotifier {
   List<ContentBlock> selectedGraphSnapshot() => _selectedGraphBlocks
       .map((block) => block.clone())
       .toList(growable: false);
+
+  /// Returns the selected structural graph as immutable nodes for feature
+  /// workflows such as template persistence and insertion.
+  List<CanvasNode> selectedNodeGraphSnapshot() =>
+      List<CanvasNode>.unmodifiable(_nodesFromLegacyGraph(_selectedGraphBlocks));
 
   /// Replaces the working document after a checkpoint restore or archive
   /// import. History intentionally starts fresh at the restored version.

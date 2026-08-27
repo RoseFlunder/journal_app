@@ -9,7 +9,7 @@ import 'journal_archive.dart';
 // Capability-owned value type; storage record classes remain private to the
 // Hive adapters while repositories may still describe asset kind in a method
 // contract.
-export '../models/storage_records.dart' show AssetKind;
+export '../models/storage_records.dart' show AssetKind, EntryCheckpoint;
 
 abstract interface class AssetRepository {
   Future<String> putAsset(
