@@ -3,11 +3,13 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-27 on top of commit `d73340a` (`refactor: make editor
-view model own metadata saves`). The editor now renders immutable node
-projections, routes metadata and workflow persistence through the feature view
-model, and retains media referenced by undo/redo and clipboard snapshots.
-Focused architecture, editor, repository, and widget suites pass.
+Last audited: 2026-08-27 on top of commit `1fc442d` (`refactor: extract editor
+history and template views`). The editor renders immutable node projections,
+routes metadata and workflow persistence through the feature view model,
+retains media referenced by undo/redo and clipboard snapshots, and has
+feature-native canvas, layers, image, history, and template views. Focused,
+full, repository, and widget suites pass; Android, Web, and Windows release
+builds pass.
 
 Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
@@ -165,9 +167,10 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
    - Retire the remaining controller and standalone-canvas `ContentBlock`
      compatibility APIs after downstream tests and embedders move to typed
      node commands.
-   - Split the still-large editor page into feature-native canvas, toolbar,
-     layers, image, history, template, and settings views; keep workflows in
-     focused use cases/view-model methods.
+   - Finish splitting the still-large editor page by extracting toolbar,
+     settings/more-tools, and remaining dialog surfaces; keep workflows in
+     focused use cases/view-model methods and delete the unreachable legacy
+     image-editor path.
 
 2. **Correctness hardening**
    - Fix image edge resizing, image-sheet state, lifecycle ordering, visible
