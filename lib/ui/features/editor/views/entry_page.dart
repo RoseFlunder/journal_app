@@ -928,23 +928,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     return _editor.primaryNode;
   }
 
-  void _commitImageEdit(
-    String blockId,
-    CanvasNode Function(CanvasNode node) update, {
-    String label = 'Edit image',
-  }) {
-    _editor.updateNode(blockId, update, label: label);
-    unawaited(_editor.commitTransaction());
-  }
-
-  void _previewImageEdit(
-    String blockId,
-    CanvasNode Function(CanvasNode node) update, {
-    String label = 'Edit image',
-  }) {
-    _editor.updateNode(blockId, update, label: label);
-  }
-
   CanvasNode _withNodePayload(
     CanvasNode node,
     String key,
@@ -958,13 +941,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     }
     return node.copyWith(payload: payload);
   }
-
-  CanvasNode _withImagePayload(
-    CanvasNode node,
-    String key,
-    Object? value,
-  ) =>
-      _withNodePayload(node, key, value);
 
   Future<void> _showImageEditor() async {
     final node = _imageSelection();
@@ -984,254 +960,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
             _editor.updateNode(id, update, label: label),
         onBeginTransaction: _editor.beginTransaction,
         onEndTransaction: () => unawaited(_editor.commitTransaction()),
-      ),
-    );
-  }
-
-  // Kept temporarily for downstream embedders that still reference the
-  // pre-extraction implementation while the image view rolls out.
-  // ignore: unused_element
-  Future<void> _showImageEditorLegacy() async {
-    final block = _imageSelection();
-    if (block == null) return;
-    var crop = block.crop;
-    var opacity = block.opacity;
-    var brightness = block.brightness;
-    var contrast = block.contrast;
-    var saturation = block.saturation;
-    var imageMask = block.imageMask;
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: PaperPage.paper,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: DraggableScrollableSheet(
-            expand: false,
-            initialChildSize: 0.62,
-            minChildSize: 0.42,
-            maxChildSize: 0.9,
-            builder: (context, scrollController) => ListView(
-              controller: scrollController,
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-              children: [
-                const ListTile(
-                  leading: Icon(Icons.tune),
-                  title: Text('Edit image'),
-                  subtitle: Text('Non-destructive crop and presentation'),
-                ),
-                const Divider(),
-                Text('Crop', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _cropChoice(
-                      context,
-                      label: 'Original',
-                      selected: crop == null,
-                      onTap: () {
-                        setSheetState(() => crop = null);
-                        _commitImageEdit(
-                          block.id,
-                          (next) => _withImagePayload(next, 'crop', null),
-                        );
-                      },
-                    ),
-                    _cropChoice(
-                      context,
-                      label: 'Square',
-                      selected: crop == _squareCrop,
-                      onTap: () {
-                        setSheetState(() => crop = _squareCrop);
-                        _commitImageEdit(
-                          block.id,
-                          (next) => _withImagePayload(next, 'crop', {
-                            'left': _squareCrop.left,
-                            'top': _squareCrop.top,
-                            'right': _squareCrop.right,
-                            'bottom': _squareCrop.bottom,
-                          }),
-                        );
-                      },
-                    ),
-                    _cropChoice(
-                      context,
-                      label: 'Portrait',
-                      selected: crop == _portraitCrop,
-                      onTap: () {
-                        setSheetState(() => crop = _portraitCrop);
-                        _commitImageEdit(
-                          block.id,
-                          (next) => _withImagePayload(next, 'crop', {
-                            'left': _portraitCrop.left,
-                            'top': _portraitCrop.top,
-                            'right': _portraitCrop.right,
-                            'bottom': _portraitCrop.bottom,
-                          }),
-                        );
-                      },
-                    ),
-                    _cropChoice(
-                      context,
-                      label: 'Wide',
-                      selected: crop == _wideCrop,
-                      onTap: () {
-                        setSheetState(() => crop = _wideCrop);
-                        _commitImageEdit(
-                          block.id,
-                          (next) => _withImagePayload(next, 'crop', {
-                            'left': _wideCrop.left,
-                            'top': _wideCrop.top,
-                            'right': _wideCrop.right,
-                            'bottom': _wideCrop.bottom,
-                          }),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  'Opacity ${((opacity * 100).round())}%',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                Slider(
-                  min: 0.1,
-                  max: 1,
-                  value: opacity,
-                  label: '${(opacity * 100).round()}%',
-                  onChangeStart: (_) =>
-                      _editor.beginTransaction('Image opacity'),
-                  onChanged: (value) {
-                    opacity = value;
-                    setSheetState(() {});
-                    _previewImageEdit(
-                      block.id,
-                      (next) => next.copyWith(opacity: value),
-                      label: 'Image opacity',
-                    );
-                  },
-                  onChangeEnd: (_) => unawaited(_editor.commitTransaction()),
-                ),
-                _imageAdjustmentSlider(
-                  context,
-                  label: 'Brightness',
-                  value: brightness,
-                  min: -1,
-                  max: 1,
-                  onStart: () => _editor.beginTransaction('Image brightness'),
-                  onChanged: (value) {
-                    setSheetState(() => brightness = value);
-                    _previewImageEdit(
-                      block.id,
-                      (next) => _withImagePayload(next, 'brightness', value),
-                      label: 'Image brightness',
-                    );
-                  },
-                  onEnd: () => unawaited(_editor.commitTransaction()),
-                ),
-                _imageAdjustmentSlider(
-                  context,
-                  label: 'Contrast',
-                  value: contrast,
-                  min: -1,
-                  max: 1,
-                  onStart: () => _editor.beginTransaction('Image contrast'),
-                  onChanged: (value) {
-                    setSheetState(() => contrast = value);
-                    _previewImageEdit(
-                      block.id,
-                      (next) => _withImagePayload(next, 'contrast', value),
-                      label: 'Image contrast',
-                    );
-                  },
-                  onEnd: () => unawaited(_editor.commitTransaction()),
-                ),
-                _imageAdjustmentSlider(
-                  context,
-                  label: 'Saturation',
-                  value: saturation,
-                  min: 0,
-                  max: 2,
-                  onStart: () => _editor.beginTransaction('Image saturation'),
-                  onChanged: (value) {
-                    setSheetState(() => saturation = value);
-                    _previewImageEdit(
-                      block.id,
-                      (next) => _withImagePayload(next, 'saturation', value),
-                      label: 'Image saturation',
-                    );
-                  },
-                  onEnd: () => unawaited(_editor.commitTransaction()),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    FilledButton.tonalIcon(
-                      onPressed: () => _commitImageEdit(
-                        block.id,
-                        (next) => next.copyWith(
-                          transform: next.transform.copyWith(
-                            rotation: next.transform.rotation + math.pi / 2,
-                          ),
-                        ),
-                      ),
-                      icon: const Icon(Icons.rotate_90_degrees_ccw),
-                      label: const Text('Rotate 90°'),
-                    ),
-                    FilledButton.tonalIcon(
-                      onPressed: () => _commitImageEdit(
-                        block.id,
-                        (next) => _withImagePayload(
-                          next,
-                          'flipX',
-                          next.payload['flipX'] != true,
-                        ),
-                      ),
-                      icon: const Icon(Icons.flip),
-                      label: const Text('Flip horizontal'),
-                    ),
-                    FilledButton.tonalIcon(
-                      onPressed: () => _commitImageEdit(
-                        block.id,
-                        (next) => _withImagePayload(
-                          next,
-                          'flipY',
-                          next.payload['flipY'] != true,
-                        ),
-                      ),
-                      icon: const Icon(Icons.flip_camera_android),
-                      label: const Text('Flip vertical'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Text('Mask', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'rectangle', label: Text('Square')),
-                    ButtonSegment(value: 'rounded', label: Text('Rounded')),
-                    ButtonSegment(value: 'circle', label: Text('Circle')),
-                  ],
-                  selected: {imageMask},
-                  onSelectionChanged: (selection) {
-                    final nextMask = selection.first;
-                    setSheetState(() => imageMask = nextMask);
-                    _commitImageEdit(
-                      block.id,
-                      (next) => _withImagePayload(next, 'imageMask', nextMask),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -1359,21 +1087,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       }
     }
   }
-
-  static const _squareCrop = Rect.fromLTWH(0.125, 0, 0.75, 1);
-  static const _portraitCrop = Rect.fromLTWH(0.22, 0, 0.56, 1);
-  static const _wideCrop = Rect.fromLTWH(0, 0.2, 1, 0.6);
-
-  Widget _cropChoice(
-    BuildContext context, {
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-  }) => ChoiceChip(
-    label: Text(label),
-    selected: selected,
-    onSelected: (_) => onTap(),
-  );
 
   Future<void> _showInkSettings() async {
     final originalColor = _inkColorValue;
@@ -1958,30 +1671,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
           decoration: InputDecoration(labelText: label),
         ),
       );
-
-  Widget _imageAdjustmentSlider(
-    BuildContext context, {
-    required String label,
-    required double value,
-    required double min,
-    required double max,
-    required VoidCallback onStart,
-    required ValueChanged<double> onChanged,
-    required VoidCallback onEnd,
-  }) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(label, style: Theme.of(context).textTheme.titleMedium),
-      Slider(
-        min: min,
-        max: max,
-        value: value.clamp(min, max).toDouble(),
-        onChangeStart: (_) => onStart(),
-        onChanged: onChanged,
-        onChangeEnd: (_) => onEnd(),
-      ),
-    ],
-  );
 
   Widget _nudgeButton(String label, Offset delta) => Semantics(
     button: true,
