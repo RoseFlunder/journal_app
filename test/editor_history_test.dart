@@ -1,17 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/editor/editor_history.dart';
 import 'package:journal_app/models/document.dart';
-import 'package:journal_app/models/entry.dart';
 
 void main() {
   test('records one transaction and moves it between undo and redo', () {
     final history = EditorHistory();
-    final before = EditorDocumentSnapshot([
-      ContentBlock(id: 'block', type: BlockType.text),
-    ], const BoardSettings());
-    final after = EditorDocumentSnapshot([
-      ContentBlock(id: 'block', type: BlockType.text, text: 'Updated'),
-    ], const BoardSettings());
+    final before = _snapshot([_text()]);
+    final after = _snapshot([_text(text: 'Updated')]);
 
     history.begin(before, 'Edit text');
     final transaction = history.takeTransaction();
@@ -26,22 +21,19 @@ void main() {
 
     expect(history.canUndo, isTrue);
     expect(
-      history.takeUndo()?.revert(after).blocks.single.text,
+      history.takeUndo()?.revert(after).document.nodes.single.text,
       isEmpty,
     );
     expect(history.canRedo, isTrue);
     expect(
-      history.takeRedo()?.apply(before).blocks.single.text,
+      history.takeRedo()?.apply(before).document.nodes.single.text,
       'Updated',
     );
   });
 
   test('cancelling a transaction returns its original state', () {
     final history = EditorHistory();
-    final snapshot = EditorDocumentSnapshot(
-      const <ContentBlock>[],
-      const BoardSettings(),
-    );
+    final snapshot = _snapshot(const <CanvasNode>[]);
 
     history.begin(snapshot, 'Transform');
     expect(history.cancelTransaction(), same(snapshot));
@@ -50,12 +42,8 @@ void main() {
   });
 
   test('uses a compact typed command for transform-only edits', () {
-    final before = EditorDocumentSnapshot([
-      ContentBlock(id: 'block', type: BlockType.text, x: 4, y: 8),
-    ], const BoardSettings());
-    final after = EditorDocumentSnapshot([
-      ContentBlock(id: 'block', type: BlockType.text, x: 12, y: 20),
-    ], const BoardSettings());
+    final before = _snapshot([_text(x: 4, y: 8)]);
+    final after = _snapshot([_text(x: 12, y: 20)]);
 
     final command = EditorCommand.fromStates(
       label: 'Move',
@@ -70,19 +58,16 @@ void main() {
   });
 
   test('classifies board, node, and structural changes by intent', () {
-    final before = EditorDocumentSnapshot([
-      ContentBlock(id: 'block', type: BlockType.text, text: 'Before'),
-    ], const BoardSettings());
-    final styled = EditorDocumentSnapshot([
-      ContentBlock(id: 'block', type: BlockType.text, text: 'After'),
-    ], const BoardSettings());
-    final board = EditorDocumentSnapshot([
-      ContentBlock(id: 'block', type: BlockType.text, text: 'Before'),
-    ], const BoardSettings(gridVisible: true));
-    final inserted = EditorDocumentSnapshot([
-      ContentBlock(id: 'block', type: BlockType.text, text: 'Before'),
-      ContentBlock(id: 'new', type: BlockType.text),
-    ], const BoardSettings());
+    final before = _snapshot([_text(text: 'Before')]);
+    final styled = _snapshot([_text(text: 'After')]);
+    final board = _snapshot(
+      [_text(text: 'Before')],
+      board: const BoardSettings(gridVisible: true),
+    );
+    final inserted = _snapshot([
+      _text(text: 'Before'),
+      _text(id: 'new'),
+    ]);
 
     expect(
       EditorCommand.fromStates(
@@ -154,3 +139,29 @@ void main() {
     );
   });
 }
+
+EditorDocumentSnapshot _snapshot(
+  Iterable<CanvasNode> nodes, {
+  BoardSettings board = const BoardSettings(),
+}) => EditorDocumentSnapshot(
+  EntryDocument(
+    id: 'history',
+    title: 'History',
+    createdAt: DateTime.utc(2026),
+    modifiedAt: DateTime.utc(2026),
+    nodes: nodes,
+    board: board,
+  ),
+);
+
+CanvasNode _text({
+  String id = 'block',
+  String text = '',
+  double x = 0,
+  double y = 0,
+}) => CanvasNode(
+  id: id,
+  type: BlockType.text,
+  transform: Transform2D(x: x, y: y, width: 30, height: 12),
+  payload: {'text': text},
+);

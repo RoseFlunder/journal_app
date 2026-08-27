@@ -3,16 +3,10 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../models/document.dart';
-import '../models/entry.dart';
 
 /// A detached, deeply immutable document state used by one editor command.
 class EditorDocumentSnapshot {
-  EditorDocumentSnapshot(Iterable<ContentBlock> blocks, BoardSettings board)
-    : _document = EntryDocument.fromEntry(
-        Entry.newPage()
-          ..blocks = blocks.map((block) => block.clone()).toList()
-          ..board = board,
-      );
+  EditorDocumentSnapshot(this._document);
 
   /// Creates a snapshot without converting through mutable storage records.
   EditorDocumentSnapshot.fromDocument(this._document);
@@ -21,10 +15,6 @@ class EditorDocumentSnapshot {
 
   /// The immutable document represented by this snapshot.
   EntryDocument get document => _document;
-
-  /// Rehydrates detached mutable adapters only at the controller boundary.
-  @Deprecated('Use document.nodes instead.')
-  List<ContentBlock> get blocks => _document.blocks;
 
   BoardSettings get board => _document.board;
 
@@ -41,7 +31,7 @@ class EditorDocumentSnapshot {
   /// deltas. Document metadata is persisted by the repository and is not part
   /// of an editor gesture command.
   Map<String, dynamic> toJson() => {
-    'blocks': blocks.map((block) => block.toJson()).toList(growable: false),
+    'nodes': document.nodes.map((node) => node.toJson()).toList(growable: false),
     'board': board.toJson(),
   };
 }
