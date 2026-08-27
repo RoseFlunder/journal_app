@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:image/image.dart' as img;
 import 'package:journal_app/main.dart';
+import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/sticker.dart';
 import 'package:journal_app/services/journal_store.dart';
@@ -751,15 +752,14 @@ void main() {
           height: 300,
           child: EntryCanvas(
             workspaceSize: const Size(400, 300),
-            blocks: const [],
+            nodes: const [],
             editing: true,
             drawMode: true,
             selectedId: null,
             textEditingId: null,
             onSelect: (_) {},
             onEditText: (_) {},
-            onChanged: (_) {},
-            onInkCreated: (block) => drawn = block,
+            onInkNodeCreated: (node) => drawn = node.toBlock(),
             imageBytes: (_) => null,
             onOpenImage: (_) {},
           ),
@@ -1270,13 +1270,21 @@ void main() {
                 builder: (context, setState) => EntryCanvas(
                   key: ValueKey(transformScale),
                   workspaceSize: const Size(400, 300),
-                  blocks: [block],
+                  nodes: [CanvasNode.fromBlock(block)],
                   editing: true,
                   selectedId: block.id,
                   textEditingId: null,
                   onSelect: (_) {},
                   onEditText: (_) {},
-                  onChanged: (_) => setState(() {}),
+                  onTransformChanged: (_, transform) {
+                    block
+                      ..x = transform.x
+                      ..y = transform.y
+                      ..w = transform.width
+                      ..h = transform.height
+                      ..rotation = transform.rotation;
+                    setState(() {});
+                  },
                   imageBytes: (_) => null,
                   onOpenImage: (_) {},
                 ),
@@ -1421,14 +1429,16 @@ void main() {
         MaterialApp(
           home: EntryCanvas(
             workspaceSize: const Size(800, 400),
-            blocks: [first, second],
+            nodes: [
+              CanvasNode.fromBlock(first),
+              CanvasNode.fromBlock(second),
+            ],
             editing: true,
             selectedId: first.id,
             selectedIds: {first.id, second.id},
             textEditingId: null,
             onSelect: (_) {},
             onEditText: (_) {},
-            onChanged: (_) {},
             onTouchRotateSelection: (blockIds, pivot, delta) {
               targetSets.add(blockIds);
               pivots.add(pivot);
@@ -1497,13 +1507,21 @@ void main() {
           child: StatefulBuilder(
             builder: (context, setState) => EntryCanvas(
               workspaceSize: const Size(400, 300),
-              blocks: [block],
+              nodes: [CanvasNode.fromBlock(block)],
               editing: true,
               selectedId: block.id,
               textEditingId: null,
               onSelect: (_) {},
               onEditText: (_) {},
-              onChanged: (_) => setState(() {}),
+              onTransformChanged: (_, transform) {
+                block
+                  ..x = transform.x
+                  ..y = transform.y
+                  ..w = transform.width
+                  ..h = transform.height
+                  ..rotation = transform.rotation;
+                setState(() {});
+              },
               imageBytes: (_) => null,
               onOpenImage: (_) {},
             ),
@@ -1552,13 +1570,21 @@ void main() {
                 builder: (context, setState) => EntryCanvas(
                   key: ValueKey('resize-$transformScale'),
                   workspaceSize: const Size(400, 300),
-                  blocks: [block],
+                  nodes: [CanvasNode.fromBlock(block)],
                   editing: true,
                   selectedId: block.id,
                   textEditingId: null,
                   onSelect: (_) {},
                   onEditText: (_) {},
-                  onChanged: (_) => setState(() {}),
+                  onTransformChanged: (_, transform) {
+                    block
+                      ..x = transform.x
+                      ..y = transform.y
+                      ..w = transform.width
+                      ..h = transform.height
+                      ..rotation = transform.rotation;
+                    setState(() {});
+                  },
                   imageBytes: (_) => null,
                   onOpenImage: (_) {},
                 ),
@@ -1633,7 +1659,7 @@ void main() {
                 gesturesEnabled: !resizeActive,
                 child: EntryCanvas(
                   workspaceSize: const Size(400, 300),
-                  blocks: [block],
+                  nodes: [CanvasNode.fromBlock(block)],
                   editing: true,
                   selectedId: block.id,
                   textEditingId: null,
@@ -1641,7 +1667,15 @@ void main() {
                   onEditText: (_) {},
                   onResizeActiveChanged: (active) =>
                       setState(() => resizeActive = active),
-                  onChanged: (_) => setState(() {}),
+                  onTransformChanged: (_, transform) {
+                    block
+                      ..x = transform.x
+                      ..y = transform.y
+                      ..w = transform.width
+                      ..h = transform.height
+                      ..rotation = transform.rotation;
+                    setState(() {});
+                  },
                   imageBytes: (_) => null,
                   onOpenImage: (_) {},
                 ),
@@ -1742,13 +1776,20 @@ void main() {
             height: 600,
             child: EntryCanvas(
               workspaceSize: const Size(400, 300),
-              blocks: [block],
+              nodes: [CanvasNode.fromBlock(block)],
               editing: true,
               selectedId: block.id,
               textEditingId: null,
               onSelect: (_) {},
               onEditText: (_) {},
-              onChanged: (_) {},
+              onTransformChanged: (_, transform) {
+                block
+                  ..x = transform.x
+                  ..y = transform.y
+                  ..w = transform.width
+                  ..h = transform.height
+                  ..rotation = transform.rotation;
+              },
               imageBytes: (_) => null,
               onOpenImage: (_) {},
             ),
@@ -1794,13 +1835,20 @@ void main() {
           height: 600,
           child: EntryCanvas(
             workspaceSize: const Size(400, 300),
-            blocks: [block],
+            nodes: [CanvasNode.fromBlock(block)],
             editing: true,
             selectedId: block.id,
             textEditingId: null,
             onSelect: (_) {},
             onEditText: (_) {},
-            onChanged: (_) {},
+            onTransformChanged: (_, transform) {
+              block
+                ..x = transform.x
+                ..y = transform.y
+                ..w = transform.width
+                ..h = transform.height
+                ..rotation = transform.rotation;
+            },
             imageBytes: (_) => null,
             onOpenImage: (_) {},
           ),

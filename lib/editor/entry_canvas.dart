@@ -7,9 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/document.dart';
-import '../models/entry.dart';
 import '../widgets/page_viewport.dart';
-import '../services/legacy_editor_codec.dart';
 import 'block_widget.dart';
 import 'geometry_services.dart';
 
@@ -30,10 +28,9 @@ typedef CanvasTransformChanged = void Function(
 typedef CanvasNodeCreated = ValueChanged<CanvasNode>;
 
 class EntryCanvas extends StatefulWidget {
-  EntryCanvas({
+  const EntryCanvas({
     super.key,
-    Iterable<CanvasNode>? nodes,
-    @Deprecated('Use nodes instead.') Iterable<CanvasRenderable>? blocks,
+    required this.nodes,
     this.board = const BoardSettings(),
     required this.editing,
     required this.selectedId,
@@ -41,7 +38,6 @@ class EntryCanvas extends StatefulWidget {
     required this.textEditingId,
     required this.onSelect,
     required this.onEditText,
-    this.onChanged,
     this.onTransformChanged,
     this.onTextChanged,
     this.onResizeActiveChanged,
@@ -56,7 +52,6 @@ class EntryCanvas extends StatefulWidget {
     this.inkWidth = 1.8,
     this.inkOpacity = 1,
     this.onLassoSelected,
-    this.onInkCreated,
     this.onInkNodeCreated,
     required this.imageBytes,
     this.imageProvider,
@@ -67,17 +62,10 @@ class EntryCanvas extends StatefulWidget {
     this.workspaceSize = PageViewport.pageSize,
     this.worldOrigin = Offset.zero,
     this.cameraScale = 1,
-  }) : nodes = nodes ??
-           blocks?.map(toCanvasNode).toList(growable: false) ??
-           const <CanvasNode>[],
-       blocks = blocks;
+  });
 
   /// Render-ready immutable nodes used by the configured feature canvas.
   final Iterable<CanvasNode> nodes;
-
-  /// Transitional input for standalone callers still passing mutable blocks.
-  @Deprecated('Use nodes instead.')
-  final Iterable<CanvasRenderable>? blocks;
   final BoardSettings board;
   final bool editing;
   final String? selectedId;
@@ -85,7 +73,6 @@ class EntryCanvas extends StatefulWidget {
   final String? textEditingId;
   final ValueChanged<String?> onSelect;
   final ValueChanged<String> onEditText;
-  final ValueChanged<ContentBlock>? onChanged;
   final CanvasTransformChanged? onTransformChanged;
   final void Function(String blockId, String text, {List<dynamic>? delta})?
   onTextChanged;
@@ -101,7 +88,6 @@ class EntryCanvas extends StatefulWidget {
   final double inkWidth;
   final double inkOpacity;
   final ValueChanged<Set<String>>? onLassoSelected;
-  final ValueChanged<ContentBlock>? onInkCreated;
   final CanvasNodeCreated? onInkNodeCreated;
   final Uint8List? Function(String assetId) imageBytes;
   final ImageProvider<Object>? Function(String assetId)? imageProvider;
@@ -372,17 +358,6 @@ class _EntryCanvasState extends State<EntryCanvas> {
                                     final onTextChanged = widget.onTextChanged;
                                     if (onTextChanged != null) {
                                       onTextChanged(block.id, text);
-                                    } else {
-                                      final next =
-                                          _legacyBlockById(block.id) ??
-                                          _asLegacy(block);
-                                      next.text = text;
-                                      // Preserve the legacy callback contract
-                                      // for standalone canvas consumers. The
-                                      // configured editor path supplies
-                                      // [onTextChanged] and never reaches this
-                                      // mutable compatibility branch.
-                                      widget.onChanged?.call(next);
                                     }
                                   },
                                   onRichTextChanged: (text, delta) => widget
@@ -549,18 +524,16 @@ class _EntryCanvasState extends State<EntryCanvas> {
       rotateSelection(delta);
       return;
     }
-    _emitTransform(
-      block.id,
-      Transform2D(
+      _emitTransform(
+        block.id,
+        Transform2D(
         x: block.x,
         y: block.y,
         width: block.w,
         height: block.h,
         rotation: block.rotation + delta,
       ),
-      legacy: _asLegacy(block),
-      legacyTarget: block is ContentBlock ? block : null,
-    );
+      );
   }
 
   Transform2D _resizedTransform(
@@ -665,8 +638,6 @@ class _EntryCanvasState extends State<EntryCanvas> {
         height: block.h,
         rotation: block.rotation,
       ),
-      legacy: _asLegacy(block),
-      legacyTarget: block is ContentBlock ? block : null,
     );
   }
 
@@ -720,8 +691,6 @@ class _EntryCanvasState extends State<EntryCanvas> {
     _emitTransform(
       block.id,
       _resizedTransform(block, session, pointer),
-      legacy: _asLegacy(block),
-      legacyTarget: block is ContentBlock ? block : null,
     );
   }
 
@@ -815,11 +784,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
     _inkPoints.clear();
     setState(() {});
     final onInkNodeCreated = widget.onInkNodeCreated;
-    if (onInkNodeCreated != null) {
-      onInkNodeCreated(node);
-    } else {
-      widget.onInkCreated?.call(toLegacyCanvasBlock(node));
-    }
+    onInkNodeCreated?.call(node);
   }
 
   void _cancelInk() {
@@ -928,28 +893,8 @@ class _EntryCanvasState extends State<EntryCanvas> {
     return TransformService.rotate(point, angle);
   }
 
-  void _emitTransform(
-    String id,
-    Transform2D transform, {
-    required ContentBlock legacy,
-    ContentBlock? legacyTarget,
-  }) {
-    final onTransformChanged = widget.onTransformChanged;
-    if (onTransformChanged != null) {
-      onTransformChanged(id, transform);
-    } else {
-      // Legacy tests/embedders historically observe the detached block
-      // instance changing in place. Keep that adapter behavior only when no
-      // immutable intent sink is configured.
-      (legacyTarget ?? _legacyBlockById(id) ?? legacy)
-        ..x = transform.x
-        ..y = transform.y
-        ..w = transform.width
-        ..h = transform.height
-        ..rotation = transform.rotation;
-      widget.onChanged?.call(legacyTarget ?? _legacyBlockById(id) ?? legacy);
-    }
-  }
+  void _emitTransform(String id, Transform2D transform) =>
+      widget.onTransformChanged?.call(id, transform);
 
   void _openImage(CanvasRenderable block) {
     final callback = widget.onOpenImageId;
@@ -1024,16 +969,6 @@ class _EntryCanvasState extends State<EntryCanvas> {
   String? _visualId(CanvasRenderable block) =>
       block.type == BlockType.sticker ? block.stickerId : block.assetId;
 
-  ContentBlock _asLegacy(CanvasRenderable block) => toLegacyCanvasBlock(block);
-
-  ContentBlock? _legacyBlockById(String id) {
-    final blocks = widget.blocks;
-    if (blocks == null) return null;
-    for (final block in blocks) {
-      if (block.id == id && block is ContentBlock) return block;
-    }
-    return null;
-  }
 }
 
 class _BlockMoveSession {

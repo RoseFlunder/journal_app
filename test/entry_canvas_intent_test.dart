@@ -22,13 +22,12 @@ void main() {
       MaterialApp(
         home: EntryCanvas(
           workspaceSize: const Size(400, 300),
-          blocks: [block],
+          nodes: [CanvasNode.fromBlock(block)],
           editing: true,
           selectedId: block.id,
           textEditingId: null,
           onSelect: (_) {},
           onEditText: (_) {},
-          onChanged: (_) => fail('legacy callback should not be used'),
           onTransformChanged: (id, transform) {
             expect(id, block.id);
             intent = transform;
