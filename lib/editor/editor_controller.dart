@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/document.dart';
-import '../models/entry.dart';
 import 'editor_state.dart';
 import 'editor_history.dart';
 import 'geometry_services.dart';
@@ -36,11 +35,6 @@ class EditorController extends ChangeNotifier {
   Timer? _textTimer;
   EditorSaveState _saveState = EditorSaveState.saved;
 
-  /// Detached legacy block adapters for the current canvas implementation.
-  /// New feature code should consume [document] and [nodes].
-  @Deprecated('Use document.nodes or nodes instead.')
-  List<ContentBlock> get blocks => _document.blocks;
-
   /// Immutable leaf projection consumed by the modern canvas renderer.
   List<CanvasNode> get renderNodes => _document.renderNodes;
   List<CanvasNode> get nodes => document.nodes;
@@ -49,10 +43,6 @@ class EditorController extends ChangeNotifier {
   EntryDocument get document => _document;
   BoardSettings get board => _document.board;
   Set<String> get selection => Set.unmodifiable(_selection);
-  @Deprecated('Use selectedDrawableNodes instead.')
-  List<ContentBlock> get selectedDrawableBlocks => selectedDrawableNodes
-      .map((node) => node.toBlock())
-      .toList(growable: false);
   bool get hasSelection => _selection.isNotEmpty;
   bool get canUndo => _history.canUndo;
   bool get canRedo => _history.canRedo;
@@ -78,9 +68,6 @@ class EditorController extends ChangeNotifier {
     canPaste: canPaste,
     saveState: saveState,
   );
-
-  @Deprecated('Use primaryNode instead.')
-  ContentBlock? get primarySelection => primaryNode?.toBlock();
 
   /// Immutable primary selection for feature views. Unlike
   /// [primarySelection], this never creates a mutable compatibility adapter.
@@ -376,10 +363,6 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void add(ContentBlock block, {bool select = true}) {
-    addNode(CanvasNode.fromBlock(block), select: select);
-  }
-
   /// Inserts a complete template graph as one command, remapping every node
   /// and group reference so the source remains reusable.
   void insertNodeGraph(
@@ -420,23 +403,6 @@ class EditorController extends ChangeNotifier {
       );
     notifyListeners();
     unawaited(commitTransaction());
-  }
-
-  void insertBlocks(
-    Iterable<ContentBlock> sources, {
-    Offset offset = Offset.zero,
-    String label = 'Insert template',
-  }) {
-    final sourceList = sources.toList(growable: false);
-    if (sourceList.isEmpty) return;
-    final sourceDocument = EntryDocument.fromLegacyBlocks(
-      id: _document.id,
-      title: _document.title,
-      createdAt: _document.createdAt,
-      blocks: sourceList,
-      board: _document.board,
-    );
-    insertNodeGraph(sourceDocument.nodes, offset: offset, label: label);
   }
 
   void deleteSelection() {
@@ -753,21 +719,6 @@ class EditorController extends ChangeNotifier {
     await _persist();
   }
 
-  @Deprecated('Use document or nodes instead.')
-  List<ContentBlock> snapshotBlocks() => _document.blocks;
-
-  /// Returns the selected structural graph as detached snapshots for local
-  /// templates and clipboard consumers.
-  @Deprecated('Use selectedNodeGraphSnapshot instead.')
-  List<ContentBlock> selectedGraphSnapshot() => EntryDocument(
-    id: _document.id,
-    title: _document.title,
-    createdAt: _document.createdAt,
-    modifiedAt: _document.modifiedAt,
-    nodes: _selectedGraphNodes,
-    board: _document.board,
-  ).blocks;
-
   /// Returns the selected structural graph as immutable nodes for feature
   /// workflows such as template persistence and insertion.
   List<CanvasNode> selectedNodeGraphSnapshot() =>
@@ -775,18 +726,6 @@ class EditorController extends ChangeNotifier {
 
   /// Replaces the working document after a checkpoint restore or archive
   /// import. History intentionally starts fresh at the restored version.
-  @Deprecated('Use replaceDocumentModel instead.')
-  void replaceDocument(List<ContentBlock> blocks, BoardSettings board) {
-    final next = EntryDocument.fromLegacyBlocks(
-      id: _document.id,
-      title: _document.title,
-      createdAt: _document.createdAt,
-      blocks: blocks,
-      board: board,
-    );
-    replaceDocumentModel(_document.copyWith(nodes: next.nodes, board: board));
-  }
-
   /// Replaces the immutable working document after recovery or import.
   void replaceDocumentModel(EntryDocument next) {
     _textTimer?.cancel();

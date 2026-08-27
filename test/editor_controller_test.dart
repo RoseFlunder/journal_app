@@ -28,6 +28,11 @@ EntryDocument _documentFromBlocks(
   board: board,
 );
 
+extension _LegacyControllerInspection on EditorController {
+  /// Test-only inspection adapter; production code consumes [document].
+  List<ContentBlock> get blocks => document.toEntry().blocks;
+}
+
 void main() {
   test(
     'a transform transaction produces one save and supports undo/redo',
@@ -344,7 +349,13 @@ void main() {
         hidden: true,
       );
       final child = _text(id: 'template-child', x: 4, y: 5)..groupId = group.id;
-      controller.insertBlocks([group, child], offset: const Offset(10, 20));
+      final template = EntryDocument.fromLegacyBlocks(
+        id: 'template',
+        title: 'Template',
+        createdAt: DateTime.utc(2026),
+        blocks: [group, child],
+      );
+      controller.insertNodeGraph(template.nodes, offset: const Offset(10, 20));
       await Future<void>.delayed(Duration.zero);
 
       expect(controller.blocks, hasLength(2));
