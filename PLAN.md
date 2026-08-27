@@ -3,13 +3,15 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-27 on top of commit `1fc442d` (`refactor: extract editor
-history and template views`). The editor renders immutable node projections,
-routes metadata and workflow persistence through the feature view model,
-retains media referenced by undo/redo and clipboard snapshots, and has
-feature-native canvas, layers, image, history, and template views. Focused,
-full, repository, and widget suites pass; Android, Web, and Windows release
-builds pass.
+Last audited: 2026-08-27 on top of commit `5611fa8` (`refactor: remove obsolete
+toolbar export`). The editor controller, history, clipboard, and canvas
+configured path are document/node native; metadata and workflow persistence
+route through the feature view model; media referenced by undo/redo and
+clipboard snapshots is retained. Feature-native canvas, toolbar, More tools,
+layers, image, history, template, shape, alignment, and transform views are
+active, and the obsolete toolbar export and image-editor path are gone. Focused
+editor, repository, boundary, and widget suites pass; Android, Web, and
+Windows release builds passed before this final view cleanup.
 
 Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
@@ -19,9 +21,9 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
 - [~] Immutable `EntryDocument`, `CanvasNode`, `Transform2D`, and
   `EditorDocumentSnapshot` boundaries are the controller's working state and
-  the active renderer consumes immutable world-space node projections. Legacy
-  constructors, detached block getters, and standalone-canvas callbacks remain
-  as a compatibility edge for older tests and saved-data adapters.
+  the active renderer consumes immutable world-space node projections. The
+  standalone `EntryCanvas` still has an explicit deprecated `ContentBlock`
+  input/callback bridge for embedders; production editor wiring is node-only.
 - [x] Fresh-data startup; legacy migration is out of scope.
 - [x] `EditorController` owns selection, transactions, clipboard, 100-step
   undo/redo, text coalescing, and save state.
@@ -73,7 +75,7 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
   resizing; regression coverage now exercises a vertical visual handle.
 - [x] Two-finger rotation can start anywhere on the page and rotates only the
   selected unlocked blocks as one transaction; mobile hides the rotate handle.
-- [~] Contextual toolbar, scrollable More sheet, duplicate, clipboard, lock,
+- [x] Contextual toolbar, scrollable More sheet, duplicate, clipboard, lock,
   layers, groups, and delete exist.
 - [x] Single-tap selects text and double-tap enters editing; double-tap visual
   blocks opens the image editor.
@@ -164,13 +166,11 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 ## Next Implementation Order
 
 1. **Complete the document-model migration**
-   - Retire the remaining controller and standalone-canvas `ContentBlock`
-     compatibility APIs after downstream tests and embedders move to typed
-     node commands.
-   - Finish splitting the still-large editor page by extracting toolbar,
-     settings/more-tools, and remaining dialog surfaces; keep workflows in
-     focused use cases/view-model methods and delete the unreachable legacy
-     image-editor path.
+   - Retire the remaining standalone-canvas `ContentBlock` compatibility
+     input/callback bridge after downstream embedders move to typed node
+     intents.
+   - Finish extracting the remaining color/music dialog surfaces from the
+     editor page; keep workflows in focused use cases/view-model methods.
 
 2. **Correctness hardening**
    - Fix image edge resizing, image-sheet state, lifecycle ordering, visible
