@@ -121,8 +121,8 @@ class HiveDocumentDataSource {
     });
   }
 
-  void dispose() {
-    if (!_changes.isClosed) unawaited(_changes.close());
+  Future<void> dispose() async {
+    if (!_changes.isClosed) await _changes.close();
   }
 
   Future<void> _ensureLoaded() async {

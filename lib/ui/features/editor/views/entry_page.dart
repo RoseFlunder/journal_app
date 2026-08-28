@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../editor/editor_state.dart';
+import '../../../../editor/editor_history.dart';
 import '../../../../models/document.dart';
 import '../../../../models/sticker.dart';
 import '../../../../models/view_state.dart';
@@ -46,9 +47,9 @@ class EntryPage extends StatefulWidget {
     required this.active,
     required this.musicController,
     this.controlsVisible = true,
-    this.imageSource,
-    this.imageProcessor = const ImageProcessor(),
-    this.archiveService = const JournalTransferService(),
+    required this.imageSource,
+    required this.imageProcessor,
+    required this.archiveService,
   });
 
   /// Configured editor state for this page. The owner of the page disposes
@@ -60,7 +61,7 @@ class EntryPage extends StatefulWidget {
   final bool active;
   final PageMusicController musicController;
 
-  final ImageSourceService? imageSource;
+  final ImageSourceService imageSource;
   final ImageProcessor imageProcessor;
   final JournalTransferService archiveService;
 
@@ -136,7 +137,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   late final FocusNode _titleFocusNode = FocusNode()
     ..addListener(_handleTitleFocusChanged);
   late final ImageSourceService _imageSource =
-      widget.imageSource ?? PlatformImageSource();
+      widget.imageSource;
   bool _pickingImage = false;
   final Map<String, ImageProvider<Object>> _imageProviders = {};
   final Map<String, ImageProvider<Object>> _stickerProviders = {};
@@ -450,7 +451,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     final block = _activeTextBlock;
     if (block == null) return;
     _colorTransactionBlockId = block.id;
-    _editor.beginTransaction('Format text');
+    _editor.beginTransaction('Format text', kind: EditorCommandKind.style);
   }
 
   void _endTextColorEdit() {
@@ -473,7 +474,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void _beginStrokeColorEdit() {
     if (!_strokeColorAvailable) return;
     _strokeColorTransactionActive = true;
-    _editor.beginTransaction('Format stroke');
+    _editor.beginTransaction('Format stroke', kind: EditorCommandKind.style);
   }
 
   void _changeStrokeColor(int? value) {
@@ -1070,7 +1071,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       builder: (context) => EditorTransformInspectorView(
         node: node,
         onApply: (transform, opacity) async {
-          _editor.beginTransaction('Precise transform');
+          _editor.beginTransaction(
+            'Precise transform',
+            kind: EditorCommandKind.transform,
+          );
           _editor.replaceNodeWorldTransform(
             node.id,
             transform,
@@ -1308,7 +1312,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                               _editor.replaceNodeWorldTransform(id, transform),
                           onTextChanged: _editor.replaceText,
                           onInteractionStart: () =>
-                              _editor.beginTransaction('Transform'),
+                              _editor.beginTransaction(
+                                'Transform',
+                                kind: EditorCommandKind.transform,
+                              ),
                           onInteractionEnd: () {
                             _editor.snapSelection();
                             unawaited(_editor.commitTransaction());

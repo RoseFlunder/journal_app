@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'app/app_dependencies.dart';
+import 'services/image_source.dart';
+import 'services/journal_transfer_service.dart';
 import 'services/audio_playback.dart';
 import 'ui/features/journal/views/journal_screen.dart';
 import 'ui/features/journal/view_models/journal_view_model.dart';
@@ -169,7 +171,11 @@ class _JournalLifecycleState extends State<_JournalLifecycle>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    widget.dependencies.dispose();
+    unawaited(
+      widget.dependencies.dispose().catchError((Object error, StackTrace stackTrace) {
+        debugPrint('Could not close journal storage: $error');
+      }),
+    );
     super.dispose();
   }
 
@@ -203,6 +209,9 @@ class JournalApp extends StatelessWidget {
     AppDependencies? dependencies,
     MusicCatalogRepository? musicCatalog,
     AudioPlaybackFactory? audioPlaybackFactory,
+    ImageSourceService? imageSource,
+    ImageProcessor? imageProcessor,
+    JournalTransferService? archiveTransfer,
     EntryEditorViewModelFactory? editorViewModelFactory,
   }) : assert(
          repositories != null || dependencies != null,
@@ -213,10 +222,14 @@ class JournalApp extends StatelessWidget {
            musicCatalog ??
            dependencies?.musicCatalog ??
            const DisabledMusicCatalogRepository(),
-       audioPlaybackFactory =
+      audioPlaybackFactory =
            audioPlaybackFactory ??
            dependencies?.audioPlaybackFactory ??
            _disabledAudioFactory,
+       imageSource =
+           imageSource ?? dependencies?.imageSource ?? PlatformImageSource(),
+       imageProcessor = imageProcessor ?? dependencies?.imageProcessor ?? const ImageProcessor(),
+       archiveTransfer = archiveTransfer ?? dependencies?.archiveTransfer ?? const JournalTransferService(),
        editorViewModelFactory = editorViewModelFactory ??
            dependencies?.editorViewModelFactory ??
            ((document) => EntryEditorViewModel(
@@ -235,14 +248,22 @@ class JournalApp extends StatelessWidget {
                  .persistence,
              archiveRepository: (repositories ?? dependencies!.repositories)
                  .archiveRepository,
-             musicCatalog: musicCatalog ?? dependencies?.musicCatalog,
+             musicCatalog:
+                 musicCatalog ??
+                 dependencies?.musicCatalog ??
+                 const DisabledMusicCatalogRepository(),
              audioPlaybackFactory:
-                 audioPlaybackFactory ?? dependencies?.audioPlaybackFactory,
+                 audioPlaybackFactory ??
+                 dependencies?.audioPlaybackFactory ??
+                 _disabledAudioFactory,
            ));
 
   final JournalRepositories repositories;
   final MusicCatalogRepository musicCatalog;
   final AudioPlaybackFactory audioPlaybackFactory;
+  final ImageSourceService imageSource;
+  final ImageProcessor imageProcessor;
+  final JournalTransferService archiveTransfer;
   final EntryEditorViewModelFactory editorViewModelFactory;
 
   @override
@@ -298,6 +319,9 @@ class JournalApp extends StatelessWidget {
         repositories: repositories,
         musicCatalog: musicCatalog,
         audioPlaybackFactory: audioPlaybackFactory,
+        imageSource: imageSource,
+        imageProcessor: imageProcessor,
+        archiveTransfer: archiveTransfer,
         editorViewModelFactory: editorViewModelFactory,
       ),
     );
@@ -312,12 +336,18 @@ class _ConfiguredJournalScreen extends StatefulWidget {
     required this.repositories,
     required this.musicCatalog,
     required this.audioPlaybackFactory,
+    required this.imageSource,
+    required this.imageProcessor,
+    required this.archiveTransfer,
     required this.editorViewModelFactory,
   });
 
   final JournalRepositories repositories;
   final MusicCatalogRepository musicCatalog;
   final AudioPlaybackFactory audioPlaybackFactory;
+  final ImageSourceService imageSource;
+  final ImageProcessor imageProcessor;
+  final JournalTransferService archiveTransfer;
   final EntryEditorViewModelFactory editorViewModelFactory;
 
   @override
@@ -341,6 +371,9 @@ class _ConfiguredJournalScreenState extends State<_ConfiguredJournalScreen> {
     journal: _journal,
     music: _music,
     editorViewModelFactory: widget.editorViewModelFactory,
+    imageSource: widget.imageSource,
+    imageProcessor: widget.imageProcessor,
+    archiveTransfer: widget.archiveTransfer,
   );
 }
 

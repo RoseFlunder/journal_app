@@ -20,6 +20,7 @@ class HiveJournalDataSource {
   late Box<dynamic> _templates;
   Future<void> _writeQueue = Future<void>.value();
   Future<void>? _openOperation;
+  Future<void>? _closeOperation;
 
   bool get isOpen => _openOperation != null;
 
@@ -96,9 +97,19 @@ class HiveJournalDataSource {
 
   /// Closes the boxes owned by this source when the composition root is
   /// disposed. The global Hive registry remains owned by the platform boot.
-  void dispose() {
+  ///
+  /// The returned future completes only after queued writes and every box
+  /// close have finished, so composition roots and tests can await shutdown.
+  Future<void> dispose() async {
     if (!isOpen) return;
-    unawaited(_closeBoxes());
+    final existing = _closeOperation;
+    if (existing != null) {
+      await existing;
+      return;
+    }
+    final operation = _closeBoxes();
+    _closeOperation = operation;
+    await operation;
   }
 
   Future<void> _closeBoxes() async {

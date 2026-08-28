@@ -8,6 +8,8 @@ import '../../../../models/document.dart';
 import '../view_models/journal_view_model.dart';
 import '../../editor/view_models/entry_editor_view_model.dart';
 import '../../music/view_models/page_music_controller.dart';
+import '../../../../services/image_source.dart';
+import '../../../../services/journal_transfer_service.dart';
 import '../../../../widgets/entry_chrome.dart';
 import 'contents_page.dart';
 import '../../editor/views/entry_page.dart';
@@ -20,11 +22,17 @@ class JournalScreen extends StatefulWidget {
     required this.journal,
     required this.music,
     required this.editorViewModelFactory,
+    required this.imageSource,
+    required this.imageProcessor,
+    required this.archiveTransfer,
   });
 
   final JournalViewModel journal;
   final PageMusicController music;
   final EntryEditorViewModelFactory editorViewModelFactory;
+  final ImageSourceService imageSource;
+  final ImageProcessor imageProcessor;
+  final JournalTransferService archiveTransfer;
 
   @override
   State<JournalScreen> createState() => _JournalScreenState();
@@ -48,12 +56,14 @@ class _JournalScreenState extends State<JournalScreen> {
     super.initState();
     _journal = widget.journal;
     _music = widget.music;
+    _journal.addListener(_handleJournalChanged);
   }
 
   @override
   void dispose() {
     _chromeTimer?.cancel();
     _pageController.dispose();
+    _journal.removeListener(_handleJournalChanged);
     for (final editor in _editorViewModels.values) {
       editor.dispose();
     }
@@ -187,6 +197,9 @@ class _JournalScreenState extends State<JournalScreen> {
       controlsVisible: _entryChromeVisible,
       active: document.id == _activeEntryId,
       musicController: _music,
+      imageSource: widget.imageSource,
+      imageProcessor: widget.imageProcessor,
+      archiveService: widget.archiveTransfer,
       onDocumentPreviewChanged: _journal.previewDocument,
       onEditingChanged: (editing) =>
           _handleEditingChanged(document.id, editing),
@@ -210,6 +223,10 @@ class _JournalScreenState extends State<JournalScreen> {
     }
   }
 
+  void _handleJournalChanged() {
+    _pruneEditorViewModels(_journal.documents);
+  }
+
   Future<void> _activateMusicForPage(int page) async {
     if (page <= 0 || page > _journal.documents.length) {
       await _music.setActivePage(null, null);
@@ -228,7 +245,6 @@ class _JournalScreenState extends State<JournalScreen> {
     return ListenableBuilder(
       listenable: _journal,
       builder: (context, _) {
-        _pruneEditorViewModels(_journal.documents);
         return PopScope(
           canPop: _currentPage == 0,
           onPopInvokedWithResult: (didPop, _) {

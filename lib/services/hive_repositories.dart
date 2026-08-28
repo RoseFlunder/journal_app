@@ -212,9 +212,8 @@ class HiveRepositorySet {
   HiveDocumentDataSource? _documentSource;
   HiveCheckpointDataSource? _checkpointSource;
 
-  void dispose() {
+  Future<void> dispose() async {
     _checkpointSource?.dispose();
-    _documentSource?.dispose();
+    await _documentSource?.dispose();
   }
 }
-

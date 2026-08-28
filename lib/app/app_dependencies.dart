@@ -5,7 +5,9 @@
 import '../services/audio_playback.dart';
 import '../services/hive_repositories.dart';
 import '../services/hive_journal_data_source.dart';
+import '../services/image_source.dart';
 import '../services/jamendo_music_catalog.dart';
+import '../services/journal_transfer_service.dart';
 import '../services/persistence_coordinator.dart';
 import '../services/repositories.dart';
 import '../ui/features/editor/view_models/entry_editor_view_model.dart';
@@ -20,6 +22,9 @@ class AppDependencies {
     MusicCatalogRepository musicCatalog =
         const DisabledMusicCatalogRepository(),
     AudioPlaybackFactory audioPlaybackFactory = _disabledAudioFactory,
+    ImageSourceService? imageSource,
+    ImageProcessor imageProcessor = const ImageProcessor(),
+    JournalTransferService archiveTransfer = const JournalTransferService(),
     EntryEditorViewModelFactory? editorViewModelFactory,
   }) {
     final persistence = PersistenceCoordinator(
@@ -37,6 +42,9 @@ class AppDependencies {
       repositories: wiredRepositories,
       musicCatalog: musicCatalog,
       audioPlaybackFactory: audioPlaybackFactory,
+      imageSource: imageSource ?? PlatformImageSource(),
+      imageProcessor: imageProcessor,
+      archiveTransfer: archiveTransfer,
       editorViewModelFactory: resolvedFactory,
     );
   }
@@ -46,6 +54,9 @@ class AppDependencies {
     required this.repositories,
     required this.musicCatalog,
     required this.audioPlaybackFactory,
+    required this.imageSource,
+    required this.imageProcessor,
+    required this.archiveTransfer,
     required this.editorViewModelFactory,
     HiveJournalDataSource? storage,
     HiveRepositorySet? hiveRepositorySet,
@@ -60,6 +71,9 @@ class AppDependencies {
       clientId: const String.fromEnvironment('JAMENDO_CLIENT_ID'),
     );
     final audioPlaybackFactory = JustAudioPlaybackService.new;
+    final imageSource = PlatformImageSource();
+    const imageProcessor = ImageProcessor();
+    const archiveTransfer = JournalTransferService();
     final persistence = PersistenceCoordinator(
       repository: baseRepositories.persistence,
     );
@@ -68,6 +82,9 @@ class AppDependencies {
       repositories: baseRepositories.withPersistence(persistence),
       musicCatalog: musicCatalog,
       audioPlaybackFactory: audioPlaybackFactory,
+      imageSource: imageSource,
+      imageProcessor: imageProcessor,
+      archiveTransfer: archiveTransfer,
       editorViewModelFactory: _defaultEditorViewModelFactory(
         repositories: baseRepositories.withPersistence(persistence),
         musicCatalog: musicCatalog,
@@ -82,6 +99,9 @@ class AppDependencies {
   final JournalRepositories repositories;
   final MusicCatalogRepository musicCatalog;
   final AudioPlaybackFactory audioPlaybackFactory;
+  final ImageSourceService imageSource;
+  final ImageProcessor imageProcessor;
+  final JournalTransferService archiveTransfer;
   final EntryEditorViewModelFactory editorViewModelFactory;
   final HiveJournalDataSource? _storage;
   final HiveRepositorySet? _hiveRepositorySet;
@@ -90,12 +110,18 @@ class AppDependencies {
 
   Future<void> flush() => persistence.flush();
 
-  void dispose() {
-    persistence.dispose();
-    _hiveRepositorySet?.dispose();
-    _storage?.dispose();
-    final catalog = musicCatalog;
-    if (catalog is JamendoMusicCatalogRepository) catalog.dispose();
+  /// Flushes pending writes and closes every concrete dependency owned by the
+  /// composition root. Callers should await this before tearing down Hive.
+  Future<void> dispose() async {
+    try {
+      await flush();
+    } finally {
+      persistence.dispose();
+      await _hiveRepositorySet?.dispose();
+      await _storage?.dispose();
+      final catalog = musicCatalog;
+      if (catalog is JamendoMusicCatalogRepository) catalog.dispose();
+    }
   }
 }
 

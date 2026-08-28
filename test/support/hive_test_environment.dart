@@ -153,10 +153,10 @@ class TestHiveEnvironment {
 
   Future<void> flush() => repositories.persistence.flush();
 
-  void dispose() {
+  Future<void> dispose() async {
     _persistence.dispose();
-    _repositorySet.dispose();
-    _storage.dispose();
+    await _repositorySet.dispose();
+    await _storage.dispose();
   }
 
   Entry? _entryById(String id) {
