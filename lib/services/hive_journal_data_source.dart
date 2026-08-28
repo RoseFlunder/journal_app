@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:hive_flutter/hive_flutter.dart';
 
 /// Raw Hive access for the journal data layer.
@@ -17,13 +19,22 @@ class HiveJournalDataSource {
   late Box<dynamic> _checkpoints;
   late Box<dynamic> _templates;
   Future<void> _writeQueue = Future<void>.value();
+  Future<void>? _openOperation;
 
-  Future<void> open() async {
-    _entries = await Hive.openBox<dynamic>(_entriesBoxName);
-    _assets = await Hive.openBox<dynamic>(_assetsBoxName);
-    _meta = await Hive.openBox<dynamic>(_metaBoxName);
-    _checkpoints = await Hive.openBox<dynamic>(_checkpointsBoxName);
-    _templates = await Hive.openBox<dynamic>(_templatesBoxName);
+  bool get isOpen => _openOperation != null;
+
+  Future<void> open() {
+    final existing = _openOperation;
+    if (existing != null) return existing;
+    final operation = () async {
+      _entries = await Hive.openBox<dynamic>(_entriesBoxName);
+      _assets = await Hive.openBox<dynamic>(_assetsBoxName);
+      _meta = await Hive.openBox<dynamic>(_metaBoxName);
+      _checkpoints = await Hive.openBox<dynamic>(_checkpointsBoxName);
+      _templates = await Hive.openBox<dynamic>(_templatesBoxName);
+    }();
+    _openOperation = operation;
+    return operation;
   }
 
   dynamic readEntry(String id) => _entries.get(id);
@@ -74,11 +85,28 @@ class HiveJournalDataSource {
   }
 
   Future<void> flush() async {
+    if (!isOpen) return;
     await _writeQueue;
     await _entries.flush();
     await _assets.flush();
     await _meta.flush();
     await _checkpoints.flush();
     await _templates.flush();
+  }
+
+  /// Closes the boxes owned by this source when the composition root is
+  /// disposed. The global Hive registry remains owned by the platform boot.
+  void dispose() {
+    if (!isOpen) return;
+    unawaited(_closeBoxes());
+  }
+
+  Future<void> _closeBoxes() async {
+    await _writeQueue;
+    await _entries.close();
+    await _assets.close();
+    await _meta.close();
+    await _checkpoints.close();
+    await _templates.close();
   }
 }

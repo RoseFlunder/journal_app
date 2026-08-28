@@ -1,7 +1,11 @@
+// The private storage handles are intentionally assigned explicitly so the
+// public composition API cannot expose mutable Hive state.
+// ignore_for_file: prefer_initializing_formals
+
 import '../services/audio_playback.dart';
 import '../services/hive_repositories.dart';
+import '../services/hive_journal_data_source.dart';
 import '../services/jamendo_music_catalog.dart';
-import '../services/journal_store.dart';
 import '../services/persistence_coordinator.dart';
 import '../services/repositories.dart';
 
@@ -32,12 +36,15 @@ class AppDependencies {
     required this.repositories,
     required this.musicCatalog,
     required this.audioPlaybackFactory,
-    this.storage,
-  });
+    HiveJournalDataSource? storage,
+    HiveRepositorySet? hiveRepositorySet,
+  }) : _storage = storage,
+       _hiveRepositorySet = hiveRepositorySet;
 
   factory AppDependencies.hive() {
-    final source = JournalStore();
-    final baseRepositories = HiveRepositorySet(source).repositories;
+    final source = HiveJournalDataSource();
+    final repositorySet = HiveRepositorySet.fromDataSource(source);
+    final baseRepositories = repositorySet.repositories;
     final persistence = PersistenceCoordinator(
       repository: baseRepositories.persistence,
     );
@@ -49,6 +56,7 @@ class AppDependencies {
       ),
       audioPlaybackFactory: JustAudioPlaybackService.new,
       storage: source,
+      hiveRepositorySet: repositorySet,
     );
   }
 
@@ -56,7 +64,8 @@ class AppDependencies {
   final JournalRepositories repositories;
   final MusicCatalogRepository musicCatalog;
   final AudioPlaybackFactory audioPlaybackFactory;
-  final JournalStore? storage;
+  final HiveJournalDataSource? _storage;
+  final HiveRepositorySet? _hiveRepositorySet;
 
   Future<void> init() => repositories.documentRepository.init();
 
@@ -64,7 +73,8 @@ class AppDependencies {
 
   void dispose() {
     persistence.dispose();
-    storage?.dispose();
+    _hiveRepositorySet?.dispose();
+    _storage?.dispose();
     final catalog = musicCatalog;
     if (catalog is JamendoMusicCatalogRepository) catalog.dispose();
   }
