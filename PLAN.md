@@ -3,21 +3,23 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-28 on top of commit `42d3519` (`fix: wire editor factory
-through persistence coordinator`). The editor controller, history, clipboard, and canvas
-are document/node native; metadata and workflow persistence route through
-feature view models; editor factories and persistence wiring are owned by the
-composition root; media referenced by undo/redo and clipboard snapshots is
-retained. Legacy `Entry`/`ContentBlock` conversion is isolated in
-`EntryDocumentCodec` at the storage boundary. Production Hive repositories and
-storage tests use focused capability data sources; the mutable `JournalStore`
-aggregate and its adapters are removed. Journal contents receives asset reads
-through its view model rather than a repository. The journal shell caches one
-configured editor view model per entry, and `EntryPage` only renders and
-dispatches through that model. Feature-native canvas, toolbar, More tools,
-layers, image, history, template, shape, alignment, transform, ink, music, and
-settings views are active, and the obsolete toolbar export and image-editor
-path are gone.
+Last audited: 2026-08-28 on top of commit `9dcd45b` (`refactor: isolate app
+composition and enforce UI boundaries`). The editor controller, history,
+clipboard, and canvas are document/node native; metadata and workflow
+persistence route through feature view models; editor factories, platform
+services, and persistence wiring are owned by the composition root; media
+referenced by undo/redo and clipboard snapshots is retained. Legacy
+`Entry`/`ContentBlock` conversion is isolated in `EntryDocumentCodec` at the
+storage boundary. Production Hive repositories and storage tests use focused
+capability data sources; the mutable `JournalStore` aggregate and its adapters
+are removed. Journal contents receives asset reads through its view model
+rather than a repository. The journal shell caches one configured editor view
+model per entry, and `EntryPage` only renders and dispatches through that
+model. Feature-native canvas, toolbar, More tools, layers, image, history,
+template, shape, alignment, transform, ink, music, and settings views are
+active, and the obsolete toolbar export and image-editor path are gone.
+Storage shutdown is awaitable, and architecture tests cover both feature views
+and the editor core.
 Focused editor, repository, boundary, and widget suites pass; the full Flutter
 test suite passes. Android app-bundle, Web release, and Windows release builds
 also pass on this commit.
@@ -28,7 +30,7 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
 ### Foundation and persistence
 
-- [~] Immutable `EntryDocument`, `CanvasNode`, `Transform2D`, and
+- [x] Immutable `EntryDocument`, `CanvasNode`, `Transform2D`, and
   `EditorDocumentSnapshot` boundaries are the controller's working state and
   the active renderer consumes immutable world-space node projections.
   `EntryCanvas` now accepts only immutable nodes and emits typed transform and
@@ -40,8 +42,9 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [x] Completed transform gestures produce one undo entry and one save.
 - [~] Typed immutable `EditorCommand` values now back undo/redo for transform,
   board, insert, delete, style, grouping, reorder, node, and structural edits.
-  A transitional whole-document replacement command remains only for edits
-  that do not yet have a specialized delta.
+  Every transaction carries an explicit `EditorCommandKind`; a transitional
+  whole-document replacement command remains only for edits that do not yet
+  have a specialized delta.
 - [x] Five-minute checkpoint scheduling no longer resets after every save.
 - [~] Manual checkpoint creation, pruning, listing, and restore UI exist;
   background checkpoint creation is missing.
@@ -50,11 +53,11 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [x] Journal, asset, checkpoint, and template repository interfaces have Hive
   implementations backed by direct capability adapters; storage tests exercise
   those same sources without a mutable aggregate facade.
-- [x] The composition root owns persistence, music, and editor view-model
-  factory wiring; each entry page receives a cached configured editor view
-  model and narrow capability contracts. Production Hive adapters depend on
-  focused internal data sources; the obsolete mutable `JournalStore` aggregate
-  and its test-only adapters have been removed.
+- [x] The composition root owns persistence, music, platform services, and
+  editor view-model factory wiring; each entry page receives a cached
+  configured editor view model and narrow capability contracts. Production Hive
+  adapters depend on focused internal data sources; the obsolete mutable
+  `JournalStore` aggregate and its test-only adapters have been removed.
 - [x] Asset collection protects live documents, checkpoints, templates,
   immutable undo/redo snapshots, and clipboard references.
 - [x] Serialize final text commit, background checkpoint, and storage flush to
@@ -179,12 +182,15 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
 ## Next Implementation Order
 
-1. **Complete the document-model migration**
+1. **Complete the document-model and composition migration**
    - Keep `Entry`/`ContentBlock` conversion confined to the storage codec and
      keep storage compatibility tests on the direct Hive capability sources.
    - [x] Editor-page cross-repository workflows are delegated to focused
      use cases through the configured view model; the page retains only
      platform picking, dialogs, lifecycle, and layout concerns.
+   - [x] Canvas implementations live under the editor feature, platform
+     services are injected from the app composition root, editor capabilities
+     are required rather than nullable, and storage shutdown is awaitable.
 
 2. **Correctness hardening**
    - Fix image edge resizing, image-sheet state, lifecycle ordering, visible
