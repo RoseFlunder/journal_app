@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../models/page_music.dart';
-import '../../../../services/audio_playback.dart';
-import '../../../../services/repositories.dart';
+import '../view_models/music_picker_view_model.dart';
 
 class MusicPickerResult {
   const MusicPickerResult.select(this.track) : remove = false;
@@ -18,127 +17,41 @@ class MusicPickerResult {
 class MusicPickerSheet extends StatefulWidget {
   const MusicPickerSheet({
     super.key,
-    required this.catalog,
-    required this.audioPlaybackFactory,
-    this.current,
+    required this.viewModel,
   });
 
-  final MusicCatalogRepository catalog;
-  final AudioPlaybackFactory audioPlaybackFactory;
-  final PageMusicTrack? current;
+  final MusicPickerViewModel viewModel;
 
   @override
   State<MusicPickerSheet> createState() => _MusicPickerSheetState();
 }
 
 class _MusicPickerSheetState extends State<MusicPickerSheet> {
-  static const _pageSize = 20;
-  late final TextEditingController _searchController = TextEditingController();
-  late final AudioPlaybackService _preview = widget.audioPlaybackFactory();
-  StreamSubscription<AudioPlaybackSnapshot>? _previewSubscription;
-  Timer? _debounce;
-  List<PageMusicTrack> _tracks = const [];
-  bool _loading = true;
-  bool _loadingMore = false;
-  String? _error;
-  String? _previewTrackId;
-  AudioPlaybackStatus _previewStatus = AudioPlaybackStatus.idle;
-  int _requestGeneration = 0;
+  late final TextEditingController _searchController =
+      TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _previewSubscription = _preview.states.listen((snapshot) {
-      if (!mounted) return;
-      setState(() => _previewStatus = snapshot.status);
-    });
-    unawaited(_preview.setLoopOne().catchError((_) {}));
-    unawaited(_search());
+    unawaited(widget.viewModel.load());
+    widget.viewModel.addListener(_handleModelChanged);
+  }
+
+  void _handleModelChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    _debounce?.cancel();
+    widget.viewModel.removeListener(_handleModelChanged);
     _searchController.dispose();
-    unawaited(_previewSubscription?.cancel());
-    unawaited(_preview.dispose());
+    widget.viewModel.dispose();
     super.dispose();
-  }
-
-  void _onQueryChanged(String _) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () {
-      unawaited(_search());
-    });
-  }
-
-  Future<void> _search({bool append = false}) async {
-    final generation = ++_requestGeneration;
-    if (!widget.catalog.isConfigured) {
-      setState(() {
-        _loading = false;
-        _error = 'Set JAMENDO_CLIENT_ID to enable the music catalog.';
-      });
-      return;
-    }
-    setState(() {
-      if (append) {
-        _loadingMore = true;
-      } else {
-        _loading = true;
-        _error = null;
-      }
-    });
-    try {
-      final tracks = await widget.catalog.searchTracks(
-        query: _searchController.text,
-        offset: append ? _tracks.length : 0,
-        limit: _pageSize,
-      );
-      if (!mounted || generation != _requestGeneration) return;
-      setState(() {
-        _tracks = append ? [..._tracks, ...tracks] : tracks;
-        _loading = false;
-        _loadingMore = false;
-      });
-    } catch (error) {
-      if (!mounted || generation != _requestGeneration) return;
-      setState(() {
-        _loading = false;
-        _loadingMore = false;
-        _error = error.toString();
-      });
-    }
-  }
-
-  Future<void> _togglePreview(PageMusicTrack track) async {
-    if (_previewTrackId == track.trackId &&
-        _previewStatus == AudioPlaybackStatus.playing) {
-      await _preview.pause();
-      return;
-    }
-    try {
-      if (_previewTrackId != track.trackId) {
-        await _preview.stopAndReset();
-        if (!mounted) return;
-        setState(() {
-          _previewTrackId = track.trackId;
-          _previewStatus = AudioPlaybackStatus.loading;
-        });
-        await _preview.load(track.streamUrl);
-      }
-      await _preview.play();
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _previewStatus = AudioPlaybackStatus.error;
-        _error = 'Could not preview ${track.title}: $error';
-      });
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final model = widget.viewModel;
     return SafeArea(
       child: SizedBox(
         height: MediaQuery.sizeOf(context).height * 0.82,
@@ -159,9 +72,9 @@ class _MusicPickerSheetState extends State<MusicPickerSheet> {
               child: TextField(
                 key: const ValueKey('music-search-field'),
                 controller: _searchController,
-                onChanged: _onQueryChanged,
+                onChanged: model.setQuery,
                 textInputAction: TextInputAction.search,
-                onSubmitted: (_) => unawaited(_search()),
+                onSubmitted: (_) => model.search(),
                 decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.search),
                   hintText: 'Search instrumental music',
@@ -169,7 +82,7 @@ class _MusicPickerSheetState extends State<MusicPickerSheet> {
                 ),
               ),
             ),
-            if (widget.current != null)
+            if (model.current != null)
               ListTile(
                 leading: const Icon(Icons.music_off_outlined),
                 title: const Text('Remove music from this page'),
@@ -177,53 +90,50 @@ class _MusicPickerSheetState extends State<MusicPickerSheet> {
                     Navigator.pop(context, const MusicPickerResult.remove()),
               ),
             const Divider(height: 1),
-            Expanded(child: _buildResults()),
+            Expanded(child: _buildResults(model)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildResults() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null && _tracks.isEmpty) {
+  Widget _buildResults(MusicPickerViewModel model) {
+    if (model.loading) return const Center(child: CircularProgressIndicator());
+    if (model.error != null && model.tracks.isEmpty) {
       return _MessageState(
         icon: Icons.cloud_off_outlined,
-        message: _error!,
-        actionLabel: widget.catalog.isConfigured ? 'Retry' : null,
-        onAction: widget.catalog.isConfigured
-            ? () => unawaited(_search())
+        message: model.error!,
+        actionLabel: model.isConfigured ? 'Retry' : null,
+        onAction: model.isConfigured
+            ? () => model.search()
             : null,
       );
     }
-    if (_tracks.isEmpty) {
+    if (model.tracks.isEmpty) {
       return const _MessageState(
         icon: Icons.search_off_outlined,
         message: 'No instrumental tracks found.',
       );
     }
     return ListView.builder(
-      itemCount: _tracks.length + 1,
+      itemCount: model.tracks.length + 1,
       itemBuilder: (context, index) {
-        if (index == _tracks.length) {
+        if (index == model.tracks.length) {
           return Padding(
             padding: const EdgeInsets.all(16),
             child: Center(
-              child: _loadingMore
+              child: model.loadingMore
                   ? const CircularProgressIndicator()
                   : OutlinedButton(
-                      onPressed: () => unawaited(_search(append: true)),
+                      onPressed: () => model.search(append: true),
                       child: const Text('Load more'),
                     ),
             ),
           );
         }
-        final track = _tracks[index];
-        final previewing = _previewTrackId == track.trackId;
-        final playing =
-            previewing && _previewStatus == AudioPlaybackStatus.playing;
-        final loading =
-            previewing && _previewStatus == AudioPlaybackStatus.loading;
+        final track = model.tracks[index];
+        final playing = model.isPlaying(track);
+        final loading = model.isLoading(track);
         return ListTile(
           key: ValueKey('music-track-${track.trackId}'),
           leading: _Artwork(url: track.artworkUrl),
@@ -244,7 +154,7 @@ class _MusicPickerSheetState extends State<MusicPickerSheet> {
                 tooltip: playing ? 'Pause preview' : 'Preview ${track.title}',
                 onPressed: loading
                     ? null
-                    : () => unawaited(_togglePreview(track)),
+                    : () => model.togglePreview(track),
                 icon: loading
                     ? const SizedBox.square(
                         dimension: 20,

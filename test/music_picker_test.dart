@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/models/page_music.dart';
 import 'package:journal_app/services/audio_playback.dart';
 import 'package:journal_app/services/repositories.dart';
+import 'package:journal_app/ui/features/music/view_models/music_picker_view_model.dart';
 import 'package:journal_app/ui/features/music/views/music_picker_sheet.dart';
 
 void main() {
@@ -35,8 +36,10 @@ void main() {
                   context: context,
                   isScrollControlled: true,
                   builder: (_) => MusicPickerSheet(
-                    catalog: catalog,
-                    audioPlaybackFactory: () => playback,
+                    viewModel: MusicPickerViewModel(
+                      catalog: catalog,
+                      playback: playback,
+                    ),
                   ),
                 );
               },
@@ -71,11 +74,13 @@ void main() {
 
   testWidgets('shows setup guidance when catalog is disabled', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
         home: Scaffold(
           body: MusicPickerSheet(
-            catalog: DisabledMusicCatalogRepository(),
-            audioPlaybackFactory: _disabledFactory,
+            viewModel: MusicPickerViewModel(
+              catalog: DisabledMusicCatalogRepository(),
+              playback: _disabledFactory(),
+            ),
           ),
         ),
       ),

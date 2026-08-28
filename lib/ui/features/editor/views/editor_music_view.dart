@@ -5,6 +5,7 @@ import '../../../../models/page_music.dart';
 import '../../../../widgets/paper_page.dart';
 import '../view_models/entry_editor_view_model.dart';
 import '../../music/view_models/page_music_controller.dart';
+import '../../music/view_models/music_picker_view_model.dart';
 import '../../music/views/music_picker_sheet.dart';
 
 /// Feature-native presentation for a page's music chip and dialogs.
@@ -34,9 +35,11 @@ class EditorMusicView extends StatelessWidget {
     showDragHandle: true,
     isScrollControlled: true,
     builder: (context) => MusicPickerSheet(
-      catalog: editor.musicCatalog,
-      audioPlaybackFactory: editor.audioPlaybackFactory,
-      current: current,
+      viewModel: MusicPickerViewModel(
+        catalog: editor.musicCatalog,
+        playback: editor.audioPlaybackFactory(),
+        current: current,
+      ),
     ),
   );
 
