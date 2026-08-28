@@ -52,6 +52,46 @@ void main() {
     expect(editor.inkSettings.width, 4.2);
   });
 
+  test('owns text and title formatting persistence', () async {
+    final document = _document();
+    final documents = _FakeDocumentRepository(document);
+    final editor = EntryEditorViewModel(
+      document: document,
+      documentRepository: documents,
+      checkpointRepository: _FakeCheckpointRepository(),
+    );
+    addTearDown(editor.dispose);
+
+    await editor.updateTextFormatting(
+      'text',
+      fontFamily: JournalFonts.lora,
+      fontSize: 32,
+      bold: true,
+      italic: true,
+      textColorValue: 0xFF873F4D,
+    );
+    final node = editor.document.nodeById('text');
+    expect(node?.fontFamily, JournalFonts.lora);
+    expect(node?.fontSize, 32);
+    expect(node?.bold, isTrue);
+    expect(node?.italic, isTrue);
+    expect(node?.textColorValue, 0xFF873F4D);
+
+    await editor.updateTitleFormatting(
+      fontFamily: JournalFonts.caveat,
+      fontSize: 36,
+      bold: false,
+      italic: true,
+      textColorValue: 0xFF286A68,
+    );
+    expect(editor.document.titleFontFamily, JournalFonts.caveat);
+    expect(editor.document.titleFontSize, 36);
+    expect(editor.document.titleBold, isFalse);
+    expect(editor.document.titleItalic, isTrue);
+    expect(editor.document.titleTextColorValue, 0xFF286A68);
+    expect(documents.savedDocuments, hasLength(2));
+  });
+
   test('persists editor transactions through narrow repositories', () async {
     final document = _document();
     final documents = _FakeDocumentRepository(document);

@@ -395,20 +395,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void _changeFontFamily(String? fontFamily) {
     final block = _activeTextBlock;
     if (block != null) {
-      _editor.beginTransaction('Format text');
-      _editor.updateNode(
-        block.id,
-        (node) => _withNodePayload(node, 'fontFamily', fontFamily),
-        label: 'Format text',
+      unawaited(
+        _editor.updateTextFormatting(block.id, fontFamily: fontFamily),
       );
-      unawaited(_editor.commitTransaction());
     } else if (_titleFocused) {
-      _publishDocument(
-        _document.copyWith(
-          titleFontFamily: fontFamily,
-          modifiedAt: DateTime.now(),
-        ),
-      );
+      unawaited(_editor.updateTitleFormatting(fontFamily: fontFamily));
     }
     setState(() {});
   }
@@ -427,17 +418,9 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         .clamp(_minFontSize, _maxFontSize)
         .toDouble();
     if (block != null) {
-      _editor.beginTransaction('Format text');
-      _editor.updateNode(
-        block.id,
-        (node) => _withNodePayload(node, 'fontSize', size),
-        label: 'Format text',
-      );
-      unawaited(_editor.commitTransaction());
+      unawaited(_editor.updateTextFormatting(block.id, fontSize: size));
     } else {
-      _publishDocument(
-        _document.copyWith(titleFontSize: size, modifiedAt: DateTime.now()),
-      );
+      unawaited(_editor.updateTitleFormatting(fontSize: size));
     }
     setState(() {});
   }
@@ -446,20 +429,9 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     final block = _activeTextBlock;
     if (block == null && !_titleFocused) return;
     if (block != null) {
-      _editor.beginTransaction('Format text');
-      _editor.updateNode(
-        block.id,
-        (node) => _withNodePayload(node, 'bold', !block.bold),
-        label: 'Format text',
-      );
-      unawaited(_editor.commitTransaction());
+      unawaited(_editor.updateTextFormatting(block.id, bold: !block.bold));
     } else {
-      _publishDocument(
-        _document.copyWith(
-          titleBold: !_document.titleBold,
-          modifiedAt: DateTime.now(),
-        ),
-      );
+      unawaited(_editor.updateTitleFormatting(bold: !_document.titleBold));
     }
     setState(() {});
   }
@@ -468,20 +440,9 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     final block = _activeTextBlock;
     if (block == null && !_titleFocused) return;
     if (block != null) {
-      _editor.beginTransaction('Format text');
-      _editor.updateNode(
-        block.id,
-        (node) => _withNodePayload(node, 'italic', !block.italic),
-        label: 'Format text',
-      );
-      unawaited(_editor.commitTransaction());
+      unawaited(_editor.updateTextFormatting(block.id, italic: !block.italic));
     } else {
-      _publishDocument(
-        _document.copyWith(
-          titleItalic: !_document.titleItalic,
-          modifiedAt: DateTime.now(),
-        ),
-      );
+      unawaited(_editor.updateTitleFormatting(italic: !_document.titleItalic));
     }
     setState(() {});
   }
@@ -489,18 +450,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void _changeTextColor(int? value) {
     final block = _activeTextBlock;
     if (block != null) {
-      _editor.updateNode(
-        block.id,
-        (node) => _withNodePayload(node, 'textColorValue', value),
-        label: 'Format text',
+      unawaited(
+        _editor.updateTextFormatting(block.id, textColorValue: value),
       );
     } else if (_titleFocused) {
-      _publishDocument(
-        _document.copyWith(
-          titleTextColorValue: value,
-          modifiedAt: DateTime.now(),
-        ),
-      );
+      unawaited(_editor.updateTitleFormatting(textColorValue: value));
     }
     setState(() {});
   }
@@ -892,20 +846,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       return null;
     }
     return _editor.primaryNode;
-  }
-
-  CanvasNode _withNodePayload(
-    CanvasNode node,
-    String key,
-    Object? value,
-  ) {
-    final payload = Map<String, dynamic>.from(node.payload);
-    if (value == null) {
-      payload.remove(key);
-    } else {
-      payload[key] = value;
-    }
-    return node.copyWith(payload: payload);
   }
 
   Future<void> _showImageEditor() async {

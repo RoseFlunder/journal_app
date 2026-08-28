@@ -26,6 +26,8 @@ typedef EntryEditorViewModelFactory = EntryEditorViewModel Function(
 
 /// Editor feature view model backed by the document repository.
 class EntryEditorViewModel extends EditorController {
+  static const _formatUnset = Object();
+
   EntryEditorViewModel({
     required EntryDocument document,
     required DocumentRepository documentRepository,
@@ -195,6 +197,63 @@ class EntryEditorViewModel extends EditorController {
   /// Persists page ambience metadata through the editor boundary.
   Future<void> updateMusic(PageMusicTrack? track) => updateMetadata(
     document.copyWith(music: track, modifiedAt: DateTime.now()),
+  );
+
+  /// Applies text styling to one immutable node. Callers may wrap a series of
+  /// previews in an existing transaction (for example, a color picker); a
+  /// standalone update owns and commits its transaction here.
+  Future<void> updateTextFormatting(
+    String nodeId, {
+    Object? fontFamily = _formatUnset,
+    double? fontSize,
+    Object? textColorValue = _formatUnset,
+    bool? bold,
+    bool? italic,
+  }) async {
+    final node = document.nodeById(nodeId);
+    if (node == null || node.type != BlockType.text || node.locked) return;
+    final ownsTransaction = !inTransaction;
+    if (ownsTransaction) beginTransaction('Format text');
+    updateNode(
+      nodeId,
+      (current) {
+        final payload = Map<String, dynamic>.from(current.payload);
+        if (!identical(fontFamily, _formatUnset)) {
+          payload['fontFamily'] = fontFamily as String?;
+        }
+        if (fontSize != null) payload['fontSize'] = fontSize;
+        if (!identical(textColorValue, _formatUnset)) {
+          payload['textColorValue'] = textColorValue as int?;
+        }
+        if (bold != null) payload['bold'] = bold;
+        if (italic != null) payload['italic'] = italic;
+        return current.copyWith(payload: payload);
+      },
+      label: 'Format text',
+    );
+    if (ownsTransaction) await commitTransaction();
+  }
+
+  /// Persists title styling as document metadata rather than node history.
+  Future<void> updateTitleFormatting({
+    Object? fontFamily = _formatUnset,
+    double? fontSize,
+    Object? textColorValue = _formatUnset,
+    bool? bold,
+    bool? italic,
+  }) => updateMetadata(
+    document.copyWith(
+      titleFontFamily: identical(fontFamily, _formatUnset)
+          ? document.titleFontFamily
+          : fontFamily as String?,
+      titleFontSize: fontSize,
+      titleTextColorValue: identical(textColorValue, _formatUnset)
+          ? document.titleTextColorValue
+          : textColorValue as int?,
+      titleBold: bold,
+      titleItalic: italic,
+      modifiedAt: DateTime.now(),
+    ),
   );
 
   void clearWorkflowError() => _setWorkflowError(null);
