@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 
 import '../../../../models/document.dart';
@@ -7,17 +6,25 @@ import '../../../../services/repositories.dart';
 
 /// Presentation state and commands for the journal page shell.
 class JournalViewModel extends ChangeNotifier {
-  JournalViewModel({required DocumentRepository repository})
+  JournalViewModel({
+    required DocumentRepository repository,
+    this._assetRepository,
+  })
     : _repository = repository,
       _documents = List.unmodifiable(repository.documents) {
     _changesSubscription = repository.changes.listen((_) => _refresh());
   }
 
   final DocumentRepository _repository;
+  final AssetRepository? _assetRepository;
   late final StreamSubscription<void> _changesSubscription;
   List<EntryDocument> _documents;
 
   List<EntryDocument> get documents => _documents;
+
+  /// Reads an immutable asset for a contents preview without exposing the
+  /// repository to the view.
+  Uint8List? readAsset(String id) => _assetRepository?.readAsset(id);
 
   EntryDocument? documentById(String id) {
     for (final document in _documents) {

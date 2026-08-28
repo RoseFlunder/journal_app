@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:typed_data';
 
 import '../../../../models/document.dart';
 import '../../../../models/sticker.dart';
-import '../../../../services/repositories.dart';
 import '../../../../widgets/paper_page.dart';
 
 /// Botanical home/contents page. It intentionally stays focused on the
@@ -12,14 +12,14 @@ class ContentsPage extends StatelessWidget {
   const ContentsPage({
     super.key,
     required this.documents,
-    required this.assetRepository,
+    required this.readAsset,
     required this.onOpenPage,
     required this.onNewPage,
     required this.onDeletePage,
   });
 
   final List<EntryDocument> documents;
-  final AssetRepository assetRepository;
+  final Uint8List? Function(String id) readAsset;
   final ValueChanged<int> onOpenPage;
   final VoidCallback onNewPage;
   final Future<void> Function(String id) onDeletePage;
@@ -169,7 +169,7 @@ class ContentsPage extends StatelessWidget {
         if (node.type.name == 'image') {
           final assetId = node.payload['assetId'];
           if (assetId is String) {
-            final bytes = assetRepository.readAsset(assetId);
+            final bytes = readAsset(assetId);
             if (bytes != null) return MemoryImage(bytes);
           }
         }

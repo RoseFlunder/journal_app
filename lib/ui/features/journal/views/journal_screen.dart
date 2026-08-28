@@ -52,6 +52,7 @@ class _JournalScreenState extends State<JournalScreen> {
     super.initState();
     _journal = JournalViewModel(
       repository: widget.repositories.documentRepository,
+      assetRepository: widget.repositories.assetRepository,
     );
     _music = PageMusicController(
       catalog: widget.musicCatalog,
@@ -275,8 +276,7 @@ class _JournalScreenState extends State<JournalScreen> {
                         children: [
                           ContentsPage(
                             documents: _journal.documents,
-                            assetRepository:
-                                widget.repositories.assetRepository,
+                            readAsset: _journal.readAsset,
                             onOpenPage: goToEntry,
                             onNewPage: _createPage,
                             onDeletePage: _journal.deletePage,
