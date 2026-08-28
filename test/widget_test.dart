@@ -12,7 +12,7 @@ import 'package:journal_app/main.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/sticker.dart';
 import 'package:journal_app/services/journal_store.dart';
-import 'package:journal_app/services/hive_repositories.dart';
+import 'support/legacy_hive_repositories.dart';
 import 'package:journal_app/services/entry_document_codec.dart';
 import 'package:journal_app/editor/block_widget.dart';
 import 'package:journal_app/ui/features/editor/views/editor_toolbar_view.dart';

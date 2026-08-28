@@ -8,7 +8,7 @@ import 'package:journal_app/main.dart';
 import 'package:journal_app/models/page_music.dart';
 import 'package:journal_app/services/audio_playback.dart';
 import 'package:journal_app/services/journal_store.dart';
-import 'package:journal_app/services/hive_repositories.dart';
+import 'support/legacy_hive_repositories.dart';
 import 'package:journal_app/services/repositories.dart';
 
 void main() {

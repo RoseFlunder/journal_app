@@ -12,7 +12,7 @@ import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/template.dart';
 import 'package:journal_app/services/image_source.dart';
 import 'package:journal_app/services/journal_store.dart';
-import 'package:journal_app/services/hive_repositories.dart';
+import 'support/legacy_hive_repositories.dart';
 import 'package:journal_app/services/entry_document_codec.dart';
 
 void main() {

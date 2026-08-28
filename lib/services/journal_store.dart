@@ -42,11 +42,6 @@ class JournalStore extends ChangeNotifier {
   final Map<String, Timer> _checkpointTimers = {};
   final Set<Future<void> Function()> _flushHooks = {};
 
-  /// The raw box source used by the compatibility store. New composition
-  /// roots should construct capability data sources directly instead of
-  /// depending on this aggregate.
-  HiveJournalDataSource get dataSource => _storage;
-
   /// The entries in page order. Index 0 of this list is page 1 (after TOC).
   List<Entry> get entries => List.unmodifiable(_entries);
 
