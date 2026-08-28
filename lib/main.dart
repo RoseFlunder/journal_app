@@ -192,9 +192,7 @@ class _JournalLifecycleState extends State<_JournalLifecycle>
 
   @override
   Widget build(BuildContext context) => JournalApp(
-    repositories: widget.dependencies.repositories,
-    musicCatalog: widget.dependencies.musicCatalog,
-    audioPlaybackFactory: widget.dependencies.audioPlaybackFactory,
+    dependencies: widget.dependencies,
   );
 }
 
@@ -215,8 +213,12 @@ class JournalApp extends StatelessWidget {
            musicCatalog ??
            dependencies?.musicCatalog ??
            const DisabledMusicCatalogRepository(),
-       audioPlaybackFactory = audioPlaybackFactory ?? _disabledAudioFactory,
+       audioPlaybackFactory =
+           audioPlaybackFactory ??
+           dependencies?.audioPlaybackFactory ??
+           _disabledAudioFactory,
        editorViewModelFactory = editorViewModelFactory ??
+           dependencies?.editorViewModelFactory ??
            ((document) => EntryEditorViewModel(
              document: document,
              documentRepository: (repositories ?? dependencies!.repositories)
