@@ -7,6 +7,7 @@ import 'dart:ui';
 import 'dart:typed_data';
 
 import '../../../../editor/editor_controller.dart';
+import '../../../../editor/editor_history.dart';
 import '../../../../models/document.dart';
 import '../../../../models/page_music.dart';
 import '../../../../models/template.dart';
@@ -34,13 +35,13 @@ class EntryEditorViewModel extends EditorController {
     required EntryDocument document,
     required DocumentRepository documentRepository,
     required CheckpointRepository checkpointRepository,
-    AssetRepository? assetRepository,
-    TemplateRepository? templateRepository,
-    PreferencesRepository? preferenceRepository,
-    PersistenceRepository? persistenceRepository,
-    ArchiveRepository? archiveRepository,
-    MusicCatalogRepository? musicCatalog,
-    AudioPlaybackFactory? audioPlaybackFactory,
+    required AssetRepository assetRepository,
+    required TemplateRepository templateRepository,
+    required PreferencesRepository preferenceRepository,
+    required PersistenceRepository persistenceRepository,
+    required ArchiveRepository archiveRepository,
+    required MusicCatalogRepository musicCatalog,
+    required AudioPlaybackFactory audioPlaybackFactory,
     super.maxHistory,
   }) : _documentId = document.id,
        _documentRepository = documentRepository,
@@ -66,13 +67,13 @@ class EntryEditorViewModel extends EditorController {
   final String _documentId;
   final DocumentRepository _documentRepository;
   final CheckpointRepository _checkpointRepository;
-  final AssetRepository? _assets;
-  final TemplateRepository? _templates;
-  final PreferencesRepository? _preferences;
-  final PersistenceRepository? _persistence;
-  final ArchiveRepository? _archives;
-  final MusicCatalogRepository? _musicCatalog;
-  final AudioPlaybackFactory? _audioPlaybackFactory;
+  final AssetRepository _assets;
+  final TemplateRepository _templates;
+  final PreferencesRepository _preferences;
+  final PersistenceRepository _persistence;
+  final ArchiveRepository _archives;
+  final MusicCatalogRepository _musicCatalog;
+  final AudioPlaybackFactory _audioPlaybackFactory;
 
   bool _editing = false;
   bool _selectMode = false;
@@ -84,31 +85,27 @@ class EntryEditorViewModel extends EditorController {
 
   String get documentId => _documentId;
   String? get workflowError => _workflowError;
-  /// Repository capabilities stay private to this feature model. The
-  /// nullable backing fields keep the core editor usable in focused unit
-  /// tests; production supplies all capabilities through the composition
-  /// root.
-  Uint8List? readAsset(String id) => _assets?.readAsset(id);
+  /// Repository capabilities stay private to this feature model; callers see
+  /// only feature operations and immutable values.
+  Uint8List? readAsset(String id) => _assets.readAsset(id);
 
   /// Creates the configured music picker model without exposing the catalog
   /// or playback factory to a feature view.
   MusicPickerViewModel createMusicPickerViewModel({PageMusicTrack? current}) =>
       MusicPickerViewModel(
-        catalog: _musicCatalog ?? const DisabledMusicCatalogRepository(),
-        playback:
-            (_audioPlaybackFactory ??
-                (() => const DisabledAudioPlaybackService()))(),
+        catalog: _musicCatalog,
+        playback: _audioPlaybackFactory(),
         current: current,
       );
 
   /// Coordinates editor flushes with the application persistence owner.
   void addFlushHook(Future<void> Function() hook) =>
-      _persistence!.addFlushHook(hook);
+      _persistence.addFlushHook(hook);
 
   void removeFlushHook(Future<void> Function() hook) =>
-      _persistence!.removeFlushHook(hook);
+      _persistence.removeFlushHook(hook);
 
-  Future<void> flushPersistence() => _persistence!.flush();
+  Future<void> flushPersistence() => _persistence.flush();
 
   /// Current immutable settings for newly-created vector ink.
   InkSettings get inkSettings => _inkSettings;
@@ -121,32 +118,26 @@ class EntryEditorViewModel extends EditorController {
     notifyListeners();
   }
 
-  List<int> get recentColorValues =>
-      _preferences?.recentColorValues ?? const <int>[];
+  List<int> get recentColorValues => _preferences.recentColorValues;
 
-  Set<int> get favoriteColorValues =>
-      _preferences?.favoriteColorValues ?? const <int>{};
+  Set<int> get favoriteColorValues => _preferences.favoriteColorValues;
 
   void addRecentColor(int value) {
-    final preferences = _preferences;
-    if (preferences == null) return;
     final recent = [
       value,
-      ...preferences.recentColorValues.where((item) => item != value),
+      ..._preferences.recentColorValues.where((item) => item != value),
     ].take(8).toList(growable: false);
-    unawaited(preferences.updateColorPreferences(recent: recent));
+    unawaited(_preferences.updateColorPreferences(recent: recent));
   }
 
   void updateFavoriteColors(Set<int> values) {
-    final preferences = _preferences;
-    if (preferences == null) return;
-    unawaited(preferences.updateColorPreferences(favorites: values));
+    unawaited(_preferences.updateColorPreferences(favorites: values));
   }
 
   /// Runs media cleanup without deleting assets still reachable from this
   /// editor's immutable undo/redo or clipboard snapshots.
   Future<void> collectUnreferencedAssets() =>
-      _assets!.collectUnreferencedAssets(
+      _assets.collectUnreferencedAssets(
         retainedAssetIds: retainedAssetIds,
       );
 
@@ -226,7 +217,9 @@ class EntryEditorViewModel extends EditorController {
     final node = document.nodeById(nodeId);
     if (node == null || node.type != BlockType.text || node.locked) return;
     final ownsTransaction = !inTransaction;
-    if (ownsTransaction) beginTransaction('Format text');
+    if (ownsTransaction) {
+      beginTransaction('Format text', kind: EditorCommandKind.style);
+    }
     final payload = Map<String, dynamic>.from(node.payload);
     if (!identical(fontFamily, _formatUnset)) {
       payload['fontFamily'] = fontFamily as String?;
@@ -281,7 +274,7 @@ class EntryEditorViewModel extends EditorController {
   String? get selectedId => selection.isEmpty ? null : selection.last;
 
   late final TemplateWorkflow _templateWorkflow = TemplateWorkflow(
-    templates: _templates!,
+    templates: _templates,
   );
   late final CheckpointRecoveryUseCase _checkpointRecovery =
       CheckpointRecoveryUseCase(
@@ -295,7 +288,7 @@ class EntryEditorViewModel extends EditorController {
     required ImageProcessor processor,
   }) =>
       ImageInsertionUseCase(
-        assets: _assets!,
+        assets: _assets,
         processor: processor,
       ).processAndStore(ownerId: ownerId, picked: picked);
 
@@ -343,13 +336,13 @@ class EntryEditorViewModel extends EditorController {
     required JournalTransferService transfer,
   }) =>
       ArchiveTransferUseCase(
-        archives: _archives!,
+        archives: _archives,
         transfer: transfer,
       ).exportDocument(documentId: documentId, fileName: fileName);
 
   Future<EntryDocument?> importArchive(JournalTransferService transfer) =>
       ArchiveTransferUseCase(
-        archives: _archives!,
+        archives: _archives,
         transfer: transfer,
       ).importDocument();
 

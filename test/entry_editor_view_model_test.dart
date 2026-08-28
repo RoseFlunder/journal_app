@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:journal_app/services/audio_playback.dart';
 import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/services/repositories.dart';
@@ -15,6 +16,13 @@ void main() {
       document: document,
       documentRepository: _FakeDocumentRepository(document),
       checkpointRepository: _FakeCheckpointRepository(),
+      assetRepository: _NoopEditorCapabilities(),
+      templateRepository: _NoopEditorCapabilities(),
+      preferenceRepository: _NoopEditorCapabilities(),
+      persistenceRepository: _NoopEditorCapabilities(),
+      archiveRepository: _NoopEditorCapabilities(),
+      musicCatalog: const DisabledMusicCatalogRepository(),
+      audioPlaybackFactory: _disabledAudioFactory,
     );
     addTearDown(editor.dispose);
 
@@ -37,6 +45,13 @@ void main() {
       document: document,
       documentRepository: _FakeDocumentRepository(document),
       checkpointRepository: _FakeCheckpointRepository(),
+      assetRepository: _NoopEditorCapabilities(),
+      templateRepository: _NoopEditorCapabilities(),
+      preferenceRepository: _NoopEditorCapabilities(),
+      persistenceRepository: _NoopEditorCapabilities(),
+      archiveRepository: _NoopEditorCapabilities(),
+      musicCatalog: const DisabledMusicCatalogRepository(),
+      audioPlaybackFactory: _disabledAudioFactory,
     );
     addTearDown(editor.dispose);
 
@@ -59,6 +74,13 @@ void main() {
       document: document,
       documentRepository: documents,
       checkpointRepository: _FakeCheckpointRepository(),
+      assetRepository: _NoopEditorCapabilities(),
+      templateRepository: _NoopEditorCapabilities(),
+      preferenceRepository: _NoopEditorCapabilities(),
+      persistenceRepository: _NoopEditorCapabilities(),
+      archiveRepository: _NoopEditorCapabilities(),
+      musicCatalog: const DisabledMusicCatalogRepository(),
+      audioPlaybackFactory: _disabledAudioFactory,
     );
     addTearDown(editor.dispose);
 
@@ -100,6 +122,13 @@ void main() {
       document: document,
       documentRepository: documents,
       checkpointRepository: checkpoints,
+      assetRepository: _NoopEditorCapabilities(),
+      templateRepository: _NoopEditorCapabilities(),
+      preferenceRepository: _NoopEditorCapabilities(),
+      persistenceRepository: _NoopEditorCapabilities(),
+      archiveRepository: _NoopEditorCapabilities(),
+      musicCatalog: const DisabledMusicCatalogRepository(),
+      audioPlaybackFactory: _disabledAudioFactory,
     );
     addTearDown(editor.dispose);
 
@@ -123,6 +152,13 @@ void main() {
       document: document,
       documentRepository: documents,
       checkpointRepository: _FakeCheckpointRepository(),
+      assetRepository: _NoopEditorCapabilities(),
+      templateRepository: _NoopEditorCapabilities(),
+      preferenceRepository: _NoopEditorCapabilities(),
+      persistenceRepository: _NoopEditorCapabilities(),
+      archiveRepository: _NoopEditorCapabilities(),
+      musicCatalog: const DisabledMusicCatalogRepository(),
+      audioPlaybackFactory: _disabledAudioFactory,
     );
     addTearDown(editor.dispose);
 
@@ -143,6 +179,13 @@ void main() {
       document: document,
       documentRepository: documents,
       checkpointRepository: _FakeCheckpointRepository(),
+      assetRepository: _NoopEditorCapabilities(),
+      templateRepository: _NoopEditorCapabilities(),
+      preferenceRepository: _NoopEditorCapabilities(),
+      persistenceRepository: _NoopEditorCapabilities(),
+      archiveRepository: _NoopEditorCapabilities(),
+      musicCatalog: const DisabledMusicCatalogRepository(),
+      audioPlaybackFactory: _disabledAudioFactory,
     );
     addTearDown(editor.dispose);
 
@@ -246,4 +289,21 @@ class _FakeCheckpointRepository implements CheckpointRepository {
 
   @override
   Future<void> restoreCheckpoint(String checkpointId) async {}
+}
+
+AudioPlaybackService _disabledAudioFactory() =>
+    const DisabledAudioPlaybackService();
+
+/// The focused VM tests exercise core editor behavior; uncalled workflow
+/// capabilities are represented by one explicit no-op test double rather than
+/// making production dependencies nullable.
+class _NoopEditorCapabilities
+    implements
+        AssetRepository,
+        TemplateRepository,
+        PreferencesRepository,
+        PersistenceRepository,
+        ArchiveRepository {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

@@ -49,6 +49,23 @@ class NodeTransformChange {
   final Transform2D after;
 }
 
+/// Explicit semantic kind recorded when an editor transaction begins.
+///
+/// Labels remain presentation text for undo/redo UI; command selection never
+/// infers behavior from those labels.
+enum EditorCommandKind {
+  transform,
+  board,
+  insert,
+  delete,
+  style,
+  group,
+  reorder,
+  node,
+  structural,
+  document,
+}
+
 /// Typed editor command contract used by undo and redo.
 sealed class EditorCommand {
   EditorCommand({required this.label, required Set<String> affectedIds})
@@ -68,72 +85,94 @@ sealed class EditorCommand {
   /// Selects the narrowest command representation available for two states.
   factory EditorCommand.fromStates({
     required String label,
+    required EditorCommandKind kind,
     required EditorDocumentSnapshot before,
     required EditorDocumentSnapshot after,
   }) {
-    final transform = TransformEditorCommand.tryCreate(
-      label: label,
-      before: before,
-      after: after,
-    );
-    if (transform != null) return transform;
-    final board = BoardEditorCommand.tryCreate(
-      label: label,
-      before: before,
-      after: after,
-    );
-    if (board != null) return board;
-    final intent = _commandIntent(label);
     final beforeIds = _nodeMap(before.document).keys.toSet();
     final afterIds = _nodeMap(after.document).keys.toSet();
-    if (intent == _EditorCommandIntent.group) {
-      return GroupEditorCommand(
-        label: label,
-        before: before,
-        after: after,
-      );
-    }
-    if (intent == _EditorCommandIntent.reorder) {
-      return ReorderEditorCommand(
-        label: label,
-        before: before,
-        after: after,
-      );
-    }
-    if (!setEquals(beforeIds, afterIds)) {
-      return switch (intent) {
-        _EditorCommandIntent.insert => InsertEditorCommand(
+    switch (kind) {
+      case EditorCommandKind.transform:
+        return TransformEditorCommand.tryCreate(
+              label: label,
+              before: before,
+              after: after,
+            ) ??
+            DocumentReplacementCommand(
+              label: label,
+              before: before,
+              after: after,
+            );
+      case EditorCommandKind.board:
+        return BoardEditorCommand.tryCreate(
+              label: label,
+              before: before,
+              after: after,
+            ) ??
+            DocumentReplacementCommand(
+              label: label,
+              before: before,
+              after: after,
+            );
+      case EditorCommandKind.style:
+        final nodes = NodeEditorCommand.tryCreate(
           label: label,
-          before: before,
-          after: after,
-        ),
-        _EditorCommandIntent.delete => DeleteEditorCommand(
-          label: label,
-          before: before,
-          after: after,
-        ),
-        _ => StructuralEditorCommand(
-          label: label,
-          before: before,
-          after: after,
-        ),
-      };
-    }
-    final nodes = NodeEditorCommand.tryCreate(
-      label: label,
-      before: before,
-      after: after,
-    );
-    if (nodes != null) {
-      if (intent == _EditorCommandIntent.style) {
-        return StyleEditorCommand(
-          label: label,
-          affectedIds: nodes.affectedIds,
           before: before,
           after: after,
         );
-      }
-      return nodes;
+        return nodes == null
+            ? DocumentReplacementCommand(
+                label: label,
+                before: before,
+                after: after,
+              )
+            : StyleEditorCommand(
+                label: label,
+                affectedIds: nodes.affectedIds,
+                before: before,
+                after: after,
+              );
+      case EditorCommandKind.node:
+        return NodeEditorCommand.tryCreate(
+              label: label,
+              before: before,
+              after: after,
+            ) ??
+            DocumentReplacementCommand(
+              label: label,
+              before: before,
+              after: after,
+            );
+      case EditorCommandKind.insert:
+        if (!setEquals(beforeIds, afterIds)) {
+          return InsertEditorCommand(label: label, before: before, after: after);
+        }
+        return DocumentReplacementCommand(
+          label: label,
+          before: before,
+          after: after,
+        );
+      case EditorCommandKind.delete:
+        if (!setEquals(beforeIds, afterIds)) {
+          return DeleteEditorCommand(label: label, before: before, after: after);
+        }
+        return DocumentReplacementCommand(
+          label: label,
+          before: before,
+          after: after,
+        );
+      case EditorCommandKind.group:
+        return GroupEditorCommand(label: label, before: before, after: after);
+      case EditorCommandKind.reorder:
+        return ReorderEditorCommand(label: label, before: before, after: after);
+      case EditorCommandKind.structural:
+        return StructuralEditorCommand(
+          label: label,
+          before: before,
+          after: after,
+        );
+      case EditorCommandKind.document:
+        break;
     }
     return DocumentReplacementCommand(
       label: label,
@@ -407,6 +446,7 @@ class EditorHistory {
   final List<EditorCommand> _redo = <EditorCommand>[];
   EditorDocumentSnapshot? _transactionStart;
   String? _transactionLabel;
+  EditorCommandKind _transactionKind = EditorCommandKind.document;
 
   bool get canUndo => _undo.isNotEmpty;
   bool get canRedo => _redo.isNotEmpty;
@@ -437,25 +477,34 @@ class EditorHistory {
     return Set.unmodifiable(ids);
   }
 
-  void begin(EditorDocumentSnapshot snapshot, String label) {
+  void begin(
+    EditorDocumentSnapshot snapshot,
+    String label, {
+    EditorCommandKind kind = EditorCommandKind.document,
+  }) {
     if (inTransaction) return;
     _transactionStart = snapshot;
     _transactionLabel = label;
+    _transactionKind = kind;
   }
 
-  ({EditorDocumentSnapshot before, String label})? takeTransaction() {
+  ({EditorDocumentSnapshot before, String label, EditorCommandKind kind})?
+  takeTransaction() {
     final before = _transactionStart;
     final label = _transactionLabel;
+    final kind = _transactionKind;
     _transactionStart = null;
     _transactionLabel = null;
+    _transactionKind = EditorCommandKind.document;
     if (before == null || label == null) return null;
-    return (before: before, label: label);
+    return (before: before, label: label, kind: kind);
   }
 
   EditorDocumentSnapshot? cancelTransaction() {
     final before = _transactionStart;
     _transactionStart = null;
     _transactionLabel = null;
+    _transactionKind = EditorCommandKind.document;
     return before;
   }
 
@@ -482,6 +531,7 @@ class EditorHistory {
   void reset() {
     _transactionStart = null;
     _transactionLabel = null;
+    _transactionKind = EditorCommandKind.document;
     _undo.clear();
     _redo.clear();
   }
@@ -504,36 +554,6 @@ Map<String, CanvasNode> _nodeMap(EntryDocument document) {
 
   visit(document.nodes);
   return result;
-}
-
-enum _EditorCommandIntent { insert, delete, style, group, reorder, other }
-
-_EditorCommandIntent _commandIntent(String label) {
-  final normalized = label.trim().toLowerCase();
-  if (normalized.contains('group')) return _EditorCommandIntent.group;
-  if (normalized.contains('reorder') ||
-      normalized.contains('bring to front') ||
-      normalized.contains('send to back')) {
-    return _EditorCommandIntent.reorder;
-  }
-  if (normalized.contains('delete') ||
-      normalized.contains('remove') ||
-      normalized == 'cut') {
-    return _EditorCommandIntent.delete;
-  }
-  if (normalized.contains('insert') ||
-      normalized.startsWith('add ') ||
-      normalized.contains('paste') ||
-      normalized.contains('duplicate')) {
-    return _EditorCommandIntent.insert;
-  }
-  if (normalized.contains('style') ||
-      normalized.contains('format') ||
-      normalized.contains('stroke') ||
-      normalized.contains('text color')) {
-    return _EditorCommandIntent.style;
-  }
-  return _EditorCommandIntent.other;
 }
 
 List<Map<String, dynamic>> _nodeJson(EntryDocument document) => document.nodes

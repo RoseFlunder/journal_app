@@ -14,6 +14,7 @@ void main() {
     history.record(
       EditorCommand.fromStates(
         label: transaction!.label,
+        kind: EditorCommandKind.node,
         before: before,
         after: after,
       ),
@@ -47,6 +48,7 @@ void main() {
 
     final command = EditorCommand.fromStates(
       label: 'Move',
+      kind: EditorCommandKind.transform,
       before: before,
       after: after,
     );
@@ -57,7 +59,21 @@ void main() {
     expect(command.apply(before).toJson(), after.toJson());
   });
 
-  test('classifies board, node, and structural changes by intent', () {
+  test('command kind is independent of the presentation label', () {
+    final before = _snapshot([_text(x: 4, y: 8)]);
+    final after = _snapshot([_text(x: 12, y: 20)]);
+
+    final command = EditorCommand.fromStates(
+      label: 'Delete this item',
+      kind: EditorCommandKind.transform,
+      before: before,
+      after: after,
+    );
+
+    expect(command, isA<TransformEditorCommand>());
+  });
+
+  test('classifies board, node, and structural changes by explicit kind', () {
     final before = _snapshot([_text(text: 'Before')]);
     final styled = _snapshot([_text(text: 'After')]);
     final board = _snapshot(
@@ -72,6 +88,7 @@ void main() {
     expect(
       EditorCommand.fromStates(
         label: 'Style',
+        kind: EditorCommandKind.style,
         before: before,
         after: styled,
       ),
@@ -80,6 +97,7 @@ void main() {
     expect(
       EditorCommand.fromStates(
         label: 'Grid',
+        kind: EditorCommandKind.board,
         before: before,
         after: board,
       ),
@@ -88,6 +106,7 @@ void main() {
     expect(
       EditorCommand.fromStates(
         label: 'Insert',
+        kind: EditorCommandKind.insert,
         before: before,
         after: inserted,
       ),
@@ -96,6 +115,7 @@ void main() {
     expect(
       EditorCommand.fromStates(
         label: 'Delete',
+        kind: EditorCommandKind.delete,
         before: inserted,
         after: before,
       ),
@@ -103,7 +123,7 @@ void main() {
     );
   });
 
-  test('classifies group and reorder operations by intent', () {
+  test('classifies group and reorder operations by explicit kind', () {
     final first = _text(id: 'first');
     final second = _text(id: 'second');
     final before = _snapshot([first, second]);
@@ -120,6 +140,7 @@ void main() {
     expect(
       EditorCommand.fromStates(
         label: 'Reorder layer',
+        kind: EditorCommandKind.reorder,
         before: before,
         after: reordered,
       ),
@@ -128,6 +149,7 @@ void main() {
     expect(
       EditorCommand.fromStates(
         label: 'Group',
+        kind: EditorCommandKind.group,
         before: before,
         after: grouped,
       ),
@@ -164,6 +186,7 @@ void main() {
     final after = EditorDocumentSnapshot.fromDocument(afterDocument);
     final command = EditorCommand.fromStates(
       label: 'Move child',
+      kind: EditorCommandKind.transform,
       before: before,
       after: after,
     );
