@@ -132,10 +132,12 @@ focused Hive capability sources keep the same path compatible with Web.
 - `lib/editor/block_widget.dart`: selectable, movable and resizable text blocks
 - `lib/editor/editor_controller.dart`: editor commands and transactions
 - `lib/editor/geometry_services.dart`: transform, hit-test, bounds, and snap policy
-- `lib/editor/editor_toolbar.dart`: scrapbook edit-mode creation/context bar
+- `lib/ui/features/editor/views/editor_toolbar_view.dart`: scrapbook edit-mode
+  creation/context bar
 - `test/journal_test.dart`: model and persistence tests
 - `test/page_viewport_test.dart`: viewport behavior tests
 - `test/widget_test.dart`: live-binding navigation, paper-theme and editor tests
+- `test/architecture_boundary_test.dart`: UI/data import-boundary checks
 
 The application intentionally avoids direct `dart:io` storage in feature
 code, allowing Android, Windows and Web to share the same persistence layer.
