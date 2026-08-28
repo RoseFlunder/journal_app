@@ -193,6 +193,8 @@ class _JournalScreenState extends State<JournalScreen> {
       controlsVisible: _entryChromeVisible,
       active: document.id == _activeEntryId,
       musicController: _music,
+      musicCatalog: widget.musicCatalog,
+      audioPlaybackFactory: widget.audioPlaybackFactory,
       onDocumentPreviewChanged:
           widget.repositories.documentRepository.previewDocument,
       onEditingChanged: (editing) =>

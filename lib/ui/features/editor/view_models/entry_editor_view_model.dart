@@ -97,6 +97,14 @@ class EntryEditorViewModel extends EditorController {
       _audioPlaybackFactory ?? (() => const DisabledAudioPlaybackService());
   Uint8List? readAsset(String id) => assetRepository.readAsset(id);
 
+  /// Coordinates editor flushes with the application persistence owner.
+  void addFlushHook(Future<void> Function() hook) => persistence.addFlushHook(hook);
+
+  void removeFlushHook(Future<void> Function() hook) =>
+      persistence.removeFlushHook(hook);
+
+  Future<void> flushPersistence() => persistence.flush();
+
   /// Current immutable settings for newly-created vector ink.
   InkSettings get inkSettings => _inkSettings;
 
