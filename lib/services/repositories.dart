@@ -3,9 +3,11 @@ import 'dart:typed_data';
 import '../models/document.dart';
 import '../models/asset_kind.dart';
 import '../models/checkpoint.dart';
-import '../models/page_music.dart';
 import '../models/template.dart';
 import 'journal_archive.dart';
+
+export 'music_catalog_repository.dart'
+    show DisabledMusicCatalogRepository, MusicCatalogRepository;
 
 // Capability-owned value type; storage record classes remain private to the
 // Hive adapters while repositories may still describe asset kind in a method
@@ -54,37 +56,6 @@ abstract interface class PreferencesRepository {
   Set<int> get favoriteColorValues;
 
   Future<void> updateColorPreferences({List<int>? recent, Set<int>? favorites});
-}
-
-/// Search and resolution capability for externally hosted page music.
-abstract interface class MusicCatalogRepository {
-  bool get isConfigured;
-
-  Future<List<PageMusicTrack>> searchTracks({
-    String query = '',
-    int offset = 0,
-    int limit = 20,
-  });
-
-  Future<PageMusicTrack> resolveTrack(String trackId);
-}
-
-class DisabledMusicCatalogRepository implements MusicCatalogRepository {
-  const DisabledMusicCatalogRepository();
-
-  @override
-  bool get isConfigured => false;
-
-  @override
-  Future<PageMusicTrack> resolveTrack(String trackId) =>
-      Future.error(StateError('The music catalog is not configured.'));
-
-  @override
-  Future<List<PageMusicTrack>> searchTracks({
-    String query = '',
-    int offset = 0,
-    int limit = 20,
-  }) => Future.error(StateError('The music catalog is not configured.'));
 }
 
 /// Persistence hooks shared by the application lifecycle and active editors.
