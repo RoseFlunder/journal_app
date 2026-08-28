@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:journal_app/editor/block_widget.dart';
-import 'package:journal_app/editor/entry_canvas.dart';
+import 'package:journal_app/ui/features/editor/views/editor_block.dart';
+import 'package:journal_app/ui/features/editor/views/editor_canvas.dart';
 import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/services/entry_document_codec.dart';

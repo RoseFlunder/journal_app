@@ -13,9 +13,9 @@ import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/sticker.dart';
 import 'support/hive_test_environment.dart';
 import 'package:journal_app/services/entry_document_codec.dart';
-import 'package:journal_app/editor/block_widget.dart';
+import 'package:journal_app/ui/features/editor/views/editor_block.dart';
 import 'package:journal_app/ui/features/editor/views/editor_toolbar_view.dart';
-import 'package:journal_app/editor/entry_canvas.dart';
+import 'package:journal_app/ui/features/editor/views/editor_canvas.dart';
 import 'package:journal_app/widgets/paper_page.dart';
 import 'package:journal_app/widgets/page_viewport.dart';
 

@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-import '../../../../editor/entry_canvas.dart';
+import 'editor_canvas.dart';
 import '../../../../models/document.dart';
 
 /// Feature-native canvas host. It renders the immutable node projection and

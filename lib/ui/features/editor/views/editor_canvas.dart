@@ -6,10 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
-import '../models/document.dart';
-import '../widgets/page_viewport.dart';
-import 'block_widget.dart';
-import 'geometry_services.dart';
+import '../../../../models/document.dart';
+import '../../../../widgets/page_viewport.dart';
+import 'editor_block.dart';
+import '../../../../editor/geometry_services.dart';
 
 typedef TouchSelectionRotation = void Function(
   Set<String> blockIds,

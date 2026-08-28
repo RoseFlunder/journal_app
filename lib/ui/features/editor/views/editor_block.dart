@@ -4,7 +4,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../models/document.dart';
+import '../../../../models/document.dart';
 
 class BlockWidget extends StatefulWidget {
   const BlockWidget({
