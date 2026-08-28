@@ -85,6 +85,12 @@ flutter:
         - asset: assets/fonts/Lora-Regular.ttf
         - asset: assets/fonts/Lora-Bold.ttf
           weight: 700
+    - family: Patrick Hand
+      fonts:
+        - asset: assets/fonts/PatrickHand-Regular.ttf
+    - family: Playfair Display
+      fonts:
+        - asset: assets/fonts/PlayfairDisplay-Variable.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

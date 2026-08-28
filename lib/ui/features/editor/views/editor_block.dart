@@ -627,14 +627,25 @@ class _InkPainter extends CustomPainter {
       path,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
+        ..strokeCap = strokeType == InkStrokeType.marker
+            ? StrokeCap.square
+            : StrokeCap.round
         ..strokeJoin = StrokeJoin.round
-        ..strokeWidth = block.strokeWidth.clamp(0.5, 20).toDouble() * 10
-        ..color = Color(block.strokeColorValue ?? 0xFF3B3226),
+        ..strokeWidth =
+            block.strokeWidth.clamp(0.5, 20).toDouble() *
+            strokeType.widthMultiplier *
+            10
+        ..color = Color(
+          block.strokeColorValue ?? 0xFF3B3226,
+        ).withValues(
+          alpha: (block.opacity * strokeType.opacityMultiplier).clamp(0.0, 1.0),
+        ),
     );
   }
 
   @override
   bool shouldRepaint(covariant _InkPainter oldDelegate) =>
       oldDelegate.block.toJson().toString() != block.toJson().toString();
+
+  InkStrokeType get strokeType => inkStrokeTypeFromName(block.strokeType);
 }

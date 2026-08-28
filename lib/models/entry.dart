@@ -46,6 +46,7 @@ class ContentBlock implements CanvasRenderable {
     this.strokeColorValue,
     this.fillColorValue,
     this.strokeWidth = 1,
+    this.strokeType = 'pen',
     this.inkPoints,
     this.childIds,
     this.groupId,
@@ -144,6 +145,8 @@ class ContentBlock implements CanvasRenderable {
   @override
   double strokeWidth;
   @override
+  String strokeType;
+  @override
   List<Map<String, dynamic>>? inkPoints;
   @override
   List<String>? childIds;
@@ -196,6 +199,7 @@ class ContentBlock implements CanvasRenderable {
     'strokeColorValue': strokeColorValue,
     'fillColorValue': fillColorValue,
     'strokeWidth': strokeWidth,
+    'strokeType': strokeType,
     'inkPoints': inkPoints,
     'childIds': childIds,
     'groupId': groupId,
@@ -241,6 +245,7 @@ class ContentBlock implements CanvasRenderable {
     strokeColorValue: (json['strokeColorValue'] as num?)?.toInt(),
     fillColorValue: (json['fillColorValue'] as num?)?.toInt(),
     strokeWidth: (json['strokeWidth'] as num?)?.toDouble() ?? 1,
+    strokeType: json['strokeType'] as String? ?? 'pen',
     inkPoints: (json['inkPoints'] as List<dynamic>?)
         ?.whereType<Map<Object?, Object?>>()
         .map((point) => Map<String, dynamic>.from(point))

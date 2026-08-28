@@ -33,6 +33,7 @@ class EditorCanvasView extends StatelessWidget {
     required this.inkColorValue,
     required this.inkWidth,
     required this.inkOpacity,
+    this.inkStrokeType = InkStrokeType.pen,
     required this.onLassoSelected,
     required this.onInkNodeCreated,
     required this.imageBytes,
@@ -67,6 +68,7 @@ class EditorCanvasView extends StatelessWidget {
   final int inkColorValue;
   final double inkWidth;
   final double inkOpacity;
+  final InkStrokeType inkStrokeType;
   final ValueChanged<Set<String>> onLassoSelected;
   final CanvasNodeCreated onInkNodeCreated;
   final Uint8List? Function(String assetId) imageBytes;
@@ -102,6 +104,7 @@ class EditorCanvasView extends StatelessWidget {
           inkColorValue: inkColorValue,
           inkWidth: inkWidth,
           inkOpacity: inkOpacity,
+          inkStrokeType: inkStrokeType,
           onLassoSelected: onLassoSelected,
           onInkNodeCreated: onInkNodeCreated,
           imageBytes: imageBytes,

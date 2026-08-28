@@ -24,7 +24,6 @@ class EditorMoreToolsView extends StatefulWidget {
     required this.drawMode,
     required this.onUndo,
     required this.onRedo,
-    required this.onAddShape,
     required this.onEditImage,
     required this.onSaveTemplate,
     required this.onInsertTemplate,
@@ -59,7 +58,6 @@ class EditorMoreToolsView extends StatefulWidget {
 
   final VoidCallback onUndo;
   final VoidCallback onRedo;
-  final VoidCallback onAddShape;
   final VoidCallback onEditImage;
   final VoidCallback onSaveTemplate;
   final VoidCallback onInsertTemplate;
@@ -115,12 +113,6 @@ class _EditorMoreToolsViewState extends State<EditorMoreToolsView> {
             title: const Text('Redo'),
             enabled: widget.canRedo,
             onTap: widget.canRedo ? () => _close(widget.onRedo) : null,
-          ),
-          ListTile(
-            leading: const Icon(Icons.category_outlined),
-            title: const Text('Add shape'),
-            subtitle: const Text('Rectangle, ellipse, line, or arrow'),
-            onTap: () => _close(widget.onAddShape),
           ),
           if (widget.hasImageSelection)
             ListTile(

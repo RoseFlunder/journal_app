@@ -5,7 +5,15 @@ import 'dart:ui';
 import 'canvas.dart';
 import 'page_music.dart';
 import 'view_state.dart';
-export 'canvas.dart' show BlockType, BoardSettings, CanvasRenderable, JournalFonts;
+export 'canvas.dart'
+    show
+        BlockType,
+        BoardSettings,
+        CanvasRenderable,
+        InkStrokeType,
+        InkStrokeTypeLabel,
+        JournalFonts,
+        inkStrokeTypeFromName;
 
 /// Immutable world-space transform shared by every board node.
 class Transform2D {
@@ -190,6 +198,9 @@ class CanvasNode implements CanvasRenderable {
 
   @override
   double get strokeWidth => _number('strokeWidth', 1);
+
+  @override
+  String get strokeType => payload['strokeType'] as String? ?? 'pen';
 
   @override
   List<Map<String, dynamic>>? get inkPoints {

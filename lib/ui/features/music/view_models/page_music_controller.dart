@@ -34,6 +34,7 @@ class PageMusicController extends ChangeNotifier {
   String? _loadedUrl;
   AudioPlaybackStatus _status = AudioPlaybackStatus.idle;
   String? _error;
+  int _selectionGeneration = 0;
   bool _disposed = false;
 
   String? get pageId => _pageId;
@@ -48,11 +49,18 @@ class PageMusicController extends ChangeNotifier {
     final trackChanged =
         _track?.trackId != track?.trackId ||
         _track?.streamUrl != track?.streamUrl;
-    if (pageChanged || trackChanged) await _stopSilently();
+    final selectionChanged = pageChanged || trackChanged;
+    if (selectionChanged) {
+      _selectionGeneration++;
+      await _stopSilently();
+    }
     _pageId = pageId;
     _track = track;
     _error = null;
     _notify();
+    if (selectionChanged && pageId != null && track != null) {
+      await _playCurrentSelection();
+    }
   }
 
   Future<void> toggle() async {
@@ -63,6 +71,14 @@ class PageMusicController extends ChangeNotifier {
       await _playback.pause();
       return;
     }
+    await _playCurrentSelection();
+  }
+
+  Future<void> _playCurrentSelection() async {
+    final track = _track;
+    final pageId = _pageId;
+    if (track == null || pageId == null || isLoading) return;
+    final generation = _selectionGeneration;
     if (track.isLegacy) {
       _setError('This legacy track is unavailable. Replace or remove it.');
       return;
@@ -71,22 +87,28 @@ class PageMusicController extends ChangeNotifier {
     _status = AudioPlaybackStatus.loading;
     _notify();
     try {
-      await _loadAndPlay(track);
+      if (!await _loadAndPlay(track, pageId, generation)) return;
     } catch (_) {
+      if (!_isCurrentSelection(pageId, track, generation)) return;
       try {
         final refreshed = await _catalog.resolveTrack(track.trackId);
-        if (_pageId != pageId) return;
+        if (!_isCurrentSelection(pageId, track, generation)) return;
         _track = refreshed;
         await _persistResolvedTrack(pageId, refreshed);
-        await _loadAndPlay(refreshed);
+        if (!await _loadAndPlay(refreshed, pageId, generation)) return;
       } catch (error) {
+        if (!_isCurrentSelection(pageId, _track, generation)) return;
         _loadedUrl = null;
         _setError(_friendlyError(error));
       }
     }
   }
 
-  Future<void> _loadAndPlay(PageMusicTrack track) async {
+  Future<bool> _loadAndPlay(
+    PageMusicTrack track,
+    String pageId,
+    int generation,
+  ) async {
     if (track.streamUrl.isEmpty) {
       throw StateError('This track has no playable stream.');
     }
@@ -94,10 +116,25 @@ class PageMusicController extends ChangeNotifier {
       await _playback.load(track.streamUrl);
       _loadedUrl = track.streamUrl;
     }
+    if (!_isCurrentSelection(pageId, track, generation)) return false;
     await _playback.play();
+    return true;
+  }
+
+  bool _isCurrentSelection(
+    String pageId,
+    PageMusicTrack? track,
+    int generation,
+  ) {
+    return !_disposed &&
+        generation == _selectionGeneration &&
+        _pageId == pageId &&
+        _track?.trackId == track?.trackId &&
+        _track?.streamUrl == track?.streamUrl;
   }
 
   Future<void> stopAndReset() async {
+    _selectionGeneration++;
     await _stopSilently();
     _notify();
   }

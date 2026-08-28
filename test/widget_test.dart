@@ -516,6 +516,14 @@ void main() {
     );
     await tester.tap(find.byTooltip('Choose font'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Patrick Hand'));
+    await tester.pump();
+    expect(
+      store.entries.single.blocks.single.fontFamily,
+      JournalFonts.patrickHand,
+    );
+    await tester.tap(find.byTooltip('Choose font'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Default'));
     await tester.pump();
     expect(store.entries.single.blocks.single.fontFamily, isNull);
@@ -779,7 +787,7 @@ void main() {
     expect(drawn?.h, greaterThanOrEqualTo(10));
   });
 
-  testWidgets('ink and shape strokes use the shared visual color picker', (
+  testWidgets('ink styling works and shape creation stays hidden', (
     tester,
   ) async {
     store = TestHiveEnvironment();
@@ -873,19 +881,7 @@ void main() {
 
     await tester.tap(find.byTooltip('More editing tools'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Add shape'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Rectangle'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Stroke color'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.bySemanticsLabel('Teal'));
-    await tester.tap(find.text('Apply'));
-    await tester.pumpAndSettle();
-    final shape = store.entries.single.blocks.firstWhere(
-      (block) => block.type == BlockType.shape,
-    );
-    expect(shape.strokeColorValue, 0xFF286A68);
+    expect(find.text('Add shape'), findsNothing);
   });
 
   testWidgets(

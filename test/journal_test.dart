@@ -62,6 +62,25 @@ void main() {
       expect(entry.titleTextColorValue, isNull);
     });
 
+    test('round-trips ink stroke type while preserving legacy defaults', () {
+      final marker = ContentBlock(
+        id: 'marker',
+        type: BlockType.ink,
+        strokeType: 'marker',
+        strokeWidth: 3.5,
+        inkPoints: [
+          {'x': 0, 'y': 0},
+          {'x': 10, 'y': 4},
+        ],
+      );
+      final decodedMarker = ContentBlock.fromJson(marker.toJson());
+      final legacy = ContentBlock.fromJson({'id': 'legacy', 'type': 'ink'});
+
+      expect(decodedMarker.strokeType, 'marker');
+      expect(decodedMarker.strokeWidth, 3.5);
+      expect(legacy.strokeType, 'pen');
+    });
+
     test('round-trips all fields', () {
       final entry = Entry(
         id: 'abc',

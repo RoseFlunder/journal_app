@@ -8,16 +8,53 @@ import 'dart:ui';
 abstract final class JournalFonts {
   static const caveat = 'Caveat';
   static const lora = 'Lora';
+  static const patrickHand = 'Patrick Hand';
+  static const playfairDisplay = 'Playfair Display';
 
   static String? normalize(String? value) => switch (value) {
     caveat => caveat,
     lora => lora,
+    patrickHand => patrickHand,
+    playfairDisplay => playfairDisplay,
     _ => null,
   };
 }
 
 /// The kinds of content that can be freely placed on a journal page.
 enum BlockType { text, image, sticker, ink, shape, group }
+
+/// Visual preset used when rendering vector ink strokes.
+enum InkStrokeType { pencil, pen, marker, brush }
+
+InkStrokeType inkStrokeTypeFromName(Object? value) => switch (value) {
+  'pencil' => InkStrokeType.pencil,
+  'marker' => InkStrokeType.marker,
+  'brush' => InkStrokeType.brush,
+  _ => InkStrokeType.pen,
+};
+
+extension InkStrokeTypeLabel on InkStrokeType {
+  String get label => switch (this) {
+    InkStrokeType.pencil => 'Pencil',
+    InkStrokeType.pen => 'Pen',
+    InkStrokeType.marker => 'Marker',
+    InkStrokeType.brush => 'Brush',
+  };
+
+  double get widthMultiplier => switch (this) {
+    InkStrokeType.pencil => 0.6,
+    InkStrokeType.pen => 1,
+    InkStrokeType.marker => 1.45,
+    InkStrokeType.brush => 1.2,
+  };
+
+  double get opacityMultiplier => switch (this) {
+    InkStrokeType.pencil => 0.78,
+    InkStrokeType.pen => 1,
+    InkStrokeType.marker => 0.42,
+    InkStrokeType.brush => 0.68,
+  };
+}
 
 /// Presentation and snapping settings for a journal page. Coordinates remain
 /// model-local so rendering is independent of screen size.
@@ -102,6 +139,7 @@ abstract interface class CanvasRenderable {
   int? get strokeColorValue;
   int? get fillColorValue;
   double get strokeWidth;
+  String get strokeType;
   List<Map<String, dynamic>>? get inkPoints;
   List<String>? get childIds;
   String? get groupId;

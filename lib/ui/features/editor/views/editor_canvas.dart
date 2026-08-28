@@ -51,6 +51,7 @@ class EntryCanvas extends StatefulWidget {
     this.inkColorValue = 0xFF3B3226,
     this.inkWidth = 1.8,
     this.inkOpacity = 1,
+    this.inkStrokeType = InkStrokeType.pen,
     this.onLassoSelected,
     this.onInkNodeCreated,
     required this.imageBytes,
@@ -87,6 +88,7 @@ class EntryCanvas extends StatefulWidget {
   final int inkColorValue;
   final double inkWidth;
   final double inkOpacity;
+  final InkStrokeType inkStrokeType;
   final ValueChanged<Set<String>>? onLassoSelected;
   final CanvasNodeCreated? onInkNodeCreated;
   final Uint8List? Function(String assetId) imageBytes;
@@ -383,6 +385,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
                                 color: Color(widget.inkColorValue),
                                 width: widget.inkWidth,
                                 opacity: widget.inkOpacity,
+                                strokeType: widget.inkStrokeType,
                               ),
                             ),
                           ),
@@ -775,6 +778,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
       payload: {
         'strokeColorValue': widget.inkColorValue,
         'strokeWidth': widget.inkWidth,
+        'strokeType': widget.inkStrokeType.name,
         'inkPoints': [
           for (final point in _inkPoints)
             {'x': point.dx - minX + padding, 'y': point.dy - minY + padding},
@@ -1055,6 +1059,7 @@ class _InkPreviewPainter extends CustomPainter {
     required this.color,
     required this.width,
     required this.opacity,
+    required this.strokeType,
   });
 
   final List<Offset> points;
@@ -1062,6 +1067,7 @@ class _InkPreviewPainter extends CustomPainter {
   final Color color;
   final double width;
   final double opacity;
+  final InkStrokeType strokeType;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1080,10 +1086,15 @@ class _InkPreviewPainter extends CustomPainter {
       path,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
+        ..strokeCap = strokeType == InkStrokeType.marker
+            ? StrokeCap.square
+            : StrokeCap.round
         ..strokeJoin = StrokeJoin.round
-        ..strokeWidth = width * PageViewport.modelToRenderScale
-        ..color = color.withValues(alpha: opacity),
+        ..strokeWidth =
+            width * strokeType.widthMultiplier * PageViewport.modelToRenderScale
+        ..color = color.withValues(
+          alpha: (opacity * strokeType.opacityMultiplier).clamp(0.0, 1.0),
+        ),
     );
   }
 

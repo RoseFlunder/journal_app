@@ -17,26 +17,29 @@ void main() {
     licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
   );
 
-  test('never autoplays and stops/reset when active page changes', () async {
-    final playback = _FakePlayback();
-    final controller = PageMusicController(
-      catalog: const _FakeCatalog(track),
-      playback: playback,
-      persistResolvedTrack: (_, _) async {},
-    );
+  test(
+    'autoplays selected page music and resets when active page changes',
+    () async {
+      final playback = _FakePlayback();
+      final controller = PageMusicController(
+        catalog: const _FakeCatalog(track),
+        playback: playback,
+        persistResolvedTrack: (_, _) async {},
+      );
 
-    await controller.setActivePage('page-one', track);
-    expect(playback.playCalls, 0);
+      await controller.setActivePage('page-one', track);
+      expect(playback.loadedUrls, [track.streamUrl]);
+      expect(playback.playCalls, 1);
 
-    await controller.toggle();
-    expect(playback.loadedUrls, [track.streamUrl]);
-    expect(playback.playCalls, 1);
+      await controller.toggle();
+      expect(playback.pauseCalls, 1);
 
-    await controller.setActivePage('page-two', null);
-    expect(playback.stopCalls, greaterThanOrEqualTo(2));
-    expect(controller.track, isNull);
-    controller.dispose();
-  });
+      await controller.setActivePage('page-two', null);
+      expect(playback.stopCalls, greaterThanOrEqualTo(2));
+      expect(controller.track, isNull);
+      controller.dispose();
+    },
+  );
 
   test('pause toggles without reloading and loop mode is configured', () async {
     final playback = _FakePlayback();
@@ -47,7 +50,6 @@ void main() {
     );
     await Future<void>.delayed(Duration.zero);
     await controller.setActivePage('page', track);
-    await controller.toggle();
     playback.emit(AudioPlaybackStatus.playing);
     await controller.toggle();
 

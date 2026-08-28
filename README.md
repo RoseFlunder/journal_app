@@ -19,6 +19,14 @@ The active implementation plan is in [PLAN.md](PLAN.md). Pages can attach and
 stream Creative Commons music from Jamendo; further polish and creative-tool
 work are tracked there.
 
+Shapes are implemented in the editor and persistence layers, but the feature
+is intentionally hidden from the user interface until the shape tools are
+polished for release.
+
+The text editor bundles Caveat, Lora, Patrick Hand, and Playfair Display.
+Patrick Hand and Playfair Display are distributed under the SIL Open Font
+License; the corresponding license texts are kept in `assets/fonts/`.
+
 ## Run locally
 
 Install Flutter with Android, Windows or Web support enabled, then run:

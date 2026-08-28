@@ -67,12 +67,14 @@ void main() {
       colorValue: 0xFF286A68,
       opacity: 0.6,
       width: 4.2,
+      strokeType: InkStrokeType.marker,
     );
     editor.updateInkSettings(updated);
 
     expect(editor.inkSettings, updated);
     expect(editor.inkSettings.pickerValue, 0x99286A68);
     expect(editor.inkSettings.width, 4.2);
+    expect(editor.inkSettings.strokeType, InkStrokeType.marker);
   });
 
   test('owns text and title formatting persistence', () async {

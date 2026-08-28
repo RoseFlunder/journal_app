@@ -24,7 +24,6 @@ import 'editor_history_view.dart';
 import 'editor_templates_view.dart';
 import 'editor_toolbar_view.dart';
 import 'editor_more_tools_view.dart';
-import 'editor_shape_picker_view.dart';
 import 'editor_alignment_view.dart';
 import 'editor_transform_inspector_view.dart';
 import 'editor_ink_settings_view.dart';
@@ -162,6 +161,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   int get _inkColorValue => _inkSettings.colorValue;
   double get _inkWidth => _inkSettings.width;
   double get _inkOpacity => _inkSettings.opacity;
+  InkStrokeType get _inkStrokeType => _inkSettings.strokeType;
 
   CanvasNode? get _activeStrokeBlock {
     final primary = _editor.primaryNode;
@@ -640,37 +640,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     });
   }
 
-  Future<void> _addShape() async {
-    final shape = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: PaperPage.paper,
-      showDragHandle: true,
-      builder: (context) => const EditorShapePickerView(),
-    );
-    if (!mounted || shape == null) return;
-    final node = CanvasNode(
-      id: _uuid.v4(),
-      type: BlockType.shape,
-      transform: Transform2D(
-        x: -10,
-        y: 28 + (_nodes.length * 7) % 70,
-        width: shape == 'line' || shape == 'arrow' ? 42 : 32,
-        height: shape == 'line' || shape == 'arrow' ? 18 : 24,
-      ),
-      opacity: _inkOpacity,
-      accessibilityLabel: shape[0].toUpperCase() + shape.substring(1),
-      payload: {
-        'shape': shape,
-        'strokeColorValue': _inkColorValue,
-        if (shape == 'rectangle' || shape == 'ellipse')
-          'fillColorValue': const Color(0x33C97068).toARGB32(),
-        'strokeWidth': 1.5,
-      },
-    );
-    _editor.addNode(node);
-    setState(() => _selectedId = node.id);
-  }
-
   Future<void> _addImage() async {
     if (_pickingImage) return;
     setState(() => _pickingImage = true);
@@ -1007,7 +976,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         drawMode: _drawMode,
         onUndo: _undo,
         onRedo: _redo,
-        onAddShape: _addShape,
         onEditImage: _showImageEditor,
         onSaveTemplate: _saveTemplate,
         onInsertTemplate: _showTemplates,
@@ -1360,6 +1328,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                           inkColorValue: _inkColorValue,
                           inkWidth: _inkWidth,
                           inkOpacity: _inkOpacity,
+                          inkStrokeType: _inkStrokeType,
                           onLassoSelected: (ids) {
                             _editor.selectMany(ids);
                             setState(() {

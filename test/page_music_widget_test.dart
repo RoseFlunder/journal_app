@@ -36,7 +36,7 @@ void main() {
     temp.deleteSync(recursive: true);
   });
 
-  testWidgets('page music waits for Play and resets on navigation', (
+  testWidgets('page music autoplays and resets on navigation', (
     tester,
   ) async {
     store = TestHiveEnvironment();
@@ -59,12 +59,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Soft Rain'), findsOneWidget);
-    expect(playback.playCalls, 0);
-    await tester.tap(find.byTooltip('Play page music'));
-    await tester.pump();
     expect(playback.loadedUrls, [track.streamUrl]);
     expect(playback.playCalls, 1);
     expect(find.byTooltip('Pause page music'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Pause page music'));
+    await tester.pump();
+    expect(playback.playCalls, 1);
 
     await tester.tap(find.byTooltip('Home'));
     await tester.pumpAndSettle();

@@ -385,6 +385,18 @@ class _FontPicker extends StatelessWidget {
           JournalFonts.caveat,
         ),
         _item(context, JournalFonts.lora, JournalFonts.lora, JournalFonts.lora),
+        _item(
+          context,
+          JournalFonts.patrickHand,
+          JournalFonts.patrickHand,
+          JournalFonts.patrickHand,
+        ),
+        _item(
+          context,
+          JournalFonts.playfairDisplay,
+          JournalFonts.playfairDisplay,
+          JournalFonts.playfairDisplay,
+        ),
       ],
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../models/canvas.dart';
 import '../view_models/editor_tool_state.dart';
 
 /// Bottom-sheet content for the vector ink tool.
@@ -39,6 +40,12 @@ class _EditorInkSettingsViewState extends State<EditorInkSettingsView> {
     widget.onPreview(next);
   }
 
+  void _changeStrokeType(InkStrokeType strokeType) {
+    final next = _settings.copyWith(strokeType: strokeType);
+    setState(() => _settings = next);
+    widget.onPreview(next);
+  }
+
   @override
   Widget build(BuildContext context) => SafeArea(
     child: Padding(
@@ -66,7 +73,23 @@ class _EditorInkSettingsViewState extends State<EditorInkSettingsView> {
             onTap: _pickColor,
           ),
           const SizedBox(height: 8),
-          Text('Width ${_settings.width.toStringAsFixed(1)}'),
+          const Text('Stroke type'),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final type in InkStrokeType.values)
+                ChoiceChip(
+                  key: ValueKey('ink-stroke-${type.name}'),
+                  label: Text(type.label),
+                  selected: _settings.strokeType == type,
+                  onSelected: (_) => _changeStrokeType(type),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text('Stroke size ${_settings.width.toStringAsFixed(1)}'),
           Slider(
             min: 0.8,
             max: 8,
