@@ -32,7 +32,7 @@ class AppDependencies {
     );
     final wiredRepositories = repositories.withPersistence(persistence);
     final resolvedFactory = editorViewModelFactory ??
-        _defaultEditorViewModelFactory(
+        createEditorViewModelFactory(
           repositories: wiredRepositories,
           musicCatalog: musicCatalog,
           audioPlaybackFactory: audioPlaybackFactory,
@@ -85,7 +85,7 @@ class AppDependencies {
       imageSource: imageSource,
       imageProcessor: imageProcessor,
       archiveTransfer: archiveTransfer,
-      editorViewModelFactory: _defaultEditorViewModelFactory(
+      editorViewModelFactory: createEditorViewModelFactory(
         repositories: baseRepositories.withPersistence(persistence),
         musicCatalog: musicCatalog,
         audioPlaybackFactory: audioPlaybackFactory,
@@ -128,7 +128,10 @@ class AppDependencies {
 AudioPlaybackService _disabledAudioFactory() =>
     const DisabledAudioPlaybackService();
 
-EntryEditorViewModelFactory _defaultEditorViewModelFactory({
+/// Builds the feature editor factory from the complete capability set. Both
+/// production dependencies and repository-backed test shells use this single
+/// composition policy.
+EntryEditorViewModelFactory createEditorViewModelFactory({
   required JournalRepositories repositories,
   required MusicCatalogRepository musicCatalog,
   required AudioPlaybackFactory audioPlaybackFactory,

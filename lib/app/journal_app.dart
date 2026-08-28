@@ -46,22 +46,8 @@ class JournalApp extends StatelessWidget {
            const JournalTransferService(),
        editorViewModelFactory = editorViewModelFactory ??
            dependencies?.editorViewModelFactory ??
-           ((document) => EntryEditorViewModel(
-             document: document,
-             documentRepository: (repositories ?? dependencies!.repositories)
-                 .documentRepository,
-             checkpointRepository: (repositories ?? dependencies!.repositories)
-                 .checkpointRepository,
-             assetRepository: (repositories ?? dependencies!.repositories)
-                 .assetRepository,
-             templateRepository: (repositories ?? dependencies!.repositories)
-                 .templateRepository,
-             preferenceRepository: (repositories ?? dependencies!.repositories)
-                 .preferenceRepository,
-             persistenceRepository: (repositories ?? dependencies!.repositories)
-                 .persistence,
-             archiveRepository: (repositories ?? dependencies!.repositories)
-                 .archiveRepository,
+           createEditorViewModelFactory(
+             repositories: repositories ?? dependencies!.repositories,
              musicCatalog:
                  musicCatalog ??
                  dependencies?.musicCatalog ??
@@ -70,7 +56,7 @@ class JournalApp extends StatelessWidget {
                  audioPlaybackFactory ??
                  dependencies?.audioPlaybackFactory ??
                  _disabledAudioFactory,
-           ));
+           );
 
   final JournalRepositories repositories;
   final MusicCatalogRepository musicCatalog;
