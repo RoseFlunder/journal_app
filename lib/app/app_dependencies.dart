@@ -22,18 +22,19 @@ class AppDependencies {
     AudioPlaybackFactory audioPlaybackFactory = _disabledAudioFactory,
     EntryEditorViewModelFactory? editorViewModelFactory,
   }) {
-    final resolvedFactory = editorViewModelFactory ??
-        _defaultEditorViewModelFactory(
-          repositories: repositories,
-          musicCatalog: musicCatalog,
-          audioPlaybackFactory: audioPlaybackFactory,
-        );
     final persistence = PersistenceCoordinator(
       repository: repositories.persistence,
     );
+    final wiredRepositories = repositories.withPersistence(persistence);
+    final resolvedFactory = editorViewModelFactory ??
+        _defaultEditorViewModelFactory(
+          repositories: wiredRepositories,
+          musicCatalog: musicCatalog,
+          audioPlaybackFactory: audioPlaybackFactory,
+        );
     return AppDependencies._(
       persistence: persistence,
-      repositories: repositories.withPersistence(persistence),
+      repositories: wiredRepositories,
       musicCatalog: musicCatalog,
       audioPlaybackFactory: audioPlaybackFactory,
       editorViewModelFactory: resolvedFactory,
