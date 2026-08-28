@@ -7,14 +7,13 @@ import 'package:hive/hive.dart';
 import 'package:journal_app/main.dart';
 import 'package:journal_app/models/page_music.dart';
 import 'package:journal_app/services/audio_playback.dart';
-import 'package:journal_app/services/journal_store.dart';
-import 'support/legacy_hive_repositories.dart';
+import 'support/hive_test_environment.dart';
 import 'package:journal_app/services/repositories.dart';
 
 void main() {
   LiveTestWidgetsFlutterBinding.ensureInitialized();
   late Directory temp;
-  late JournalStore store;
+  late TestHiveEnvironment store;
 
   const track = PageMusicTrack(
     provider: 'jamendo',
@@ -39,7 +38,7 @@ void main() {
   testWidgets('page music waits for Play and resets on navigation', (
     tester,
   ) async {
-    store = JournalStore();
+    store = TestHiveEnvironment();
     await store.init();
     final entry = await store.addEntry(title: 'Music page');
     await store.updateEntry(entry.id, (entry) => entry.music = track);
@@ -47,7 +46,7 @@ void main() {
 
     await tester.pumpWidget(
       JournalApp(
-        repositories: HiveRepositorySet(store).repositories,
+        repositories: store.repositories,
         musicCatalog: const _WidgetCatalog(track),
         audioPlaybackFactory: () => playback,
       ),

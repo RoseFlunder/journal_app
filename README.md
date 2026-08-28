@@ -98,8 +98,7 @@ browser profile rather than being synced to a server.
 
 The `entries` box stores serialized entries and the `assets` box stores image
 and audio records. Feature code should use the narrow repository interfaces;
-the Hive-backed `JournalStore` stays behind the data layer so the same path
-remains compatible with Web.
+focused Hive capability sources keep the same path compatible with Web.
 
 ## Platform notes
 
@@ -114,16 +113,18 @@ remains compatible with Web.
 
 ## Architecture
 
-- `lib/models/entry.dart`: entry, block and view-state serialization models
+- `lib/models/entry.dart`: legacy storage record adapters
 - `lib/models/document.dart`: immutable document and canvas-node boundaries
 - `lib/models/sticker.dart`: bundled sticker catalog and metadata
-- `lib/services/journal_store.dart`: Hive-backed journal and asset storage
+- `lib/services/hive_journal_data_source.dart`: raw Hive box access
+- `lib/services/hive_capability_sources.dart`: focused document, asset,
+  checkpoint, template, preference, and archive data sources
 - `lib/services/repositories.dart`: repository capability contracts
 - `lib/services/hive_repositories.dart`: Hive repository adapters
 - `lib/services/persistence_coordinator.dart`: ordered save/flush lifecycle
-- `lib/screens/journal_screen.dart`: PageView over TOC and entries
-- `lib/screens/contents_page.dart`: table of contents
-- `lib/screens/entry_page.dart`: entry page rendering
+- `lib/ui/features/journal/views/journal_screen.dart`: PageView over TOC and entries
+- `lib/ui/features/journal/views/contents_page.dart`: table of contents
+- `lib/ui/features/editor/views/entry_page.dart`: entry page rendering
 - `lib/widgets/paper_page.dart`: M2 paper surface and painter
 - `lib/widgets/page_viewport.dart`: M3 zoom and pan viewport
 - `lib/widgets/camera_controller.dart`: page camera matrix and view state

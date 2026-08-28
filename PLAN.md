@@ -49,8 +49,8 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [x] Screens receive configured editor view-model factories and narrow
   capability contracts through the composition root; each entry page receives
   a cached configured editor view model. Production Hive adapters depend on
-  focused internal data sources and `JournalStore` is not imported by the app
-  composition root.
+  focused internal data sources; the obsolete mutable `JournalStore` aggregate
+  and its test-only adapters have been removed.
 - [x] Asset collection protects live documents, checkpoints, templates,
   immutable undo/redo snapshots, and clipboard references.
 - [x] Serialize final text commit, background checkpoint, and storage flush to
@@ -177,8 +177,7 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
 1. **Complete the document-model migration**
    - Keep `Entry`/`ContentBlock` conversion confined to the storage codec and
-     migrate the remaining legacy storage-only tests off the mutable
-     `JournalStore` aggregate before deleting that compatibility service.
+     keep storage compatibility tests on the direct Hive capability sources.
    - Finish extracting the remaining editor-page workflow orchestration into
      focused use cases/view-model methods; the ink, music, text formatting, and
      metadata surfaces already follow this boundary.
@@ -212,7 +211,7 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - Make `EntryDocument` and `CanvasNode` immutable across UI, undo, repository,
   archive, and clipboard boundaries.
 - Keep `JournalRepositories` as the only UI-facing repository bundle; concrete
-  Hive adapters and `JournalStore` remain data-layer details.
+  Hive adapters and mutable storage records remain data-layer details.
 - Every completed gesture produces exactly one command and one save;
   cancellation restores the exact previous document.
 - No supported operation is exclusively drag- or mouse-driven.

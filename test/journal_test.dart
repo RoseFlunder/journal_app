@@ -5,14 +5,14 @@ import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:image/image.dart' as img;
+import 'package:journal_app/models/asset_kind.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/page_music.dart';
 import 'package:journal_app/models/sticker.dart';
 import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/template.dart';
 import 'package:journal_app/services/image_source.dart';
-import 'package:journal_app/services/journal_store.dart';
-import 'support/legacy_hive_repositories.dart';
+import 'support/hive_test_environment.dart';
 import 'package:journal_app/services/entry_document_codec.dart';
 
 void main() {
@@ -260,7 +260,7 @@ void main() {
     });
   });
 
-  group('JournalStore', () {
+  group('Hive data source compatibility', () {
     late Directory temp;
 
     setUpAll(() {
@@ -273,25 +273,17 @@ void main() {
       temp.deleteSync(recursive: true);
     });
 
-    Future<JournalStore> freshStore() async {
-      final store = JournalStore();
-      await store.init();
-      // Start every run from an empty journal.
-      await Hive.box<dynamic>('entries').clear();
-      await Hive.box<dynamic>('assets').clear();
-      await Hive.box<dynamic>('meta').clear();
-      await Hive.box<dynamic>('entryCheckpoints').clear();
-      await Hive.box<dynamic>('journalTemplates').clear();
-      return store;
+    Future<TestHiveEnvironment> freshStore() async {
+      return TestHiveEnvironment.fresh();
     }
 
     test(
       'repository capabilities round-trip documents, assets, and templates',
       () async {
         final store = await freshStore();
-        final documents = HiveDocumentRepository(store);
-        final assets = HiveAssetRepository(store);
-        final templates = HiveTemplateRepository(store);
+        final documents = store.repositories.documentRepository;
+        final assets = store.repositories.assetRepository;
+        final templates = store.repositories.templateRepository;
         final document = await documents.createDocument(
           title: 'Repository page',
         );
@@ -388,7 +380,8 @@ void main() {
       await Hive.box<dynamic>('entries').close();
       await Hive.box<dynamic>('assets').close();
       await Hive.box<dynamic>('meta').close();
-      store = await freshStore();
+      store = TestHiveEnvironment();
+      await store.init();
 
       expect(store.entries.map((e) => e.id).toList(), [a.id]);
       expect(store.entries.first.id, a.id);
@@ -403,7 +396,7 @@ void main() {
       await Hive.box<dynamic>('assets').close();
       await Hive.box<dynamic>('meta').close();
 
-      store = JournalStore();
+      store = TestHiveEnvironment();
       await store.init();
 
       expect(store.entries.map((entry) => entry.id), [entry.id]);
@@ -419,7 +412,7 @@ void main() {
       );
       await Hive.box<dynamic>('entries').put(entry.id, entry.toJson());
 
-      final store = JournalStore();
+      final store = TestHiveEnvironment();
       await store.init();
 
       expect(store.entries.map((entry) => entry.id), [entry.id]);
@@ -447,7 +440,7 @@ void main() {
       await Hive.box<dynamic>('entries').flush();
       await Hive.box<dynamic>('meta').flush();
 
-      final reloaded = JournalStore();
+      final reloaded = TestHiveEnvironment();
       await reloaded.init();
 
       expect(reloaded.entries.single.blocks.single.text, 'Loaded');

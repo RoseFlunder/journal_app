@@ -11,8 +11,7 @@ import 'package:image/image.dart' as img;
 import 'package:journal_app/main.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/sticker.dart';
-import 'package:journal_app/services/journal_store.dart';
-import 'support/legacy_hive_repositories.dart';
+import 'support/hive_test_environment.dart';
 import 'package:journal_app/services/entry_document_codec.dart';
 import 'package:journal_app/editor/block_widget.dart';
 import 'package:journal_app/ui/features/editor/views/editor_toolbar_view.dart';
@@ -29,7 +28,7 @@ void main() {
   LiveTestWidgetsFlutterBinding.ensureInitialized();
 
   late Directory temp;
-  late JournalStore store;
+  late TestHiveEnvironment store;
 
   setUpAll(() async {
     temp = Directory.systemTemp.createTempSync('journal_widget_test');
@@ -150,10 +149,10 @@ void main() {
   testWidgets(
     'create a page, navigate with home/back controls, find it in TOC, delete it',
     (tester) async {
-      store = JournalStore();
+      store = TestHiveEnvironment();
       await store.init();
       await tester.pumpWidget(
-        JournalApp(repositories: HiveRepositorySet(store).repositories),
+        JournalApp(repositories: store.repositories),
       );
       await tester.pumpAndSettle();
 
@@ -265,7 +264,7 @@ void main() {
   testWidgets('edge navigation controls follow page boundaries', (
     tester,
   ) async {
-    store = JournalStore();
+    store = TestHiveEnvironment();
     await store.init();
     for (final existing in store.entries.toList()) {
       await store.deleteEntry(existing.id);
@@ -274,7 +273,7 @@ void main() {
     await store.addEntry();
     await store.addEntry();
     await tester.pumpWidget(
-      JournalApp(repositories: HiveRepositorySet(store).repositories),
+      JournalApp(repositories: store.repositories),
     );
     await tester.pumpAndSettle();
 
@@ -337,10 +336,10 @@ void main() {
   testWidgets('M2 paper theme renders on the contents and entry pages', (
     tester,
   ) async {
-    store = JournalStore();
+    store = TestHiveEnvironment();
     await store.init();
     await tester.pumpWidget(
-      JournalApp(repositories: HiveRepositorySet(store).repositories),
+      JournalApp(repositories: store.repositories),
     );
     await tester.pumpAndSettle();
 
@@ -439,13 +438,13 @@ void main() {
   testWidgets('M4 adds, edits, resizes and deletes text blocks', (
     tester,
   ) async {
-    store = JournalStore();
+    store = TestHiveEnvironment();
     await store.init();
     for (final existing in store.entries.toList()) {
       await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(
-      JournalApp(repositories: HiveRepositorySet(store).repositories),
+      JournalApp(repositories: store.repositories),
     );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
@@ -614,13 +613,13 @@ void main() {
   testWidgets('grid switches update immediately and persist their state', (
     tester,
   ) async {
-    store = JournalStore();
+    store = TestHiveEnvironment();
     await store.init();
     for (final existing in store.entries.toList()) {
       await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(
-      JournalApp(repositories: HiveRepositorySet(store).repositories),
+      JournalApp(repositories: store.repositories),
     );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
@@ -782,13 +781,13 @@ void main() {
   testWidgets('ink and shape strokes use the shared visual color picker', (
     tester,
   ) async {
-    store = JournalStore();
+    store = TestHiveEnvironment();
     await store.init();
     for (final existing in store.entries.toList()) {
       await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(
-      JournalApp(repositories: HiveRepositorySet(store).repositories),
+      JournalApp(repositories: store.repositories),
     );
     await tester.pumpAndSettle();
     await createPageFromFab(tester, title: 'Sketches');
@@ -891,13 +890,13 @@ void main() {
   testWidgets(
     'visual text color picker supports palette, custom, and default colors',
     (tester) async {
-      store = JournalStore();
+      store = TestHiveEnvironment();
       await store.init();
       for (final existing in store.entries.toList()) {
         await store.deleteEntry(existing.id);
       }
       await tester.pumpWidget(
-        JournalApp(repositories: HiveRepositorySet(store).repositories),
+        JournalApp(repositories: store.repositories),
       );
       await tester.pumpAndSettle();
       await createPageFromFab(tester);
@@ -1107,13 +1106,13 @@ void main() {
   testWidgets('entry title is editable and centered at the top of the page', (
     tester,
   ) async {
-    store = JournalStore();
+    store = TestHiveEnvironment();
     await store.init();
     for (final existing in store.entries.toList()) {
       await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(
-      JournalApp(repositories: HiveRepositorySet(store).repositories),
+      JournalApp(repositories: store.repositories),
     );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
@@ -1173,13 +1172,13 @@ void main() {
   testWidgets('entry viewport view state survives leaving and reopening', (
     tester,
   ) async {
-    store = JournalStore();
+    store = TestHiveEnvironment();
     await store.init();
     for (final existing in store.entries.toList()) {
       await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(
-      JournalApp(repositories: HiveRepositorySet(store).repositories),
+      JournalApp(repositories: store.repositories),
     );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
@@ -1202,14 +1201,14 @@ void main() {
   testWidgets('read-mode entry controls fade but editing keeps them visible', (
     tester,
   ) async {
-    store = JournalStore();
+    store = TestHiveEnvironment();
     await store.init();
     for (final existing in store.entries.toList()) {
       await store.deleteEntry(existing.id);
     }
     await store.addEntry();
     await tester.pumpWidget(
-      JournalApp(repositories: HiveRepositorySet(store).repositories),
+      JournalApp(repositories: store.repositories),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Untitled page'));
