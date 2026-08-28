@@ -10,6 +10,7 @@ import '../../../../editor/editor_controller.dart';
 import '../../../../models/document.dart';
 import '../../../../models/page_music.dart';
 import '../../../../models/template.dart';
+import '../../../../models/view_state.dart';
 import '../../../../services/audio_playback.dart';
 import '../../../../services/image_source.dart';
 import '../../../../services/journal_transfer_service.dart';
@@ -197,6 +198,16 @@ class EntryEditorViewModel extends EditorController {
   /// Persists page ambience metadata through the editor boundary.
   Future<void> updateMusic(PageMusicTrack? track) => updateMetadata(
     document.copyWith(music: track, modifiedAt: DateTime.now()),
+  );
+
+  /// Persists the page camera state as document metadata.
+  Future<void> updateView(ViewState view) => updateMetadata(
+    document.copyWith(view: view, modifiedAt: DateTime.now()),
+  );
+
+  /// Persists the page title as document metadata.
+  Future<void> updateTitle(String title) => updateMetadata(
+    document.copyWith(title: title, modifiedAt: DateTime.now()),
   );
 
   /// Applies text styling to one immutable node. Callers may wrap a series of

@@ -370,15 +370,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   bool get _textFormattingAvailable =>
       _titleFocused || _activeTextBlock != null;
 
-  void _publishDocument(EntryDocument next) {
-    unawaited(_editor.updateMetadata(next));
-  }
-
-  void _handleViewChanged(ViewState view) {
-    _publishDocument(
-      _document.copyWith(view: view, modifiedAt: DateTime.now()),
-    );
-  }
+  void _handleViewChanged(ViewState view) => unawaited(_editor.updateView(view));
 
   int? get _activeTextColor {
     final block = _activeTextBlock;
@@ -1376,12 +1368,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                                           _textEditingId = null;
                                         });
                                       },
-                                      onChanged: (title) => _publishDocument(
-                                        _document.copyWith(
-                                          title: title,
-                                          modifiedAt: DateTime.now(),
-                                        ),
-                                      ),
+                                      onChanged: (title) =>
+                                          unawaited(_editor.updateTitle(title)),
                                       style: _titleStyle(context),
                                       textAlign: TextAlign.center,
                                       decoration: const InputDecoration(
