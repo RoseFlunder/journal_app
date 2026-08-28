@@ -3,14 +3,15 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-28 on top of commit `b551368` (`refactor: isolate
-legacy Hive test adapters`). The editor controller, history, clipboard, and
+Last audited: 2026-08-28 on top of commit `c2afff3` (`refactor: keep journal
+views repository-free`). The editor controller, history, clipboard, and
 canvas are document/node native; metadata and workflow persistence route
 through the feature view model; media referenced by undo/redo and clipboard
 snapshots is retained. Legacy `Entry`/`ContentBlock` conversion is isolated in
 `EntryDocumentCodec` at the storage boundary. Production Hive repositories now
 depend on focused capability data sources; the old mutable-store adapters are
-test-only support. Feature-native canvas, toolbar, More tools, layers, image,
+test-only support. Journal contents receives asset reads through its view model
+rather than a repository. Feature-native canvas, toolbar, More tools, layers, image,
 history, template, shape, alignment, transform, ink, music, and settings views
 are active, and the obsolete toolbar export and image-editor path are gone.
 Focused editor, repository, boundary, and widget suites pass; Android, Web,
