@@ -3,8 +3,8 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-28 on top of commit `9f65bf1` (`test: enforce feature
-import boundaries`). The editor controller, history, clipboard, and canvas
+Last audited: 2026-08-28 on top of commit `31290a9` (`docs: record removal of
+mutable storage facade`). The editor controller, history, clipboard, and canvas
 are document/node native; metadata and workflow persistence route through
 feature view models; media referenced by undo/redo and clipboard snapshots is
 retained. Legacy `Entry`/`ContentBlock` conversion is isolated in
@@ -18,8 +18,8 @@ layers, image, history, template, shape, alignment, transform, ink, music, and
 settings views are active, and the obsolete toolbar export and image-editor
 path are gone.
 Focused editor, repository, boundary, and widget suites pass; the full Flutter
-test suite passes. Android, Web, and Windows release builds passed before this
-final view cleanup.
+test suite passes. Android app-bundle, Web release, and Windows release builds
+also pass on this commit.
 
 Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
