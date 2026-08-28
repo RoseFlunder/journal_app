@@ -24,12 +24,29 @@ abstract final class JournalFonts {
 enum BlockType { text, image, sticker, ink, shape, group }
 
 /// Visual preset used when rendering vector ink strokes.
-enum InkStrokeType { pencil, pen, marker, brush }
+enum InkStrokeType {
+  pencil,
+  pen,
+  marker,
+  brush,
+  calligraphyPen,
+  calligraphyBrush,
+  airbrush,
+  oilBrush,
+  crayon,
+  highlighter,
+}
 
 InkStrokeType inkStrokeTypeFromName(Object? value) => switch (value) {
   'pencil' => InkStrokeType.pencil,
   'marker' => InkStrokeType.marker,
   'brush' => InkStrokeType.brush,
+  'calligraphyPen' => InkStrokeType.calligraphyPen,
+  'calligraphyBrush' => InkStrokeType.calligraphyBrush,
+  'airbrush' => InkStrokeType.airbrush,
+  'oilBrush' => InkStrokeType.oilBrush,
+  'crayon' => InkStrokeType.crayon,
+  'highlighter' => InkStrokeType.highlighter,
   _ => InkStrokeType.pen,
 };
 
@@ -39,6 +56,12 @@ extension InkStrokeTypeLabel on InkStrokeType {
     InkStrokeType.pen => 'Pen',
     InkStrokeType.marker => 'Marker',
     InkStrokeType.brush => 'Brush',
+    InkStrokeType.calligraphyPen => 'Calligraphy pen',
+    InkStrokeType.calligraphyBrush => 'Calligraphy brush',
+    InkStrokeType.airbrush => 'Airbrush',
+    InkStrokeType.oilBrush => 'Oil brush',
+    InkStrokeType.crayon => 'Crayon',
+    InkStrokeType.highlighter => 'Highlighter',
   };
 
   double get widthMultiplier => switch (this) {
@@ -46,6 +69,12 @@ extension InkStrokeTypeLabel on InkStrokeType {
     InkStrokeType.pen => 1,
     InkStrokeType.marker => 1.45,
     InkStrokeType.brush => 1.2,
+    InkStrokeType.calligraphyPen => 0.82,
+    InkStrokeType.calligraphyBrush => 1.35,
+    InkStrokeType.airbrush => 2.0,
+    InkStrokeType.oilBrush => 1.6,
+    InkStrokeType.crayon => 1.15,
+    InkStrokeType.highlighter => 2.4,
   };
 
   double get opacityMultiplier => switch (this) {
@@ -53,6 +82,17 @@ extension InkStrokeTypeLabel on InkStrokeType {
     InkStrokeType.pen => 1,
     InkStrokeType.marker => 0.42,
     InkStrokeType.brush => 0.68,
+    InkStrokeType.calligraphyPen => 0.9,
+    InkStrokeType.calligraphyBrush => 0.62,
+    InkStrokeType.airbrush => 0.24,
+    InkStrokeType.oilBrush => 0.58,
+    InkStrokeType.crayon => 0.68,
+    InkStrokeType.highlighter => 0.35,
+  };
+
+  StrokeCap get strokeCap => switch (this) {
+    InkStrokeType.marker || InkStrokeType.highlighter => StrokeCap.square,
+    _ => StrokeCap.round,
   };
 }
 

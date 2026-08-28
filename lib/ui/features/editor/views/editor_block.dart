@@ -627,9 +627,7 @@ class _InkPainter extends CustomPainter {
       path,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeCap = strokeType == InkStrokeType.marker
-            ? StrokeCap.square
-            : StrokeCap.round
+        ..strokeCap = strokeType.strokeCap
         ..strokeJoin = StrokeJoin.round
         ..strokeWidth =
             block.strokeWidth.clamp(0.5, 20).toDouble() *

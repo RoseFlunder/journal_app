@@ -81,6 +81,32 @@ void main() {
       expect(legacy.strokeType, 'pen');
     });
 
+    test('supports every Paint-style stroke type and safe fallback', () {
+      for (final type in InkStrokeType.values) {
+        final block = ContentBlock(
+          id: type.name,
+          type: BlockType.ink,
+          strokeType: type.name,
+        );
+        expect(
+          inkStrokeTypeFromName(
+            ContentBlock.fromJson(block.toJson()).strokeType,
+          ),
+          type,
+        );
+      }
+      expect(inkStrokeTypeFromName('unknown-brush'), InkStrokeType.pen);
+      expect(inkStrokeTypeFromName(null), InkStrokeType.pen);
+    });
+
+    test('stroke presets expose deterministic rendering characteristics', () {
+      expect(InkStrokeType.pencil.widthMultiplier, lessThan(1));
+      expect(InkStrokeType.highlighter.widthMultiplier, greaterThan(2));
+      expect(InkStrokeType.airbrush.opacityMultiplier, lessThan(.5));
+      expect(InkStrokeType.marker.strokeCap, StrokeCap.square);
+      expect(InkStrokeType.pen.strokeCap, StrokeCap.round);
+    });
+
     test('round-trips all fields', () {
       final entry = Entry(
         id: 'abc',

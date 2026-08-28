@@ -1087,9 +1087,7 @@ class _InkPreviewPainter extends CustomPainter {
       path,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeCap = strokeType == InkStrokeType.marker
-            ? StrokeCap.square
-            : StrokeCap.round
+        ..strokeCap = strokeType.strokeCap
         ..strokeJoin = StrokeJoin.round
         ..strokeWidth =
             width * strokeType.widthMultiplier * PageViewport.modelToRenderScale
