@@ -32,6 +32,7 @@ class JournalScreen extends StatefulWidget {
 
 class _JournalScreenState extends State<JournalScreen> {
   final PageController _pageController = PageController();
+  final Map<String, EntryEditorViewModel> _editorViewModels = {};
   late final JournalViewModel _journal;
   late final PageMusicController _music;
   bool _animating = false;
@@ -53,6 +54,10 @@ class _JournalScreenState extends State<JournalScreen> {
   void dispose() {
     _chromeTimer?.cancel();
     _pageController.dispose();
+    for (final editor in _editorViewModels.values) {
+      editor.dispose();
+    }
+    _editorViewModels.clear();
     _journal.dispose();
     _music.dispose();
     super.dispose();
@@ -177,8 +182,8 @@ class _JournalScreenState extends State<JournalScreen> {
 
   Widget _buildEntryPage(EntryDocument document) {
     return EntryPage(
-      document: document,
-      editorViewModelFactory: widget.editorViewModelFactory,
+      key: ValueKey(document.id),
+      viewModel: _editorFor(document),
       controlsVisible: _entryChromeVisible,
       active: document.id == _activeEntryId,
       musicController: _music,
@@ -186,6 +191,23 @@ class _JournalScreenState extends State<JournalScreen> {
       onEditingChanged: (editing) =>
           _handleEditingChanged(document.id, editing),
     );
+  }
+
+  EntryEditorViewModel _editorFor(EntryDocument document) {
+    return _editorViewModels.putIfAbsent(
+      document.id,
+      () => widget.editorViewModelFactory(document),
+    );
+  }
+
+  void _pruneEditorViewModels(Iterable<EntryDocument> documents) {
+    final activeIds = documents.map((document) => document.id).toSet();
+    final removedIds = _editorViewModels.keys
+        .where((id) => !activeIds.contains(id))
+        .toList(growable: false);
+    for (final id in removedIds) {
+      _editorViewModels.remove(id)?.dispose();
+    }
   }
 
   Future<void> _activateMusicForPage(int page) async {
@@ -206,6 +228,7 @@ class _JournalScreenState extends State<JournalScreen> {
     return ListenableBuilder(
       listenable: _journal,
       builder: (context, _) {
+        _pruneEditorViewModels(_journal.documents);
         return PopScope(
           canPop: _currentPage == 0,
           onPopInvokedWithResult: (didPop, _) {

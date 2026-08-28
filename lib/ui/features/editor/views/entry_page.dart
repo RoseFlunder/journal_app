@@ -40,8 +40,7 @@ import '../../../../widgets/paper_page.dart';
 class EntryPage extends StatefulWidget {
   const EntryPage({
     super.key,
-    required this.document,
-    required this.editorViewModelFactory,
+    required this.viewModel,
     this.onDocumentPreviewChanged,
     required this.onEditingChanged,
     required this.active,
@@ -52,8 +51,9 @@ class EntryPage extends StatefulWidget {
     this.archiveService = const JournalTransferService(),
   });
 
-  final EntryDocument document;
-  final EntryEditorViewModelFactory editorViewModelFactory;
+  /// Configured editor state for this page. The owner of the page disposes
+  /// the model after the page is removed from the journal.
+  final EntryEditorViewModel viewModel;
   final ValueChanged<EntryDocument>? onDocumentPreviewChanged;
   final ValueChanged<bool> onEditingChanged;
   final bool controlsVisible;
@@ -131,7 +131,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   final GlobalKey _pageCaptureKey = GlobalKey();
   Completer<Color?>? _colorSampleCompleter;
   late final TextEditingController _titleController = TextEditingController(
-    text: widget.document.title,
+    text: widget.viewModel.document.title,
   );
   late final FocusNode _titleFocusNode = FocusNode()
     ..addListener(_handleTitleFocusChanged);
@@ -201,29 +201,23 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _editor = widget.editorViewModelFactory(widget.document)
-      ..addListener(_handleEditorChanged);
-    _flushHook = _editor.flushText;
-    _editor.addFlushHook(_flushHook!);
+    _attachEditor(widget.viewModel);
   }
 
   @override
   void didUpdateWidget(covariant EntryPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.document.id != widget.document.id) {
-      final oldFlushHook = _flushHook;
-      if (oldFlushHook != null) _editor.removeFlushHook(oldFlushHook);
-      _editor
-        ..removeListener(_handleEditorChanged)
-        ..dispose();
-      _editor = widget.editorViewModelFactory(widget.document)
-        ..addListener(_handleEditorChanged);
-      _flushHook = _editor.flushText;
-      _editor.addFlushHook(_flushHook!);
+    if (!identical(oldWidget.viewModel, widget.viewModel)) {
+      _detachEditor();
+      _attachEditor(widget.viewModel);
+      if (!_titleFocused) {
+        _titleController.text = _document.title;
+      }
     }
     if (widget.active &&
         (!oldWidget.active ||
-            oldWidget.document.music != widget.document.music)) {
+            oldWidget.viewModel.document.music !=
+                widget.viewModel.document.music)) {
       unawaited(
         widget.musicController.setActivePage(_document.id, _document.music),
       );
@@ -260,18 +254,25 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     _colorSampleCompleter?.complete(null);
     _colorSampleCompleter = null;
     WidgetsBinding.instance.removeObserver(this);
-    final flushHook = _flushHook;
-    if (flushHook != null) {
-      _editor.removeFlushHook(flushHook);
-    }
-    _editor
-      ..removeListener(_handleEditorChanged)
-      ..dispose();
+    _detachEditor();
     _titleController.dispose();
     _titleFocusNode
       ..removeListener(_handleTitleFocusChanged)
       ..dispose();
     super.dispose();
+  }
+
+  void _attachEditor(EntryEditorViewModel editor) {
+    _editor = editor..addListener(_handleEditorChanged);
+    _flushHook = _editor.flushText;
+    _editor.addFlushHook(_flushHook!);
+  }
+
+  void _detachEditor() {
+    final flushHook = _flushHook;
+    if (flushHook != null) _editor.removeFlushHook(flushHook);
+    _flushHook = null;
+    _editor.removeListener(_handleEditorChanged);
   }
 
   @override
