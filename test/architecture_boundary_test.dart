@@ -67,4 +67,20 @@ void main() {
       );
     }
   });
+
+  test('editor core contains no Flutter view implementations', () {
+    final files = Directory('lib/editor')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'));
+
+    for (final file in files) {
+      final source = file.readAsStringSync();
+      expect(
+        source,
+        isNot(anyOf(contains('StatefulWidget'), contains('StatelessWidget'))),
+        reason: '${file.path} must remain controller, state, or geometry code',
+      );
+    }
+  });
 }
