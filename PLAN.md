@@ -3,8 +3,8 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-28 on top of commit `9dcd45b` (`refactor: isolate app
-composition and enforce UI boundaries`). The editor controller, history,
+Last audited: 2026-08-28 on top of commit `f44053a` (`refactor: centralize
+editor factory construction`). The editor controller, history,
 clipboard, and canvas are document/node native; metadata and workflow
 persistence route through feature view models; editor factories, platform
 services, and persistence wiring are owned by the composition root; media
