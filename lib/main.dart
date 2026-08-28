@@ -6,7 +6,9 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'app/app_dependencies.dart';
 import 'services/audio_playback.dart';
 import 'ui/features/journal/views/journal_screen.dart';
+import 'ui/features/journal/view_models/journal_view_model.dart';
 import 'ui/features/editor/view_models/entry_editor_view_model.dart';
+import 'ui/features/music/view_models/page_music_controller.dart';
 import 'services/repositories.dart';
 import 'widgets/paper_page.dart';
 
@@ -290,7 +292,7 @@ class JournalApp extends StatelessWidget {
           ),
         ),
       ),
-      home: JournalScreen(
+      home: _ConfiguredJournalScreen(
         repositories: repositories,
         musicCatalog: musicCatalog,
         audioPlaybackFactory: audioPlaybackFactory,
@@ -298,6 +300,46 @@ class JournalApp extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Composition-owned feature model construction. The journal shell receives
+/// configured models and services rather than constructing repository clients
+/// inside its view tree.
+class _ConfiguredJournalScreen extends StatefulWidget {
+  const _ConfiguredJournalScreen({
+    required this.repositories,
+    required this.musicCatalog,
+    required this.audioPlaybackFactory,
+    required this.editorViewModelFactory,
+  });
+
+  final JournalRepositories repositories;
+  final MusicCatalogRepository musicCatalog;
+  final AudioPlaybackFactory audioPlaybackFactory;
+  final EntryEditorViewModelFactory editorViewModelFactory;
+
+  @override
+  State<_ConfiguredJournalScreen> createState() =>
+      _ConfiguredJournalScreenState();
+}
+
+class _ConfiguredJournalScreenState extends State<_ConfiguredJournalScreen> {
+  late final JournalViewModel _journal = JournalViewModel(
+    repository: widget.repositories.documentRepository,
+    assetRepository: widget.repositories.assetRepository,
+  );
+  late final PageMusicController _music = PageMusicController(
+    catalog: widget.musicCatalog,
+    playback: widget.audioPlaybackFactory(),
+    persistResolvedTrack: _journal.persistResolvedTrack,
+  );
+
+  @override
+  Widget build(BuildContext context) => JournalScreen(
+    journal: _journal,
+    music: _music,
+    editorViewModelFactory: widget.editorViewModelFactory,
+  );
 }
 
 AudioPlaybackService _disabledAudioFactory() =>

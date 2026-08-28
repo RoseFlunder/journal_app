@@ -5,9 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../models/document.dart';
-import '../../../../models/page_music.dart';
-import '../../../../services/audio_playback.dart';
-import '../../../../services/repositories.dart';
 import '../view_models/journal_view_model.dart';
 import '../../editor/view_models/entry_editor_view_model.dart';
 import '../../music/view_models/page_music_controller.dart';
@@ -20,15 +17,13 @@ import '../../editor/views/entry_page.dart';
 class JournalScreen extends StatefulWidget {
   const JournalScreen({
     super.key,
-    required this.repositories,
-    required this.musicCatalog,
-    required this.audioPlaybackFactory,
+    required this.journal,
+    required this.music,
     required this.editorViewModelFactory,
   });
 
-  final JournalRepositories repositories;
-  final MusicCatalogRepository musicCatalog;
-  final AudioPlaybackFactory audioPlaybackFactory;
+  final JournalViewModel journal;
+  final PageMusicController music;
   final EntryEditorViewModelFactory editorViewModelFactory;
 
   @override
@@ -50,15 +45,8 @@ class _JournalScreenState extends State<JournalScreen> {
   @override
   void initState() {
     super.initState();
-    _journal = JournalViewModel(
-      repository: widget.repositories.documentRepository,
-      assetRepository: widget.repositories.assetRepository,
-    );
-    _music = PageMusicController(
-      catalog: widget.musicCatalog,
-      playback: widget.audioPlaybackFactory(),
-      persistResolvedTrack: _persistResolvedTrack,
-    );
+    _journal = widget.journal;
+    _music = widget.music;
   }
 
   @override
@@ -194,23 +182,9 @@ class _JournalScreenState extends State<JournalScreen> {
       controlsVisible: _entryChromeVisible,
       active: document.id == _activeEntryId,
       musicController: _music,
-      onDocumentPreviewChanged:
-          widget.repositories.documentRepository.previewDocument,
+      onDocumentPreviewChanged: _journal.previewDocument,
       onEditingChanged: (editing) =>
           _handleEditingChanged(document.id, editing),
-    );
-  }
-
-  Future<void> _persistResolvedTrack(
-    String pageId,
-    PageMusicTrack track,
-  ) async {
-    final document = widget.repositories.documentRepository.documents
-        .where((candidate) => candidate.id == pageId)
-        .firstOrNull;
-    if (document == null) return;
-    await widget.repositories.documentRepository.saveDocument(
-      document.copyWith(music: track, modifiedAt: DateTime.now()),
     );
   }
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../../../models/document.dart';
+import '../../../../models/page_music.dart';
 import '../../../../services/repositories.dart';
 
 /// Presentation state and commands for the journal page shell.
@@ -46,6 +47,23 @@ class JournalViewModel extends ChangeNotifier {
     await _repository.saveDocument(document);
     _refresh();
   }
+
+  /// Persists a catalog-resolved track without exposing the document
+  /// repository to the music controller or its views.
+  Future<void> persistResolvedTrack(
+    String pageId,
+    PageMusicTrack track,
+  ) async {
+    final document = documentById(pageId);
+    if (document == null) return;
+    await saveDocument(
+      document.copyWith(music: track, modifiedAt: DateTime.now()),
+    );
+  }
+
+  /// Publishes a responsive editor preview through the document capability.
+  void previewDocument(EntryDocument document) =>
+      _repository.previewDocument(document);
 
   Future<void> deletePage(String id) async {
     await _repository.deleteDocument(id);
