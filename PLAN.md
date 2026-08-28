@@ -3,19 +3,20 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-28 on top of commit `b059703` (`refactor: inject
-configured editor view models`). The editor controller, history, clipboard, and
-canvas are document/node native; metadata and workflow persistence route
-through feature view models; media referenced by undo/redo and clipboard
-snapshots is retained. Legacy `Entry`/`ContentBlock` conversion is isolated in
-`EntryDocumentCodec` at the storage boundary. Production Hive repositories now
-depend on focused capability data sources; the old mutable-store adapters are
-test-only support. Journal contents receives asset reads through its view model
-rather than a repository. The journal shell now caches one configured editor
-view model per entry, and `EntryPage` only renders and dispatches through that
-model. Feature-native canvas, toolbar, More tools, layers, image, history,
-template, shape, alignment, transform, ink, music, and settings views are
-active, and the obsolete toolbar export and image-editor path are gone.
+Last audited: 2026-08-28 on top of commit `90bc5e9` (`refactor: remove mutable
+journal store facade`). The editor controller, history, clipboard, and canvas
+are document/node native; metadata and workflow persistence route through
+feature view models; media referenced by undo/redo and clipboard snapshots is
+retained. Legacy `Entry`/`ContentBlock` conversion is isolated in
+`EntryDocumentCodec` at the storage boundary. Production Hive repositories and
+storage tests use focused capability data sources; the mutable `JournalStore`
+aggregate and its adapters are removed. Journal contents receives asset reads
+through its view model rather than a repository. The journal shell caches one
+configured editor view model per entry, and `EntryPage` only renders and
+dispatches through that model. Feature-native canvas, toolbar, More tools,
+layers, image, history, template, shape, alignment, transform, ink, music, and
+settings views are active, and the obsolete toolbar export and image-editor
+path are gone.
 Focused editor, repository, boundary, and widget suites pass; Android, Web,
 and Windows release builds passed before this final view cleanup.
 
@@ -45,7 +46,8 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [~] Saving and retryable failure UI exists; Saved feedback, error details,
   and failure integration coverage are missing.
 - [x] Journal, asset, checkpoint, and template repository interfaces have Hive
-  implementations backed by direct capability adapters.
+  implementations backed by direct capability adapters; storage tests exercise
+  those same sources without a mutable aggregate facade.
 - [x] Screens receive configured editor view-model factories and narrow
   capability contracts through the composition root; each entry page receives
   a cached configured editor view model. Production Hive adapters depend on

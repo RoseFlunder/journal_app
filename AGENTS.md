@@ -11,8 +11,8 @@ Cozy Bloom Journal is a Flutter journal app for Android, Windows, and Web.
 - `lib/services/` owns Hive, archives, assets, checkpoints, and persistence
   coordination. Feature code must not access raw `dart:io` storage paths.
 - Screens and view models depend on narrow repository interfaces from
-  `lib/services/repositories.dart`; they must not depend directly on
-  `JournalStore`.
+  `lib/services/repositories.dart`; they must not depend directly on raw Hive
+  data sources or mutable storage records.
 - `EntryDocument`, `CanvasNode`, `Transform2D`, and editor snapshots are
   immutable boundaries. `Entry` and `ContentBlock` are legacy mutable
   adapters and should stay at compatibility edges while the editor migrates.

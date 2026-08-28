@@ -18,6 +18,11 @@ void main() {
 
     for (final file in files) {
       final source = file.readAsStringSync();
+      expect(
+        source,
+        isNot(matches(RegExp(r'''import\s+['"](?:package:hive|package:hive_flutter)/'''))),
+        reason: '${file.path} must not depend on Hive directly',
+      );
       for (final name in forbidden) {
         expect(
           source,
@@ -25,6 +30,26 @@ void main() {
           reason: '${file.path} must not depend on $name',
         );
       }
+    }
+  });
+
+  test('feature views do not import repository or storage implementations', () {
+    final files = Directory('lib/ui/features')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where(
+          (file) =>
+              file.path.contains('${Platform.pathSeparator}views${Platform.pathSeparator}') &&
+              file.path.endsWith('.dart'),
+        );
+
+    for (final file in files) {
+      final source = file.readAsStringSync();
+      expect(
+        source,
+        isNot(matches(RegExp(r'''import\s+['"].*services/(?:repositories|hive_)'''))),
+        reason: '${file.path} must depend on configured feature state',
+      );
     }
   });
 
