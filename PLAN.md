@@ -3,15 +3,17 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-27 on top of commit `0dd8fca` (`refactor: remove mutable
-canvas callbacks`). The editor controller, history, clipboard, and canvas are
-document/node native; metadata and workflow persistence route through the
-feature view model; media referenced by undo/redo and clipboard snapshots is
-retained. Feature-native canvas, toolbar, More tools, layers, image, history,
-template, shape, alignment, and transform views are active, and the obsolete
-toolbar export and image-editor path are gone. Focused editor, repository,
-boundary, and widget suites pass; Android, Web, and Windows release builds
-passed before this final view cleanup.
+Last audited: 2026-08-28 on top of commit `e05e3ef` (`refactor: specialize
+editor history commands`). The editor controller, history, clipboard, and
+canvas are document/node native; metadata and workflow persistence route
+through the feature view model; media referenced by undo/redo and clipboard
+snapshots is retained. Legacy `Entry`/`ContentBlock` conversion is isolated in
+`EntryDocumentCodec` at the storage boundary. Feature-native canvas, toolbar,
+More tools, layers, image, history, template, shape, alignment, transform,
+ink, music, and settings views are active, and the obsolete toolbar export and
+image-editor path are gone. Focused editor, repository, boundary, and widget
+suites pass; Android, Web, and Windows release builds passed before this final
+view cleanup.
 
 Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
@@ -23,14 +25,16 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
   `EditorDocumentSnapshot` boundaries are the controller's working state and
   the active renderer consumes immutable world-space node projections.
   `EntryCanvas` now accepts only immutable nodes and emits typed transform and
-  ink intents; legacy `Entry`/`ContentBlock` remains at compatibility edges.
+  ink intents; legacy `Entry`/`ContentBlock` remains at the storage edge, with
+  all conversion confined to `EntryDocumentCodec`.
 - [x] Fresh-data startup; legacy migration is out of scope.
 - [x] `EditorController` owns selection, transactions, clipboard, 100-step
   undo/redo, text coalescing, and save state.
 - [x] Completed transform gestures produce one undo entry and one save.
 - [~] Typed immutable `EditorCommand` values now back undo/redo for transform,
-  board, node, and structural edits. A transitional whole-document replacement
-  command remains only for legacy snapshot operations.
+  board, insert, delete, style, grouping, reorder, node, and structural edits.
+  A transitional whole-document replacement command remains only for edits
+  that do not yet have a specialized delta.
 - [x] Five-minute checkpoint scheduling no longer resets after every save.
 - [~] Manual checkpoint creation, pruning, listing, and restore UI exist;
   background checkpoint creation is missing.
@@ -167,9 +171,11 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
 1. **Complete the document-model migration**
    - Keep `Entry`/`ContentBlock` conversion confined to the storage codec and
-     remove any remaining production compatibility-edge usage.
-   - Finish extracting the remaining color/music dialog surfaces from the
-     editor page; keep workflows in focused use cases/view-model methods.
+     replace the remaining mutable `JournalStore` aggregate operations with
+     direct capability data sources.
+   - Finish extracting the remaining editor-page workflow orchestration into
+     focused use cases/view-model methods; the ink, music, text formatting, and
+     metadata surfaces already follow this boundary.
 
 2. **Correctness hardening**
    - Fix image edge resizing, image-sheet state, lifecycle ordering, visible
