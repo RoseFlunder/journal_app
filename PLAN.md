@@ -3,17 +3,18 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-28 on top of commit `e05e3ef` (`refactor: specialize
-editor history commands`). The editor controller, history, clipboard, and
+Last audited: 2026-08-28 on top of commit `b551368` (`refactor: isolate
+legacy Hive test adapters`). The editor controller, history, clipboard, and
 canvas are document/node native; metadata and workflow persistence route
 through the feature view model; media referenced by undo/redo and clipboard
 snapshots is retained. Legacy `Entry`/`ContentBlock` conversion is isolated in
-`EntryDocumentCodec` at the storage boundary. Feature-native canvas, toolbar,
-More tools, layers, image, history, template, shape, alignment, transform,
-ink, music, and settings views are active, and the obsolete toolbar export and
-image-editor path are gone. Focused editor, repository, boundary, and widget
-suites pass; Android, Web, and Windows release builds passed before this final
-view cleanup.
+`EntryDocumentCodec` at the storage boundary. Production Hive repositories now
+depend on focused capability data sources; the old mutable-store adapters are
+test-only support. Feature-native canvas, toolbar, More tools, layers, image,
+history, template, shape, alignment, transform, ink, music, and settings views
+are active, and the obsolete toolbar export and image-editor path are gone.
+Focused editor, repository, boundary, and widget suites pass; Android, Web,
+and Windows release builds passed before this final view cleanup.
 
 Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
@@ -43,8 +44,9 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [x] Journal, asset, checkpoint, and template repository interfaces have Hive
   implementations backed by direct capability adapters.
 - [x] Screens receive configured editor view-model factories and narrow
-  capability contracts through the composition root; `JournalStore` is kept
-  behind Hive adapters.
+  capability contracts through the composition root; production Hive adapters
+  depend on focused internal data sources and `JournalStore` is not imported
+  by the app composition root.
 - [x] Asset collection protects live documents, checkpoints, templates,
   immutable undo/redo snapshots, and clipboard references.
 - [x] Serialize final text commit, background checkpoint, and storage flush to
@@ -171,8 +173,8 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
 1. **Complete the document-model migration**
    - Keep `Entry`/`ContentBlock` conversion confined to the storage codec and
-     replace the remaining mutable `JournalStore` aggregate operations with
-     direct capability data sources.
+     migrate the remaining legacy storage-only tests off the mutable
+     `JournalStore` aggregate before deleting that compatibility service.
    - Finish extracting the remaining editor-page workflow orchestration into
      focused use cases/view-model methods; the ink, music, text formatting, and
      metadata surfaces already follow this boundary.
