@@ -20,6 +20,7 @@ import '../use_cases/checkpoint_recovery_use_case.dart';
 import '../use_cases/image_insertion_use_case.dart';
 import '../use_cases/template_workflow.dart';
 import 'editor_tool_state.dart';
+import '../../music/view_models/music_picker_view_model.dart';
 
 typedef EntryEditorViewModelFactory = EntryEditorViewModel Function(
   EntryDocument document,
@@ -83,30 +84,31 @@ class EntryEditorViewModel extends EditorController {
 
   String get documentId => _documentId;
   String? get workflowError => _workflowError;
-  DocumentRepository get documentRepository => _documentRepository;
-  CheckpointRepository get checkpointRepository => _checkpointRepository;
+  /// Repository capabilities stay private to this feature model. The
+  /// nullable backing fields keep the core editor usable in focused unit
+  /// tests; production supplies all capabilities through the composition
+  /// root.
+  Uint8List? readAsset(String id) => _assets?.readAsset(id);
 
-  /// Repository capabilities owned by this feature view model. The nullable
-  /// backing fields keep the core editor usable in focused unit tests; the
-  /// production editor factory supplies all capabilities.
-  AssetRepository get assetRepository => _assets!;
-  TemplateRepository get templateRepository => _templates!;
-  PreferencesRepository get preferenceRepository => _preferences!;
-  PersistenceRepository get persistence => _persistence!;
-  ArchiveRepository get archiveRepository => _archives!;
-  MusicCatalogRepository get musicCatalog =>
-      _musicCatalog ?? const DisabledMusicCatalogRepository();
-  AudioPlaybackFactory get audioPlaybackFactory =>
-      _audioPlaybackFactory ?? (() => const DisabledAudioPlaybackService());
-  Uint8List? readAsset(String id) => assetRepository.readAsset(id);
+  /// Creates the configured music picker model without exposing the catalog
+  /// or playback factory to a feature view.
+  MusicPickerViewModel createMusicPickerViewModel({PageMusicTrack? current}) =>
+      MusicPickerViewModel(
+        catalog: _musicCatalog ?? const DisabledMusicCatalogRepository(),
+        playback:
+            (_audioPlaybackFactory ??
+                (() => const DisabledAudioPlaybackService()))(),
+        current: current,
+      );
 
   /// Coordinates editor flushes with the application persistence owner.
-  void addFlushHook(Future<void> Function() hook) => persistence.addFlushHook(hook);
+  void addFlushHook(Future<void> Function() hook) =>
+      _persistence!.addFlushHook(hook);
 
   void removeFlushHook(Future<void> Function() hook) =>
-      persistence.removeFlushHook(hook);
+      _persistence!.removeFlushHook(hook);
 
-  Future<void> flushPersistence() => persistence.flush();
+  Future<void> flushPersistence() => _persistence!.flush();
 
   /// Current immutable settings for newly-created vector ink.
   InkSettings get inkSettings => _inkSettings;
@@ -144,7 +146,7 @@ class EntryEditorViewModel extends EditorController {
   /// Runs media cleanup without deleting assets still reachable from this
   /// editor's immutable undo/redo or clipboard snapshots.
   Future<void> collectUnreferencedAssets() =>
-      assetRepository.collectUnreferencedAssets(
+      _assets!.collectUnreferencedAssets(
         retainedAssetIds: retainedAssetIds,
       );
 
@@ -279,12 +281,12 @@ class EntryEditorViewModel extends EditorController {
   String? get selectedId => selection.isEmpty ? null : selection.last;
 
   late final TemplateWorkflow _templateWorkflow = TemplateWorkflow(
-    templates: templateRepository,
+    templates: _templates!,
   );
   late final CheckpointRecoveryUseCase _checkpointRecovery =
       CheckpointRecoveryUseCase(
-        checkpoints: checkpointRepository,
-        documents: documentRepository,
+        checkpoints: _checkpointRepository,
+        documents: _documentRepository,
       );
 
   Future<({ProcessedImage image, String assetId})> insertImageAsset({
@@ -293,7 +295,7 @@ class EntryEditorViewModel extends EditorController {
     required ImageProcessor processor,
   }) =>
       ImageInsertionUseCase(
-        assets: assetRepository,
+        assets: _assets!,
         processor: processor,
       ).processAndStore(ownerId: ownerId, picked: picked);
 
@@ -341,13 +343,13 @@ class EntryEditorViewModel extends EditorController {
     required JournalTransferService transfer,
   }) =>
       ArchiveTransferUseCase(
-        archives: archiveRepository,
+        archives: _archives!,
         transfer: transfer,
       ).exportDocument(documentId: documentId, fileName: fileName);
 
   Future<EntryDocument?> importArchive(JournalTransferService transfer) =>
       ArchiveTransferUseCase(
-        archives: archiveRepository,
+        archives: _archives!,
         transfer: transfer,
       ).importDocument();
 
