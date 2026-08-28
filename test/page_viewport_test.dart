@@ -3,7 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/entry.dart';
+import 'package:journal_app/ui/features/editor/views/editor_canvas.dart';
 import 'package:journal_app/widgets/page_viewport.dart';
 
 void main() {
@@ -282,5 +284,167 @@ void main() {
     expect(after.y, isNot(closeTo(before.y, 0.001)));
     expect(after.x, isNot(closeTo(before.x, 0.001)));
     debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets(
+    'disabled panning blocks drag and plain wheel but preserves Ctrl-wheel zoom',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      try {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SizedBox(
+              width: 800,
+              height: 600,
+              child: PageViewport(
+                initialView: const ViewState(zoom: 1),
+                panEnabled: false,
+                child: const ColoredBox(color: Colors.amber),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        InteractiveViewer viewer() => tester.widget<InteractiveViewer>(
+          find.byType(InteractiveViewer),
+        );
+
+        expect(viewer().panEnabled, isFalse);
+        final before = viewer().transformationController!.value;
+        final beforeTranslation = before.getTranslation();
+        final beforeScale = before.getMaxScaleOnAxis();
+
+        final gesture = await tester.startGesture(
+          const Offset(400, 300),
+          kind: PointerDeviceKind.mouse,
+          buttons: kPrimaryButton,
+        );
+        await gesture.moveBy(const Offset(80, 60));
+        await gesture.up();
+        await tester.pump();
+
+        final afterDrag = viewer().transformationController!.value;
+        expect(
+          afterDrag.getTranslation().x,
+          closeTo(beforeTranslation.x, 0.001),
+        );
+        expect(
+          afterDrag.getTranslation().y,
+          closeTo(beforeTranslation.y, 0.001),
+        );
+
+        await tester.sendEventToBinding(
+          const PointerScrollEvent(
+            kind: PointerDeviceKind.mouse,
+            position: Offset(400, 300),
+            scrollDelta: Offset(0, 20),
+          ),
+        );
+        await tester.pump();
+
+        final afterWheel = viewer().transformationController!.value;
+        expect(
+          afterWheel.getTranslation().y,
+          closeTo(beforeTranslation.y, 0.001),
+        );
+
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.control);
+        await tester.sendEventToBinding(
+          const PointerScrollEvent(
+            kind: PointerDeviceKind.mouse,
+            position: Offset(400, 300),
+            scrollDelta: Offset(0, -20),
+          ),
+        );
+        await tester.pump();
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.control);
+
+        expect(
+          viewer().transformationController!.value.getMaxScaleOnAxis(),
+          greaterThan(beforeScale),
+        );
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    },
+  );
+
+  testWidgets('lasso selection does not move a disabled-pan viewport', (
+    tester,
+  ) async {
+    final nodes = [
+      CanvasNode(
+        id: 'one',
+        type: BlockType.text,
+        transform: const Transform2D(x: 8, y: 8, width: 12, height: 8),
+        payload: const {'text': 'One'},
+      ),
+      CanvasNode(
+        id: 'two',
+        type: BlockType.text,
+        transform: const Transform2D(x: 22, y: 16, width: 12, height: 8),
+        payload: const {'text': 'Two'},
+      ),
+    ];
+    Set<String> selectedIds = <String>{};
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 400,
+          height: 300,
+          child: PageViewport(
+            canvasSize: const Size(400, 300),
+            pageRect: const Rect.fromLTWH(0, 0, 400, 300),
+            panEnabled: false,
+            child: StatefulBuilder(
+              builder: (context, setState) => EntryCanvas(
+                workspaceSize: const Size(400, 300),
+                nodes: nodes,
+                editing: true,
+                selectMode: true,
+                selectedId: selectedIds.isEmpty ? null : selectedIds.last,
+                selectedIds: selectedIds,
+                textEditingId: null,
+                onSelect: (_) {},
+                onEditText: (_) {},
+                onLassoSelected: (ids) {
+                  setState(() => selectedIds = ids);
+                },
+                imageBytes: (_) => null,
+                onOpenImage: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final viewer = tester.widget<InteractiveViewer>(
+      find.byType(InteractiveViewer),
+    );
+    final before = viewer.transformationController!.value.getTranslation();
+    final canvasRect = tester.getRect(find.byType(EntryCanvas));
+    final gesture = await tester.startGesture(
+      canvasRect.topLeft + const Offset(8, 8),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await gesture.moveTo(canvasRect.bottomRight - const Offset(40, 40));
+    await gesture.up();
+    await tester.pump();
+
+    expect(selectedIds, {'one', 'two'});
+    final after = tester
+        .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+        .transformationController!
+        .value
+        .getTranslation();
+    expect(after.x, closeTo(before.x, 0.001));
+    expect(after.y, closeTo(before.y, 0.001));
   });
 }

@@ -146,6 +146,11 @@ class _EntryCanvasState extends State<EntryCanvas> {
   @override
   void didUpdateWidget(covariant EntryCanvas oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!widget.editing || (oldWidget.selectMode && !widget.selectMode)) {
+      _lassoPointer = null;
+      _lassoStart = null;
+      _lassoEnd = null;
+    }
     final activeBlockIds = {
       if (_moveSession case final session?) session.blockId,
       if (_resizeSession case final session?) session.blockId,
@@ -527,16 +532,16 @@ class _EntryCanvasState extends State<EntryCanvas> {
       rotateSelection(delta);
       return;
     }
-      _emitTransform(
-        block.id,
-        Transform2D(
+    _emitTransform(
+      block.id,
+      Transform2D(
         x: block.x,
         y: block.y,
         width: block.w,
         height: block.h,
         rotation: block.rotation + delta,
       ),
-      );
+    );
   }
 
   Transform2D _resizedTransform(
@@ -691,10 +696,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
     if (session == null || session.blockId != block.id) return;
     final pointer = _resizePointerToModel(globalPosition);
     if (pointer == null) return;
-    _emitTransform(
-      block.id,
-      _resizedTransform(block, session, pointer),
-    );
+    _emitTransform(block.id, _resizedTransform(block, session, pointer));
   }
 
   void _endResize() {
@@ -972,7 +974,6 @@ class _EntryCanvasState extends State<EntryCanvas> {
 
   String? _visualId(CanvasRenderable block) =>
       block.type == BlockType.sticker ? block.stickerId : block.assetId;
-
 }
 
 class _BlockMoveSession {

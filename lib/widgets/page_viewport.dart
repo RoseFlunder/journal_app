@@ -20,6 +20,7 @@ class PageViewport extends StatefulWidget {
     this.onScaleChanged,
     this.interactive = true,
     this.gesturesEnabled = true,
+    this.panEnabled = true,
     this.controlsVisible = true,
     this.minZoom = 0.5,
     this.maxZoom = 3.0,
@@ -55,6 +56,13 @@ class PageViewport extends StatefulWidget {
   final ValueChanged<double>? onScaleChanged;
   final bool interactive;
   final bool gesturesEnabled;
+
+  /// Whether pointer gestures may translate the page camera.
+  ///
+  /// This is independent from [gesturesEnabled] so an editor can suppress
+  /// camera panning while retaining other gesture-driven interactions such as
+  /// Ctrl+wheel zoom.
+  final bool panEnabled;
   final bool controlsVisible;
   final double minZoom;
   final double maxZoom;
@@ -187,6 +195,7 @@ class _PageViewportState extends State<PageViewport> {
       _setZoom(_camera.zoom * factor, focalPoint: focal);
       return;
     }
+    if (!widget.panEnabled) return;
     _camera.panBy(event.scrollDelta);
   }
 
@@ -285,7 +294,10 @@ class _PageViewportState extends State<PageViewport> {
                 minScale: minScale > 0 ? minScale : widget.minZoom,
                 maxScale: maxScale > 0 ? maxScale : widget.maxZoom,
                 constrained: false,
-                panEnabled: widget.interactive && widget.gesturesEnabled,
+                panEnabled:
+                    widget.interactive &&
+                    widget.gesturesEnabled &&
+                    widget.panEnabled,
                 // InteractiveViewer scales every mouse-wheel event by
                 // default. Windows and Web use the explicit handler above
                 // so only Ctrl+wheel zooms; plain wheel input pans.

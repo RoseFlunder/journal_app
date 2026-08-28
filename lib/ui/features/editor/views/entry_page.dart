@@ -1249,6 +1249,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                     (!(_editing && _editor.hasSelection) ||
                         kIsWeb ||
                         defaultTargetPlatform == TargetPlatform.windows),
+                panEnabled: !_selectMode,
                 initialView: _document.view,
                 onViewChanged: _handleViewChanged,
                 child: RepaintBoundary(

@@ -18,6 +18,7 @@ class EntryEditorSurface extends StatelessWidget {
     required this.controlsBottomInset,
     required this.controlsVisible,
     required this.gesturesEnabled,
+    this.panEnabled = true,
     required this.initialView,
     required this.onViewChanged,
   });
@@ -29,6 +30,7 @@ class EntryEditorSurface extends StatelessWidget {
   final double controlsBottomInset;
   final bool controlsVisible;
   final bool gesturesEnabled;
+  final bool panEnabled;
   final ViewState? initialView;
   final ValueChanged<ViewState> onViewChanged;
 
@@ -40,6 +42,7 @@ class EntryEditorSurface extends StatelessWidget {
     controlsBottomInset: controlsBottomInset,
     controlsVisible: controlsVisible,
     gesturesEnabled: gesturesEnabled,
+    panEnabled: panEnabled,
     initialView: initialView,
     onViewChanged: onViewChanged,
     child: child,
