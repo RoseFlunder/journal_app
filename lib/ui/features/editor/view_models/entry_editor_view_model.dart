@@ -2,6 +2,7 @@
 // private fields; initializing-formal linting cannot express that distinction.
 // ignore_for_file: prefer_initializing_formals, use_super_parameters
 
+import 'dart:async';
 import 'dart:ui';
 import 'dart:typed_data';
 
@@ -16,6 +17,7 @@ import '../use_cases/archive_transfer_use_case.dart';
 import '../use_cases/checkpoint_recovery_use_case.dart';
 import '../use_cases/image_insertion_use_case.dart';
 import '../use_cases/template_workflow.dart';
+import 'editor_tool_state.dart';
 
 typedef EntryEditorViewModelFactory = EntryEditorViewModel Function(
   EntryDocument document,
@@ -73,6 +75,7 @@ class EntryEditorViewModel extends EditorController {
   String? _textEditingId;
   String? _workflowError;
   EntryDocument? _pendingMetadata;
+  InkSettings _inkSettings = const InkSettings();
 
   String get documentId => _documentId;
   String? get workflowError => _workflowError;
@@ -92,6 +95,39 @@ class EntryEditorViewModel extends EditorController {
   AudioPlaybackFactory get audioPlaybackFactory =>
       _audioPlaybackFactory ?? (() => const DisabledAudioPlaybackService());
   Uint8List? readAsset(String id) => assetRepository.readAsset(id);
+
+  /// Current immutable settings for newly-created vector ink.
+  InkSettings get inkSettings => _inkSettings;
+
+  /// Updates the transient ink tool state without adding an editor history
+  /// command. The values are consumed by the canvas while drawing.
+  void updateInkSettings(InkSettings value) {
+    if (_inkSettings == value) return;
+    _inkSettings = value;
+    notifyListeners();
+  }
+
+  List<int> get recentColorValues =>
+      _preferences?.recentColorValues ?? const <int>[];
+
+  Set<int> get favoriteColorValues =>
+      _preferences?.favoriteColorValues ?? const <int>{};
+
+  void addRecentColor(int value) {
+    final preferences = _preferences;
+    if (preferences == null) return;
+    final recent = [
+      value,
+      ...preferences.recentColorValues.where((item) => item != value),
+    ].take(8).toList(growable: false);
+    unawaited(preferences.updateColorPreferences(recent: recent));
+  }
+
+  void updateFavoriteColors(Set<int> values) {
+    final preferences = _preferences;
+    if (preferences == null) return;
+    unawaited(preferences.updateColorPreferences(favorites: values));
+  }
 
   /// Runs media cleanup without deleting assets still reachable from this
   /// editor's immutable undo/redo or clipboard snapshots.

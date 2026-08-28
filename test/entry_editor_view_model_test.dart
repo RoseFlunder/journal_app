@@ -6,6 +6,7 @@ import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/services/repositories.dart';
 import 'package:journal_app/services/entry_document_codec.dart';
 import 'package:journal_app/ui/features/editor/view_models/entry_editor_view_model.dart';
+import 'package:journal_app/ui/features/editor/view_models/editor_tool_state.dart';
 
 void main() {
   test('owns tool and selection presentation state', () {
@@ -28,6 +29,27 @@ void main() {
     expect(editor.selectMode, isFalse);
     expect(editor.drawMode, isTrue);
     expect(editor.textEditingId, 'text');
+  });
+
+  test('owns immutable ink tool settings', () {
+    final document = _document();
+    final editor = EntryEditorViewModel(
+      document: document,
+      documentRepository: _FakeDocumentRepository(document),
+      checkpointRepository: _FakeCheckpointRepository(),
+    );
+    addTearDown(editor.dispose);
+
+    const updated = InkSettings(
+      colorValue: 0xFF286A68,
+      opacity: 0.6,
+      width: 4.2,
+    );
+    editor.updateInkSettings(updated);
+
+    expect(editor.inkSettings, updated);
+    expect(editor.inkSettings.pickerValue, 0x99286A68);
+    expect(editor.inkSettings.width, 4.2);
   });
 
   test('persists editor transactions through narrow repositories', () async {

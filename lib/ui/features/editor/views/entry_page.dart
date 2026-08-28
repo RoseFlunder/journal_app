@@ -17,6 +17,7 @@ import '../../../../models/view_state.dart';
 import '../../../../services/image_source.dart';
 import '../../../../services/journal_transfer_service.dart';
 import '../view_models/entry_editor_view_model.dart';
+import '../view_models/editor_tool_state.dart';
 import 'entry_editor_surface.dart';
 import 'editor_canvas_view.dart';
 import 'editor_layers_view.dart';
@@ -28,6 +29,7 @@ import 'editor_more_tools_view.dart';
 import 'editor_shape_picker_view.dart';
 import 'editor_alignment_view.dart';
 import 'editor_transform_inspector_view.dart';
+import 'editor_ink_settings_view.dart';
 import '../../music/view_models/page_music_controller.dart';
 import '../../music/views/music_picker_sheet.dart';
 import '../../../../widgets/entry_chrome.dart';
@@ -123,9 +125,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   static const _minFontSize = 12.0;
   static const _maxFontSize = 48.0;
   bool _resizeActive = false;
-  int _inkColorValue = 0xFF3B3226;
-  double _inkWidth = 1.8;
-  double _inkOpacity = 1;
   double _cameraScale = 1;
   bool _titleFocused = false;
   String? _colorTransactionBlockId;
@@ -164,6 +163,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
 
   List<CanvasNode> get _nodes => _editor.allNodes;
 
+  InkSettings get _inkSettings => _editor.inkSettings;
+  int get _inkColorValue => _inkSettings.colorValue;
+  double get _inkWidth => _inkSettings.width;
+  double get _inkOpacity => _inkSettings.opacity;
+
   CanvasNode? get _activeStrokeBlock {
     final primary = _editor.primaryNode;
     if (primary != null &&
@@ -189,10 +193,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         .toARGB32();
   }
 
-  int get _inkPickerValue =>
-      Color(_inkColorValue)
-          .withValues(alpha: _inkOpacity.clamp(0.0, 1.0).toDouble())
-          .toARGB32();
+  int get _inkPickerValue => _inkSettings.pickerValue;
 
   bool _isDrawable(CanvasRenderable block) =>
       block.type == BlockType.ink || block.type == BlockType.shape;
@@ -517,10 +518,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
 
   void _applyInkColorValue(int? value, {VoidCallback? refreshSheet}) {
     final color = value == null ? PaperPage.ink : Color(value);
-    setState(() {
-      _inkColorValue = color.withValues(alpha: 1).toARGB32();
-      _inkOpacity = value == null ? 1 : color.a;
-    });
+    _editor.updateInkSettings(
+      _inkSettings.copyWith(
+        colorValue: color.withValues(alpha: 1).toARGB32(),
+        opacity: value == null ? 1 : color.a,
+      ),
+    );
     refreshSheet?.call();
   }
 
@@ -553,53 +556,56 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     return _requestColorSample();
   }
 
-  Future<void> _openInkColorPicker(
+  Future<InkSettings?> _openInkColorPicker(
     BuildContext sheetContext,
-    StateSetter setSheetState,
+    InkSettings current,
   ) async {
-    final originalColor = _inkColorValue;
-    final originalOpacity = _inkOpacity;
-    final pickerValue = Color(originalColor)
-        .withValues(alpha: originalOpacity)
-        .toARGB32();
+    final original = current;
+    InkSettings preview = current;
     final result = await showVisualColorPicker(
       sheetContext,
-      initialValue: pickerValue,
+      initialValue: current.pickerValue,
       dialogTitle: 'Ink color',
-      recentColorValues:
-          _editor.preferenceRepository.recentColorValues,
-      favoriteColorValues:
-          _editor.preferenceRepository.favoriteColorValues,
-      onPreview: (value) =>
-          _applyInkColorValue(value, refreshSheet: () => setSheetState(() {})),
-      onFavoriteColorsChanged: _updateFavoriteColors,
+      recentColorValues: _editor.recentColorValues,
+      favoriteColorValues: _editor.favoriteColorValues,
+      onPreview: (value) {
+        preview = _inkSettingsForColor(current, value);
+        _editor.updateInkSettings(preview);
+      },
+      onFavoriteColorsChanged: _editor.updateFavoriteColors,
       onSampleColor: () => _sampleFromInkSettings(sheetContext),
     );
-    if (!mounted) return;
+    if (!mounted) return null;
     if (result?.isSample == true) {
-      if (!sheetContext.mounted) return;
+      if (!sheetContext.mounted) return null;
       final sampled = await _sampleFromInkSettings(sheetContext);
       if (sampled == null) {
-        setState(() {
-          _inkColorValue = originalColor;
-          _inkOpacity = originalOpacity;
-        });
+        _editor.updateInkSettings(original);
+        return null;
       } else {
         final value = sampled.toARGB32();
-        _applyInkColorValue(value);
-        _addRecentColor(value);
+        final next = _inkSettingsForColor(current, value);
+        _editor.updateInkSettings(next);
+        _editor.addRecentColor(value);
+        return next;
       }
-      return;
     }
     if (result == null) {
-      setState(() {
-        _inkColorValue = originalColor;
-        _inkOpacity = originalOpacity;
-      });
-      return;
+      _editor.updateInkSettings(original);
+      return null;
     }
-    _applyInkColorValue(result.value, refreshSheet: () => setSheetState(() {}));
-    if (result.value != null) _addRecentColor(result.value!);
+    final next = _inkSettingsForColor(preview, result.value);
+    _editor.updateInkSettings(next);
+    if (result.value != null) _editor.addRecentColor(result.value!);
+    return next;
+  }
+
+  InkSettings _inkSettingsForColor(InkSettings base, int? value) {
+    final color = value == null ? PaperPage.ink : Color(value);
+    return base.copyWith(
+      colorValue: color.withValues(alpha: 1).toARGB32(),
+      opacity: value == null ? 1 : color.a,
+    );
   }
 
   Future<Color?> _requestColorSample() {
@@ -662,28 +668,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     _colorSampleCompleter = null;
     if (mounted) setState(() => _samplingColor = false);
     if (completer != null && !completer.isCompleted) completer.complete(null);
-  }
-
-  void _addRecentColor(int value) {
-    final recent = [
-      value,
-      ..._editor.preferenceRepository.recentColorValues.where(
-        (item) => item != value,
-      ),
-    ].take(8).toList(growable: false);
-    unawaited(
-      _editor.preferenceRepository.updateColorPreferences(
-        recent: recent,
-      ),
-    );
-  }
-
-  void _updateFavoriteColors(Set<int> values) {
-    unawaited(
-      _editor.preferenceRepository.updateColorPreferences(
-        favorites: values,
-      ),
-    );
   }
 
   TextStyle _titleStyle(BuildContext context) =>
@@ -1026,75 +1010,19 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   Future<void> _showInkSettings() async {
-    final originalColor = _inkColorValue;
-    final originalOpacity = _inkOpacity;
-    final originalWidth = _inkWidth;
-    final result = await showModalBottomSheet<bool>(
+    final original = _inkSettings;
+    final result = await showModalBottomSheet<InkSettings>(
       context: context,
       backgroundColor: PaperPage.paper,
       showDragHandle: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const ListTile(
-                  leading: Icon(Icons.draw_outlined),
-                  title: Text('Ink settings'),
-                  subtitle: Text('Color, opacity, and stroke width'),
-                ),
-                ListTile(
-                  key: const ValueKey('ink-color'),
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    backgroundColor: Color(_inkColorValue)
-                        .withValues(alpha: _inkOpacity),
-                    child: const Icon(Icons.brush_outlined),
-                  ),
-                  title: const Text('Ink color'),
-                  subtitle: const Text('Open the visual color picker'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openInkColorPicker(context, setSheetState),
-                ),
-                const SizedBox(height: 8),
-                Text('Width ${_inkWidth.toStringAsFixed(1)}'),
-                Slider(
-                  min: 0.8,
-                  max: 8,
-                  value: _inkWidth,
-                  onChanged: (value) {
-                    setState(() => _inkWidth = value);
-                    setSheetState(() {});
-                  },
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Cancel'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Apply'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
+      builder: (sheetContext) => EditorInkSettingsView(
+        initial: original,
+        onPreview: _editor.updateInkSettings,
+        onPickColor: _openInkColorPicker,
       ),
     );
-    if (!mounted || result == true) return;
-    setState(() {
-      _inkColorValue = originalColor;
-      _inkOpacity = originalOpacity;
-      _inkWidth = originalWidth;
-    });
+    if (!mounted || result != null) return;
+    _editor.updateInkSettings(original);
   }
 
   void _showMoreTools() {
@@ -1759,14 +1687,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                           onTextColorChanged: _changeTextColor,
                           onTextColorEditStart: _beginTextColorEdit,
                           onTextColorEditEnd: _endTextColorEdit,
-                          recentColorValues: _editor
-                              .preferenceRepository
-                              .recentColorValues,
-                          favoriteColorValues: _editor
-                              .preferenceRepository
-                              .favoriteColorValues,
-                          onRecentColorAdded: _addRecentColor,
-                          onFavoriteColorsChanged: _updateFavoriteColors,
+                          recentColorValues: _editor.recentColorValues,
+                          favoriteColorValues: _editor.favoriteColorValues,
+                          onRecentColorAdded: _editor.addRecentColor,
+                          onFavoriteColorsChanged: _editor.updateFavoriteColors,
                           onSampleColor: _requestColorSample,
                           strokeColorValue: _activeStrokeColorValue,
                           strokeColorAvailable: _strokeColorAvailable,
@@ -1837,14 +1761,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       onTextColorChanged: _changeTextColor,
                       onTextColorEditStart: _beginTextColorEdit,
                       onTextColorEditEnd: _endTextColorEdit,
-                      recentColorValues: _editor
-                          .preferenceRepository
-                          .recentColorValues,
-                      favoriteColorValues: _editor
-                          .preferenceRepository
-                          .favoriteColorValues,
-                      onRecentColorAdded: _addRecentColor,
-                      onFavoriteColorsChanged: _updateFavoriteColors,
+                      recentColorValues: _editor.recentColorValues,
+                      favoriteColorValues: _editor.favoriteColorValues,
+                      onRecentColorAdded: _editor.addRecentColor,
+                      onFavoriteColorsChanged: _editor.updateFavoriteColors,
                       onSampleColor: _requestColorSample,
                       strokeColorValue: _activeStrokeColorValue,
                       strokeColorAvailable: _strokeColorAvailable,
