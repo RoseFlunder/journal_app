@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/services/repositories.dart';
+import 'package:journal_app/services/entry_document_codec.dart';
 import 'package:journal_app/ui/features/editor/view_models/entry_editor_view_model.dart';
 
 void main() {
@@ -103,7 +104,7 @@ void main() {
   });
 }
 
-EntryDocument _document() => EntryDocument.fromEntry(
+EntryDocument _document() => EntryDocumentCodec.fromEntry(
   Entry(
     id: 'entry',
     title: 'Test entry',

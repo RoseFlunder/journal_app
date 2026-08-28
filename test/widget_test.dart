@@ -9,11 +9,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:image/image.dart' as img;
 import 'package:journal_app/main.dart';
-import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/sticker.dart';
 import 'package:journal_app/services/journal_store.dart';
 import 'package:journal_app/services/hive_repositories.dart';
+import 'package:journal_app/services/entry_document_codec.dart';
 import 'package:journal_app/editor/block_widget.dart';
 import 'package:journal_app/ui/features/editor/views/editor_toolbar_view.dart';
 import 'package:journal_app/editor/entry_canvas.dart';
@@ -759,7 +759,8 @@ void main() {
             textEditingId: null,
             onSelect: (_) {},
             onEditText: (_) {},
-            onInkNodeCreated: (node) => drawn = node.toBlock(),
+            onInkNodeCreated: (node) =>
+                drawn = EntryDocumentCodec.blockFromNode(node),
             imageBytes: (_) => null,
             onOpenImage: (_) {},
           ),
@@ -1270,7 +1271,7 @@ void main() {
                 builder: (context, setState) => EntryCanvas(
                   key: ValueKey(transformScale),
                   workspaceSize: const Size(400, 300),
-                  nodes: [CanvasNode.fromBlock(block)],
+                  nodes: [EntryDocumentCodec.nodeFromBlock(block)],
                   editing: true,
                   selectedId: block.id,
                   textEditingId: null,
@@ -1430,8 +1431,8 @@ void main() {
           home: EntryCanvas(
             workspaceSize: const Size(800, 400),
             nodes: [
-              CanvasNode.fromBlock(first),
-              CanvasNode.fromBlock(second),
+              EntryDocumentCodec.nodeFromBlock(first),
+              EntryDocumentCodec.nodeFromBlock(second),
             ],
             editing: true,
             selectedId: first.id,
@@ -1507,7 +1508,7 @@ void main() {
           child: StatefulBuilder(
             builder: (context, setState) => EntryCanvas(
               workspaceSize: const Size(400, 300),
-              nodes: [CanvasNode.fromBlock(block)],
+              nodes: [EntryDocumentCodec.nodeFromBlock(block)],
               editing: true,
               selectedId: block.id,
               textEditingId: null,
@@ -1570,7 +1571,7 @@ void main() {
                 builder: (context, setState) => EntryCanvas(
                   key: ValueKey('resize-$transformScale'),
                   workspaceSize: const Size(400, 300),
-                  nodes: [CanvasNode.fromBlock(block)],
+                  nodes: [EntryDocumentCodec.nodeFromBlock(block)],
                   editing: true,
                   selectedId: block.id,
                   textEditingId: null,
@@ -1659,7 +1660,7 @@ void main() {
                 gesturesEnabled: !resizeActive,
                 child: EntryCanvas(
                   workspaceSize: const Size(400, 300),
-                  nodes: [CanvasNode.fromBlock(block)],
+                  nodes: [EntryDocumentCodec.nodeFromBlock(block)],
                   editing: true,
                   selectedId: block.id,
                   textEditingId: null,
@@ -1776,7 +1777,7 @@ void main() {
             height: 600,
             child: EntryCanvas(
               workspaceSize: const Size(400, 300),
-              nodes: [CanvasNode.fromBlock(block)],
+              nodes: [EntryDocumentCodec.nodeFromBlock(block)],
               editing: true,
               selectedId: block.id,
               textEditingId: null,
@@ -1835,7 +1836,7 @@ void main() {
           height: 600,
           child: EntryCanvas(
             workspaceSize: const Size(400, 300),
-            nodes: [CanvasNode.fromBlock(block)],
+            nodes: [EntryDocumentCodec.nodeFromBlock(block)],
             editing: true,
             selectedId: block.id,
             textEditingId: null,

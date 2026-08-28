@@ -4,6 +4,7 @@ import 'package:journal_app/editor/block_widget.dart';
 import 'package:journal_app/editor/entry_canvas.dart';
 import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/entry.dart';
+import 'package:journal_app/services/entry_document_codec.dart';
 
 void main() {
   testWidgets('canvas emits immutable transform intents', (tester) async {
@@ -22,7 +23,7 @@ void main() {
       MaterialApp(
         home: EntryCanvas(
           workspaceSize: const Size(400, 300),
-          nodes: [CanvasNode.fromBlock(block)],
+          nodes: [EntryDocumentCodec.nodeFromBlock(block)],
           editing: true,
           selectedId: block.id,
           textEditingId: null,

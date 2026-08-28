@@ -8,6 +8,7 @@ import '../models/entry.dart';
 import '../models/asset_kind.dart';
 import '../models/storage_records.dart';
 import '../models/template.dart';
+import 'entry_document_codec.dart';
 import 'journal_archive.dart';
 import 'hive_journal_data_source.dart';
 
@@ -381,9 +382,11 @@ class JournalStore extends ChangeNotifier {
       if (raw is! Map || raw['document'] is! Map) continue;
       try {
         collectBlocks(
-          EntryDocument.fromJson(
-            Map<String, dynamic>.from(raw['document'] as Map),
-          ).toEntry().blocks,
+          EntryDocumentCodec.toEntry(
+            EntryDocument.fromJson(
+              Map<String, dynamic>.from(raw['document'] as Map),
+            ),
+          ).blocks,
         );
       } catch (_) {
         // Ignore a corrupt template record and leave its media in place.
@@ -441,7 +444,7 @@ class JournalStore extends ChangeNotifier {
       );
     }
     return JournalArchive(
-      document: EntryDocument.fromEntry(_entries[index]),
+      document: EntryDocumentCodec.fromEntry(_entries[index]),
       assets: assets,
       templates: templates,
     );
@@ -450,7 +453,7 @@ class JournalStore extends ChangeNotifier {
   /// Imports an archive as a new entry. IDs are remapped so importing the
   /// same backup twice never aliases its assets or group references.
   Future<Entry> importArchive(JournalArchive archive) async {
-    final source = archive.document.toEntry();
+    final source = EntryDocumentCodec.toEntry(archive.document);
     final entry = await addEntry(title: source.title);
     final assetIds = <String, String>{};
     for (final asset in archive.assets) {

@@ -1,14 +1,14 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/template.dart';
 import 'package:journal_app/services/journal_archive.dart';
+import 'package:journal_app/services/entry_document_codec.dart';
 
 void main() {
   test('cozyjournal archive round-trips document, assets, and templates', () {
-    final document = EntryDocument.fromEntry(
+    final document = EntryDocumentCodec.fromEntry(
       Entry(
         id: 'archive-entry',
         title: 'Backup',

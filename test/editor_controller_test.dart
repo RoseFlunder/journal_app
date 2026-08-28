@@ -5,6 +5,7 @@ import 'package:journal_app/editor/editor_controller.dart';
 import 'package:journal_app/editor/editor_state.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/document.dart';
+import 'package:journal_app/services/entry_document_codec.dart';
 
 ContentBlock _text({String id = 'text', double x = 0, double y = 0}) =>
     ContentBlock(
@@ -20,7 +21,7 @@ ContentBlock _text({String id = 'text', double x = 0, double y = 0}) =>
 EntryDocument _documentFromBlocks(
   Iterable<ContentBlock> blocks, {
   BoardSettings board = const BoardSettings(),
-}) => EntryDocument.fromLegacyBlocks(
+}) => EntryDocumentCodec.fromLegacyBlocks(
   id: 'test-entry',
   title: 'Test entry',
   createdAt: DateTime.utc(2026),
@@ -30,7 +31,7 @@ EntryDocument _documentFromBlocks(
 
 extension _LegacyControllerInspection on EditorController {
   /// Test-only inspection adapter; production code consumes [document].
-  List<ContentBlock> get blocks => document.toEntry().blocks;
+  List<ContentBlock> get blocks => EntryDocumentCodec.toEntry(document).blocks;
 }
 
 void main() {
@@ -46,7 +47,10 @@ void main() {
 
       controller.select('text');
       expect(controller.state.selection, contains('text'));
-      expect(controller.state.document.blocks.single.id, 'text');
+      expect(
+        EntryDocumentCodec.toEntry(controller.state.document).blocks.single.id,
+        'text',
+      );
       controller.beginTransaction('Transform');
       controller.moveSelection(const Offset(5, 3));
       controller.moveSelection(const Offset(2, -1));
@@ -349,7 +353,7 @@ void main() {
         hidden: true,
       );
       final child = _text(id: 'template-child', x: 4, y: 5)..groupId = group.id;
-      final template = EntryDocument.fromLegacyBlocks(
+      final template = EntryDocumentCodec.fromLegacyBlocks(
         id: 'template',
         title: 'Template',
         createdAt: DateTime.utc(2026),
@@ -410,7 +414,7 @@ void main() {
         createdAt: DateTime.utc(2026),
         blocks: [_text(x: -8, y: 14)..opacity = 0.7],
       );
-      final document = EntryDocument.fromEntry(entry);
+      final document = EntryDocumentCodec.fromEntry(entry);
       expect(document.nodes, hasLength(1));
       expect(document.nodes.single.transform.x, -8);
       expect(document.nodes.single.opacity, 0.7);
@@ -419,7 +423,7 @@ void main() {
         throwsUnsupportedError,
       );
 
-      final restored = document.toEntry();
+      final restored = EntryDocumentCodec.toEntry(document);
       expect(restored.title, 'Sketches');
       expect(restored.blocks.single.x, -8);
       expect(restored.blocks.single.opacity, 0.7);
@@ -444,7 +448,7 @@ void main() {
     for (final child in children) {
       child.groupId = group.id;
     }
-    final document = EntryDocument.fromEntry(
+    final document = EntryDocumentCodec.fromEntry(
       Entry(
         id: 'nested-document',
         createdAt: DateTime.utc(2026),
@@ -459,7 +463,7 @@ void main() {
     expect(document.nodes.single.children.first.transform.y, 0);
     expect(document.nodes.single.children.last.transform.x, 40);
 
-    final restored = document.toEntry();
+    final restored = EntryDocumentCodec.toEntry(document);
     expect(restored.blocks, hasLength(3));
     expect(restored.blocks.first.type, BlockType.group);
     expect(restored.blocks.first.childIds, ['child-a', 'child-b']);

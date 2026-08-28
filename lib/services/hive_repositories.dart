@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import '../models/document.dart';
 import '../models/template.dart';
+import 'entry_document_codec.dart';
 import 'journal_archive.dart';
 import 'journal_store.dart';
 import 'repositories.dart';
@@ -23,20 +24,20 @@ class HiveDocumentRepository implements DocumentRepository {
 
   @override
   List<EntryDocument> get documents =>
-      _source.entries.map(EntryDocument.fromEntry).toList(growable: false);
+      _source.entries.map(EntryDocumentCodec.fromEntry).toList(growable: false);
 
   @override
   Stream<void> get changes => _source.changes;
 
   @override
   Future<EntryDocument> createDocument({String title = ''}) =>
-      _source.addEntry(title: title).then(EntryDocument.fromEntry);
+      _source.addEntry(title: title).then(EntryDocumentCodec.fromEntry);
 
   @override
   Future<void> saveDocument(EntryDocument document) => _source.updateEntry(
     document.id,
     (entry) {
-      final next = document.toEntry();
+      final next = EntryDocumentCodec.toEntry(document);
       entry
         ..title = next.title
         ..blocks = next.blocks
@@ -55,7 +56,7 @@ class HiveDocumentRepository implements DocumentRepository {
 
   @override
   void previewDocument(EntryDocument document) {
-    final next = document.toEntry();
+    final next = EntryDocumentCodec.toEntry(document);
     _source.previewEntry(document.id, (entry) {
       entry
         ..title = next.title
@@ -176,7 +177,7 @@ class HiveArchiveRepository implements ArchiveRepository {
 
   @override
   Future<EntryDocument> importArchive(JournalArchive archive) =>
-      _source.importArchive(archive).then(EntryDocument.fromEntry);
+      _source.importArchive(archive).then(EntryDocumentCodec.fromEntry);
 }
 
 class HivePersistenceRepository implements PersistenceRepository {

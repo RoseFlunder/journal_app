@@ -2,12 +2,10 @@ import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:ui';
 
-import 'entry.dart';
+import 'canvas.dart';
 import 'page_music.dart';
-
-// Public render contracts used by feature views. Mutable Entry/ContentBlock
-// remain implementation details of the compatibility codec.
-export 'entry.dart' show BlockType, BoardSettings, CanvasRenderable, JournalFonts;
+import 'view_state.dart';
+export 'canvas.dart' show BlockType, BoardSettings, CanvasRenderable, JournalFonts;
 
 /// Immutable world-space transform shared by every board node.
 class Transform2D {
@@ -256,30 +254,6 @@ class CanvasNode implements CanvasRenderable {
     'children': children.map((node) => node.toJson()).toList(),
   };
 
-  factory CanvasNode.fromBlock(
-    ContentBlock block, {
-    Iterable<CanvasNode> children = const [],
-    Transform2D? transform,
-  }) => CanvasNode(
-    id: block.id,
-    type: block.type,
-    transform:
-        transform ??
-        Transform2D(
-          x: block.x,
-          y: block.y,
-          width: block.w,
-          height: block.h,
-          rotation: block.rotation,
-        ),
-    payload: block.toJson(),
-    opacity: block.opacity,
-    locked: block.locked,
-    visible: !block.hidden,
-    accessibilityLabel: block.name,
-    children: children,
-  );
-
   factory CanvasNode.fromJson(Map<String, dynamic> json) {
     final transform = json['transform'] is Map
         ? Transform2D.fromJson(
@@ -315,18 +289,6 @@ class CanvasNode implements CanvasRenderable {
     );
   }
 
-  ContentBlock toBlock({Transform2D? worldTransform}) {
-    final resolvedTransform = worldTransform ?? transform;
-    final json = Map<String, dynamic>.from(payload)
-      ..['id'] = id
-      ..['type'] = type.name
-      ..addAll(resolvedTransform.toJson())
-      ..['opacity'] = opacity
-      ..['locked'] = locked
-      ..['hidden'] = !visible
-      ..['name'] = accessibilityLabel;
-    return ContentBlock.fromJson(json);
-  }
 }
 
 /// Immutable document boundary for repository, editor, archive, and sync
@@ -369,13 +331,6 @@ class EntryDocument {
   final int revision;
   final int schemaVersion;
 
-  /// Compatibility view for the legacy canvas and storage adapters.
-  ///
-  /// New code should use [nodes]. The returned blocks are detached mutable
-  /// adapters, so mutating one cannot mutate this document.
-  @Deprecated('Use immutable nodes instead.')
-  List<ContentBlock> get blocks => toEntry().blocks;
-
   EntryDocument copyWith({
     String? title,
     DateTime? modifiedAt,
@@ -414,43 +369,6 @@ class EntryDocument {
     schemaVersion: schemaVersion ?? this.schemaVersion,
   );
 
-  factory EntryDocument.fromEntry(Entry entry) => EntryDocument(
-    id: entry.id,
-    title: entry.title,
-    createdAt: entry.createdAt,
-    modifiedAt: entry.modifiedAt,
-    nodes: _topLevelNodes(entry.blocks),
-    board: entry.board,
-    view: entry.view,
-    music: entry.music,
-    titleFontSize: entry.titleFontSize,
-    titleFontFamily: entry.titleFontFamily,
-    titleTextColorValue: entry.titleTextColorValue,
-    titleBold: entry.titleBold,
-    titleItalic: entry.titleItalic,
-    revision: entry.revision,
-    schemaVersion: entry.schemaVersion,
-  );
-
-  /// Transitional storage-codec entry point for callers that still receive a
-  /// flattened legacy block graph. The mutable [Entry] adapter stays inside
-  /// this model/codec boundary instead of leaking into feature views.
-  factory EntryDocument.fromLegacyBlocks({
-    required String id,
-    required String title,
-    required DateTime createdAt,
-    required Iterable<ContentBlock> blocks,
-    BoardSettings board = const BoardSettings(),
-  }) => EntryDocument.fromEntry(
-    Entry(
-      id: id,
-      title: title,
-      createdAt: createdAt,
-      blocks: blocks.map((block) => block.clone()).toList(),
-      board: board,
-    ),
-  );
-
   factory EntryDocument.fromJson(Map<String, dynamic> json) => EntryDocument(
     id: json['id'] as String,
     title: json['title'] as String? ?? '',
@@ -477,24 +395,6 @@ class EntryDocument {
     titleItalic: json['titleItalic'] as bool? ?? false,
     revision: (json['revision'] as num?)?.toInt() ?? 0,
     schemaVersion: (json['schemaVersion'] as num?)?.toInt() ?? 1,
-  );
-
-  Entry toEntry() => Entry(
-    id: id,
-    title: title,
-    createdAt: createdAt,
-    modifiedAt: modifiedAt,
-    blocks: nodes.expand(_flattenNode).toList(),
-    board: board,
-    view: view,
-    music: music,
-    titleFontSize: titleFontSize,
-    titleFontFamily: titleFontFamily,
-    titleTextColorValue: titleTextColorValue,
-    titleBold: titleBold,
-    titleItalic: titleItalic,
-    revision: revision,
-    schemaVersion: schemaVersion,
   );
 
   /// Finds a node anywhere in the immutable document tree.
@@ -533,9 +433,9 @@ class EntryDocument {
   ///
   /// Group structure remains owned by the document tree; this projection is
   /// read-only and is intended for renderers that should not depend on the
-  /// mutable [ContentBlock] adapter. Group containers are not themselves
-  /// drawable, while their visible descendants are flattened with resolved
-  /// world transforms.
+  /// mutable storage adapter. Group containers are not themselves drawable,
+  /// while their visible descendants are flattened with resolved world
+  /// transforms.
   List<CanvasNode> get renderNodes {
     final rendered = <CanvasNode>[];
 
@@ -835,47 +735,6 @@ class EntryDocument {
     return copyWith(nodes: visit(nodes));
   }
 
-  /// Replaces a legacy flattened block at the immutable boundary. This is a
-  /// transitional bridge for the current canvas and converts the block's
-  /// world transform back to the node's parent-local coordinates.
-  @Deprecated('Migrate callers to replaceNode or replaceWorldTransforms.')
-  EntryDocument replaceLegacyBlock(ContentBlock block) {
-    var replaced = false;
-
-    CanvasNode visit(CanvasNode node, Transform2D? parentWorld) {
-      final currentWorld = parentWorld == null
-          ? node.transform
-          : _worldTransform(node.transform, parentWorld);
-      if (node.id == block.id) {
-        replaced = true;
-        final world = Transform2D(
-          x: block.x,
-          y: block.y,
-          width: block.w,
-          height: block.h,
-          rotation: block.rotation,
-        );
-        final local = parentWorld == null ? world : _toLocal(world, parentWorld);
-        return CanvasNode.fromBlock(
-          block,
-          transform: local,
-          children: node.children,
-        );
-      }
-      if (node.children.isEmpty) return node;
-      return node.copyWith(
-        children: node.children
-            .map((child) => visit(child, currentWorld))
-            .toList(growable: false),
-      );
-    }
-
-    final next = nodes
-        .map((node) => visit(node, null))
-        .toList(growable: false);
-    return replaced ? copyWith(nodes: next) : this;
-  }
-
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
@@ -893,82 +752,6 @@ class EntryDocument {
     'revision': revision,
     'schemaVersion': schemaVersion,
   };
-
-  static List<CanvasNode> _topLevelNodes(List<ContentBlock> blocks) {
-    final byId = {for (final block in blocks) block.id: block};
-    final building = <String>{};
-    CanvasNode build(ContentBlock block, ContentBlock? parent) {
-      if (!building.add(block.id)) {
-        return CanvasNode.fromBlock(block);
-      }
-      final children = block.type == BlockType.group
-          ? (block.childIds ?? const <String>[])
-                .map((id) => byId[id])
-                .whereType<ContentBlock>()
-                .map((child) => build(child, block))
-          : const <CanvasNode>[];
-      building.remove(block.id);
-      return CanvasNode.fromBlock(
-        block,
-        transform: _localTransform(block, parent),
-        children: children,
-      );
-    }
-
-    return blocks
-        .where(
-          (block) =>
-              block.groupId == null &&
-              (block.type != BlockType.group || block.childIds != null),
-        )
-        .map((block) => build(block, null))
-        .toList(growable: false);
-  }
-
-  static Iterable<ContentBlock> _flattenNode(
-    CanvasNode node, {
-    String? parentId,
-  }) sync* {
-    final block = node.toBlock();
-    if (parentId != null) block.groupId = parentId;
-    if (node.children.isNotEmpty) {
-      block.childIds = node.children.map((child) => child.id).toList();
-      block.hidden = true;
-    }
-    yield block;
-    for (final child in node.children) {
-      yield* _flattenNode(
-        child.copyWith(
-          transform: _worldTransform(child.transform, node.transform),
-        ),
-        parentId: node.id,
-      );
-    }
-  }
-
-  static Transform2D _localTransform(
-    ContentBlock block,
-    ContentBlock? parent,
-  ) {
-    final world = Transform2D(
-      x: block.x,
-      y: block.y,
-      width: block.w,
-      height: block.h,
-      rotation: block.rotation,
-    );
-    if (parent == null) return world;
-    return _toLocal(
-      world,
-      Transform2D(
-        x: parent.x,
-        y: parent.y,
-        width: parent.w,
-        height: parent.h,
-        rotation: parent.rotation,
-      ),
-    );
-  }
 
   static Transform2D _toLocal(Transform2D world, Transform2D parent) {
     final parentCenter = Offset(parent.width / 2, parent.height / 2);
