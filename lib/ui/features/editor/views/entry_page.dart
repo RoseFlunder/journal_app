@@ -147,9 +147,10 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   final Map<String, ImageProvider<Object>> _imageProviders = {};
   final Map<String, ImageProvider<Object>> _stickerProviders = {};
   late EntryEditorViewModel _editor;
-  late EntryDocument _document;
   Future<void> Function()? _flushHook;
   String? _lastWorkflowError;
+
+  EntryDocument get _document => _editor.document;
 
   // Presentation/tool state is owned by the feature view model. These
   // forwarding accessors keep this legacy surface readable while the view is
@@ -205,7 +206,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    _document = widget.document;
     WidgetsBinding.instance.addObserver(this);
     _editor = widget.editorViewModelFactory(widget.document)
       ..addListener(_handleEditorChanged);
@@ -222,7 +222,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       _editor
         ..removeListener(_handleEditorChanged)
         ..dispose();
-      _document = widget.document;
       _editor = widget.editorViewModelFactory(widget.document)
         ..addListener(_handleEditorChanged);
       _flushHook = _editor.flushText;
@@ -240,7 +239,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void _handleEditorChanged() {
     // Keep the app's in-memory entry current for immediate previews and UI
     // consumers, while the controller still batches the Hive write itself.
-    _document = _editor.document;
     widget.onDocumentPreviewChanged?.call(_document);
     final workflowError = _editor.workflowError;
     if (workflowError != null && workflowError != _lastWorkflowError) {
