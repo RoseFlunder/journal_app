@@ -3,10 +3,11 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-28 on top of commit `31290a9` (`docs: record removal of
-mutable storage facade`). The editor controller, history, clipboard, and canvas
+Last audited: 2026-08-28 on top of commit `42d3519` (`fix: wire editor factory
+through persistence coordinator`). The editor controller, history, clipboard, and canvas
 are document/node native; metadata and workflow persistence route through
-feature view models; media referenced by undo/redo and clipboard snapshots is
+feature view models; editor factories and persistence wiring are owned by the
+composition root; media referenced by undo/redo and clipboard snapshots is
 retained. Legacy `Entry`/`ContentBlock` conversion is isolated in
 `EntryDocumentCodec` at the storage boundary. Production Hive repositories and
 storage tests use focused capability data sources; the mutable `JournalStore`
@@ -49,9 +50,9 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [x] Journal, asset, checkpoint, and template repository interfaces have Hive
   implementations backed by direct capability adapters; storage tests exercise
   those same sources without a mutable aggregate facade.
-- [x] Screens receive configured editor view-model factories and narrow
-  capability contracts through the composition root; each entry page receives
-  a cached configured editor view model. Production Hive adapters depend on
+- [x] The composition root owns persistence, music, and editor view-model
+  factory wiring; each entry page receives a cached configured editor view
+  model and narrow capability contracts. Production Hive adapters depend on
   focused internal data sources; the obsolete mutable `JournalStore` aggregate
   and its test-only adapters have been removed.
 - [x] Asset collection protects live documents, checkpoints, templates,
@@ -181,9 +182,9 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 1. **Complete the document-model migration**
    - Keep `Entry`/`ContentBlock` conversion confined to the storage codec and
      keep storage compatibility tests on the direct Hive capability sources.
-   - Finish extracting the remaining editor-page workflow orchestration into
-     focused use cases/view-model methods; the ink, music, text formatting, and
-     metadata surfaces already follow this boundary.
+   - [x] Editor-page cross-repository workflows are delegated to focused
+     use cases through the configured view model; the page retains only
+     platform picking, dialogs, lifecycle, and layout concerns.
 
 2. **Correctness hardening**
    - Fix image edge resizing, image-sheet state, lifecycle ordering, visible
