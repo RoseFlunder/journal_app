@@ -63,7 +63,6 @@ enum EditorCommandKind {
   reorder,
   node,
   structural,
-  document,
 }
 
 /// Typed editor command contract used by undo and redo.
@@ -98,8 +97,10 @@ sealed class EditorCommand {
               before: before,
               after: after,
             ) ??
-            DocumentReplacementCommand(
+            TransformEditorCommand(
               label: label,
+              affectedIds: {...beforeIds, ...afterIds},
+              changes: const <NodeTransformChange>[],
               before: before,
               after: after,
             );
@@ -109,58 +110,35 @@ sealed class EditorCommand {
               before: before,
               after: after,
             ) ??
-            DocumentReplacementCommand(
-              label: label,
-              before: before,
-              after: after,
-            );
+            BoardEditorCommand(label: label, before: before, after: after);
       case EditorCommandKind.style:
         final nodes = NodeEditorCommand.tryCreate(
           label: label,
           before: before,
           after: after,
         );
-        return nodes == null
-            ? DocumentReplacementCommand(
-                label: label,
-                before: before,
-                after: after,
-              )
-            : StyleEditorCommand(
-                label: label,
-                affectedIds: nodes.affectedIds,
-                before: before,
-                after: after,
-              );
+        return StyleEditorCommand(
+          label: label,
+          affectedIds: nodes?.affectedIds ?? {...beforeIds, ...afterIds},
+          before: before,
+          after: after,
+        );
       case EditorCommandKind.node:
-        return NodeEditorCommand.tryCreate(
-              label: label,
-              before: before,
-              after: after,
-            ) ??
-            DocumentReplacementCommand(
-              label: label,
-              before: before,
-              after: after,
-            );
+        final command = NodeEditorCommand.tryCreate(
+          label: label,
+          before: before,
+          after: after,
+        );
+        return command ?? NodeEditorCommand(
+          label: label,
+          affectedIds: {...beforeIds, ...afterIds},
+          before: before,
+          after: after,
+        );
       case EditorCommandKind.insert:
-        if (!setEquals(beforeIds, afterIds)) {
-          return InsertEditorCommand(label: label, before: before, after: after);
-        }
-        return DocumentReplacementCommand(
-          label: label,
-          before: before,
-          after: after,
-        );
+        return InsertEditorCommand(label: label, before: before, after: after);
       case EditorCommandKind.delete:
-        if (!setEquals(beforeIds, afterIds)) {
-          return DeleteEditorCommand(label: label, before: before, after: after);
-        }
-        return DocumentReplacementCommand(
-          label: label,
-          before: before,
-          after: after,
-        );
+        return DeleteEditorCommand(label: label, before: before, after: after);
       case EditorCommandKind.group:
         return GroupEditorCommand(label: label, before: before, after: after);
       case EditorCommandKind.reorder:
@@ -171,14 +149,7 @@ sealed class EditorCommand {
           before: before,
           after: after,
         );
-      case EditorCommandKind.document:
-        break;
     }
-    return DocumentReplacementCommand(
-      label: label,
-      before: before,
-      after: after,
-    );
   }
 }
 
@@ -188,9 +159,13 @@ final class TransformEditorCommand extends EditorCommand {
     required super.label,
     required super.affectedIds,
     required this.changes,
-  });
+    this.before,
+    this.after,
+  }) : assert((before == null) == (after == null));
 
   final List<NodeTransformChange> changes;
+  final EditorDocumentSnapshot? before;
+  final EditorDocumentSnapshot? after;
 
   static TransformEditorCommand? tryCreate({
     required String label,
@@ -239,10 +214,11 @@ final class TransformEditorCommand extends EditorCommand {
 
   @override
   EditorDocumentSnapshot apply(EditorDocumentSnapshot state) =>
-      state.withTransforms(changes);
+      after ?? state.withTransforms(changes);
 
   @override
   EditorDocumentSnapshot revert(EditorDocumentSnapshot state) =>
+      before ??
       state.withTransforms(
         changes.map(
           (change) => NodeTransformChange(
@@ -415,28 +391,6 @@ final class ReorderEditorCommand extends StructuralEditorCommand {
   });
 }
 
-/// Transitional whole-document command for changes that cannot yet be
-/// represented by a more specific editor command.
-final class DocumentReplacementCommand extends EditorCommand {
-  DocumentReplacementCommand({
-    required super.label,
-    required this.before,
-    required this.after,
-  }) : super(affectedIds: const <String>{});
-
-  final EditorDocumentSnapshot before;
-  final EditorDocumentSnapshot after;
-
-  @override
-  Iterable<EntryDocument> get retainedDocuments => [before.document, after.document];
-
-  @override
-  EditorDocumentSnapshot apply(EditorDocumentSnapshot state) => after;
-
-  @override
-  EditorDocumentSnapshot revert(EditorDocumentSnapshot state) => before;
-}
-
 /// Undo/redo and open-transaction state for an editor session.
 class EditorHistory {
   EditorHistory({this.maxLength = 100});
@@ -446,7 +400,7 @@ class EditorHistory {
   final List<EditorCommand> _redo = <EditorCommand>[];
   EditorDocumentSnapshot? _transactionStart;
   String? _transactionLabel;
-  EditorCommandKind _transactionKind = EditorCommandKind.document;
+  EditorCommandKind? _transactionKind;
 
   bool get canUndo => _undo.isNotEmpty;
   bool get canRedo => _redo.isNotEmpty;
@@ -480,7 +434,7 @@ class EditorHistory {
   void begin(
     EditorDocumentSnapshot snapshot,
     String label, {
-    EditorCommandKind kind = EditorCommandKind.document,
+    required EditorCommandKind kind,
   }) {
     if (inTransaction) return;
     _transactionStart = snapshot;
@@ -495,8 +449,8 @@ class EditorHistory {
     final kind = _transactionKind;
     _transactionStart = null;
     _transactionLabel = null;
-    _transactionKind = EditorCommandKind.document;
-    if (before == null || label == null) return null;
+    _transactionKind = null;
+    if (before == null || label == null || kind == null) return null;
     return (before: before, label: label, kind: kind);
   }
 
@@ -504,7 +458,7 @@ class EditorHistory {
     final before = _transactionStart;
     _transactionStart = null;
     _transactionLabel = null;
-    _transactionKind = EditorCommandKind.document;
+    _transactionKind = null;
     return before;
   }
 
@@ -531,7 +485,7 @@ class EditorHistory {
   void reset() {
     _transactionStart = null;
     _transactionLabel = null;
-    _transactionKind = EditorCommandKind.document;
+    _transactionKind = null;
     _undo.clear();
     _redo.clear();
   }

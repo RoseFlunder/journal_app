@@ -3,11 +3,11 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-28 on top of commit `f44053a` (`refactor: centralize
-editor factory construction`). The editor controller, history,
+Last audited: 2026-08-28 after the final architecture boundary closure. The
+editor controller, history,
 clipboard, and canvas are document/node native; metadata and workflow
 persistence route through feature view models; editor factories, platform
-services, and persistence wiring are owned by the composition root; media
+services, use cases, and persistence wiring are owned by the composition root; media
 referenced by undo/redo and clipboard snapshots is retained. Legacy
 `Entry`/`ContentBlock` conversion is isolated in `EntryDocumentCodec` at the
 storage boundary. Production Hive repositories and storage tests use focused
@@ -18,6 +18,8 @@ model per entry, and `EntryPage` only renders and dispatches through that
 model. Feature-native canvas, toolbar, More tools, layers, image, history,
 template, shape, alignment, transform, ink, music, and settings views are
 active, and the obsolete toolbar export and image-editor path are gone.
+Platform services do not render presentation UI, and `JournalApp` receives one
+configured `AppDependencies` object in production and tests.
 Storage shutdown is awaitable, and architecture tests cover both feature views
 and the editor core.
 Focused editor, repository, boundary, and widget suites pass; the full Flutter
@@ -40,11 +42,10 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [x] `EditorController` owns selection, transactions, clipboard, 100-step
   undo/redo, text coalescing, and save state.
 - [x] Completed transform gestures produce one undo entry and one save.
-- [~] Typed immutable `EditorCommand` values now back undo/redo for transform,
+- [x] Typed immutable `EditorCommand` values back undo/redo for transform,
   board, insert, delete, style, grouping, reorder, node, and structural edits.
-  Every transaction carries an explicit `EditorCommandKind`; a transitional
-  whole-document replacement command remains only for edits that do not yet
-  have a specialized delta.
+  Every transaction carries an explicit `EditorCommandKind`; no untyped
+  whole-document fallback remains.
 - [x] Five-minute checkpoint scheduling no longer resets after every save.
 - [~] Manual checkpoint creation, pruning, listing, and restore UI exist;
   background checkpoint creation is missing.
@@ -55,7 +56,9 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
   those same sources without a mutable aggregate facade.
 - [x] The composition root owns persistence, music, platform services, and
   editor view-model factory wiring; each entry page receives a cached
-  configured editor view model and narrow capability contracts. Production Hive
+  configured editor view model and narrow capability contracts. Platform
+  picking UI stays in feature views while services only access platform APIs.
+  Production Hive
   adapters depend on focused internal data sources; the obsolete mutable
   `JournalStore` aggregate and its test-only adapters have been removed.
 - [x] Asset collection protects live documents, checkpoints, templates,

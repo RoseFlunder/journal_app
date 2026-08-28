@@ -11,7 +11,8 @@ import 'package:journal_app/models/page_music.dart';
 import 'package:journal_app/models/sticker.dart';
 import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/template.dart';
-import 'package:journal_app/services/image_source.dart';
+import 'package:journal_app/editor/image_layout.dart';
+import 'package:journal_app/services/image_processing.dart';
 import 'support/hive_test_environment.dart';
 import 'package:journal_app/services/entry_document_codec.dart';
 

@@ -11,7 +11,7 @@ class ArchiveTransferUseCase {
   });
 
   final ArchiveRepository archives;
-  final JournalTransferService transfer;
+  final JournalTransferGateway transfer;
 
   Future<bool> exportDocument({
     required String documentId,

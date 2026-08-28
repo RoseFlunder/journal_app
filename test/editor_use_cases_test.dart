@@ -5,6 +5,7 @@ import 'package:image/image.dart' as image;
 import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/template.dart';
 import 'package:journal_app/services/image_source.dart';
+import 'package:journal_app/services/image_processing.dart';
 import 'package:journal_app/services/repositories.dart';
 import 'package:journal_app/ui/features/editor/use_cases/checkpoint_recovery_use_case.dart';
 import 'package:journal_app/ui/features/editor/use_cases/image_insertion_use_case.dart';

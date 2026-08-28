@@ -1,10 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../services/audio_playback.dart';
-import '../services/image_source.dart';
-import '../services/journal_transfer_service.dart';
-import '../services/repositories.dart';
-import '../ui/features/editor/view_models/entry_editor_view_model.dart';
 import '../ui/features/journal/view_models/journal_view_model.dart';
 import '../ui/features/journal/views/journal_screen.dart';
 import '../ui/features/music/view_models/page_music_controller.dart';
@@ -13,58 +8,9 @@ import 'app_dependencies.dart';
 
 /// Material shell and composition-owned feature wiring for the journal app.
 class JournalApp extends StatelessWidget {
-  JournalApp({
-    super.key,
-    JournalRepositories? repositories,
-    AppDependencies? dependencies,
-    MusicCatalogRepository? musicCatalog,
-    AudioPlaybackFactory? audioPlaybackFactory,
-    ImageSourceService? imageSource,
-    ImageProcessor? imageProcessor,
-    JournalTransferService? archiveTransfer,
-    EntryEditorViewModelFactory? editorViewModelFactory,
-  }) : assert(
-         repositories != null || dependencies != null,
-         'Provide AppDependencies or JournalRepositories.',
-       ),
-       repositories = repositories ?? dependencies!.repositories,
-       musicCatalog =
-           musicCatalog ??
-           dependencies?.musicCatalog ??
-           const DisabledMusicCatalogRepository(),
-       audioPlaybackFactory =
-           audioPlaybackFactory ??
-           dependencies?.audioPlaybackFactory ??
-           _disabledAudioFactory,
-       imageSource =
-           imageSource ?? dependencies?.imageSource ?? PlatformImageSource(),
-       imageProcessor =
-           imageProcessor ?? dependencies?.imageProcessor ?? const ImageProcessor(),
-       archiveTransfer =
-           archiveTransfer ??
-           dependencies?.archiveTransfer ??
-           const JournalTransferService(),
-       editorViewModelFactory = editorViewModelFactory ??
-           dependencies?.editorViewModelFactory ??
-           createEditorViewModelFactory(
-             repositories: repositories ?? dependencies!.repositories,
-             musicCatalog:
-                 musicCatalog ??
-                 dependencies?.musicCatalog ??
-                 const DisabledMusicCatalogRepository(),
-             audioPlaybackFactory:
-                 audioPlaybackFactory ??
-                 dependencies?.audioPlaybackFactory ??
-                 _disabledAudioFactory,
-           );
+  const JournalApp({super.key, required this.dependencies});
 
-  final JournalRepositories repositories;
-  final MusicCatalogRepository musicCatalog;
-  final AudioPlaybackFactory audioPlaybackFactory;
-  final ImageSourceService imageSource;
-  final ImageProcessor imageProcessor;
-  final JournalTransferService archiveTransfer;
-  final EntryEditorViewModelFactory editorViewModelFactory;
+  final AppDependencies dependencies;
 
   @override
   Widget build(BuildContext context) {
@@ -116,13 +62,7 @@ class JournalApp extends StatelessWidget {
         ),
       ),
       home: _ConfiguredJournalScreen(
-        repositories: repositories,
-        musicCatalog: musicCatalog,
-        audioPlaybackFactory: audioPlaybackFactory,
-        imageSource: imageSource,
-        imageProcessor: imageProcessor,
-        archiveTransfer: archiveTransfer,
-        editorViewModelFactory: editorViewModelFactory,
+        dependencies: dependencies,
       ),
     );
   }
@@ -133,22 +73,10 @@ class JournalApp extends StatelessWidget {
 /// inside its view tree.
 class _ConfiguredJournalScreen extends StatefulWidget {
   const _ConfiguredJournalScreen({
-    required this.repositories,
-    required this.musicCatalog,
-    required this.audioPlaybackFactory,
-    required this.imageSource,
-    required this.imageProcessor,
-    required this.archiveTransfer,
-    required this.editorViewModelFactory,
+    required this.dependencies,
   });
 
-  final JournalRepositories repositories;
-  final MusicCatalogRepository musicCatalog;
-  final AudioPlaybackFactory audioPlaybackFactory;
-  final ImageSourceService imageSource;
-  final ImageProcessor imageProcessor;
-  final JournalTransferService archiveTransfer;
-  final EntryEditorViewModelFactory editorViewModelFactory;
+  final AppDependencies dependencies;
 
   @override
   State<_ConfiguredJournalScreen> createState() =>
@@ -157,12 +85,12 @@ class _ConfiguredJournalScreen extends StatefulWidget {
 
 class _ConfiguredJournalScreenState extends State<_ConfiguredJournalScreen> {
   late final JournalViewModel _journal = JournalViewModel(
-    repository: widget.repositories.documentRepository,
-    assetRepository: widget.repositories.assetRepository,
+    repository: widget.dependencies.repositories.documentRepository,
+    assetRepository: widget.dependencies.repositories.assetRepository,
   );
   late final PageMusicController _music = PageMusicController(
-    catalog: widget.musicCatalog,
-    playback: widget.audioPlaybackFactory(),
+    catalog: widget.dependencies.musicCatalog,
+    playback: widget.dependencies.audioPlaybackFactory(),
     persistResolvedTrack: _journal.persistResolvedTrack,
   );
 
@@ -170,12 +98,7 @@ class _ConfiguredJournalScreenState extends State<_ConfiguredJournalScreen> {
   Widget build(BuildContext context) => JournalScreen(
     journal: _journal,
     music: _music,
-    editorViewModelFactory: widget.editorViewModelFactory,
-    imageSource: widget.imageSource,
-    imageProcessor: widget.imageProcessor,
-    archiveTransfer: widget.archiveTransfer,
+    editorViewModelFactory: widget.dependencies.editorViewModelFactory,
+    imageSource: widget.dependencies.imageSource,
   );
 }
-
-AudioPlaybackService _disabledAudioFactory() =>
-    const DisabledAudioPlaybackService();

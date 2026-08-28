@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:journal_app/app/app_dependencies.dart';
 import 'package:journal_app/main.dart';
 import 'package:journal_app/models/page_music.dart';
 import 'package:journal_app/services/audio_playback.dart';
@@ -46,9 +47,11 @@ void main() {
 
     await tester.pumpWidget(
       JournalApp(
-        repositories: store.repositories,
-        musicCatalog: const _WidgetCatalog(track),
-        audioPlaybackFactory: () => playback,
+        dependencies: AppDependencies(
+          repositories: store.repositories,
+          musicCatalog: const _WidgetCatalog(track),
+          audioPlaybackFactory: () => playback,
+        ),
       ),
     );
     await tester.pumpAndSettle();

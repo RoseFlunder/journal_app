@@ -1,4 +1,5 @@
 import '../../../../services/image_source.dart';
+import '../../../../services/image_processing.dart';
 import '../../../../services/repositories.dart';
 
 /// Coordinates image processing and asset persistence for the editor feature.
@@ -10,7 +11,7 @@ class ImageInsertionUseCase {
   });
 
   final AssetRepository assets;
-  final ImageProcessor processor;
+  final ImageProcessingService processor;
 
   Future<({ProcessedImage image, String assetId})> processAndStore({
     required String ownerId,

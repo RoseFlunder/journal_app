@@ -47,7 +47,13 @@ void main() {
       final source = file.readAsStringSync();
       expect(
         source,
-        isNot(matches(RegExp(r'''import\s+['"].*services/(?:repositories|hive_)'''))),
+        isNot(
+          matches(
+            RegExp(
+              r'''import\s+['"].*services/(?:repositories|hive_|journal_transfer_service|image_processing)''',
+            ),
+          ),
+        ),
         reason: '${file.path} must depend on configured feature state',
       );
     }
@@ -60,10 +66,23 @@ void main() {
         .where((file) => file.path.endsWith('.dart'));
 
     for (final file in files) {
+      final source = file.readAsStringSync();
       expect(
-        file.readAsStringSync(),
+        source,
         isNot(contains('ui/features/')),
         reason: '${file.path} must not depend on feature views',
+      );
+      expect(
+        source,
+        isNot(
+          matches(RegExp(r'''import\s+['"]package:flutter/(?:material|widgets)\.dart''')),
+        ),
+        reason: '${file.path} must not render Flutter presentation widgets',
+      );
+      expect(
+        source,
+        isNot(contains('BuildContext')),
+        reason: '${file.path} must not receive presentation context',
       );
     }
   });
@@ -82,5 +101,11 @@ void main() {
         reason: '${file.path} must remain controller, state, or geometry code',
       );
     }
+  });
+
+  test('editor history has no untyped document command fallback', () {
+    final source = File('lib/editor/editor_history.dart').readAsStringSync();
+    expect(source, isNot(contains('DocumentReplacementCommand')));
+    expect(source, isNot(contains('EditorCommandKind.document')));
   });
 }

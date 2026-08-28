@@ -8,7 +8,7 @@ void main() {
     final before = _snapshot([_text()]);
     final after = _snapshot([_text(text: 'Updated')]);
 
-    history.begin(before, 'Edit text');
+    history.begin(before, 'Edit text', kind: EditorCommandKind.node);
     final transaction = history.takeTransaction();
     expect(transaction?.label, 'Edit text');
     history.record(
@@ -36,7 +36,7 @@ void main() {
     final history = EditorHistory();
     final snapshot = _snapshot(const <CanvasNode>[]);
 
-    history.begin(snapshot, 'Transform');
+    history.begin(snapshot, 'Transform', kind: EditorCommandKind.transform);
     expect(history.cancelTransaction(), same(snapshot));
     expect(history.inTransaction, isFalse);
     expect(history.canUndo, isFalse);

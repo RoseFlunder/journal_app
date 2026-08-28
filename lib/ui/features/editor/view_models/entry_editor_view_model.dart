@@ -7,14 +7,13 @@ import 'dart:ui';
 import 'dart:typed_data';
 
 import '../../../../editor/editor_controller.dart';
-import '../../../../editor/editor_history.dart';
 import '../../../../models/document.dart';
 import '../../../../models/page_music.dart';
 import '../../../../models/template.dart';
 import '../../../../models/view_state.dart';
 import '../../../../services/audio_playback.dart';
 import '../../../../services/image_source.dart';
-import '../../../../services/journal_transfer_service.dart';
+import '../../../../services/image_processing.dart';
 import '../../../../services/repositories.dart';
 import '../use_cases/archive_transfer_use_case.dart';
 import '../use_cases/checkpoint_recovery_use_case.dart';
@@ -42,6 +41,8 @@ class EntryEditorViewModel extends EditorController {
     required ArchiveRepository archiveRepository,
     required MusicCatalogRepository musicCatalog,
     required AudioPlaybackFactory audioPlaybackFactory,
+    required ImageInsertionUseCase imageInsertion,
+    required ArchiveTransferUseCase archiveTransfer,
     super.maxHistory,
   }) : _documentId = document.id,
        _documentRepository = documentRepository,
@@ -50,9 +51,10 @@ class EntryEditorViewModel extends EditorController {
        _templates = templateRepository,
        _preferences = preferenceRepository,
        _persistence = persistenceRepository,
-       _archives = archiveRepository,
        _musicCatalog = musicCatalog,
        _audioPlaybackFactory = audioPlaybackFactory,
+       _imageInsertion = imageInsertion,
+       _archiveTransfer = archiveTransfer,
        super(
          document: document,
          persistDocument: (EntryDocument next) =>
@@ -71,9 +73,10 @@ class EntryEditorViewModel extends EditorController {
   final TemplateRepository _templates;
   final PreferencesRepository _preferences;
   final PersistenceRepository _persistence;
-  final ArchiveRepository _archives;
   final MusicCatalogRepository _musicCatalog;
   final AudioPlaybackFactory _audioPlaybackFactory;
+  final ImageInsertionUseCase _imageInsertion;
+  final ArchiveTransferUseCase _archiveTransfer;
 
   bool _editing = false;
   bool _selectMode = false;
@@ -218,7 +221,7 @@ class EntryEditorViewModel extends EditorController {
     if (node == null || node.type != BlockType.text || node.locked) return;
     final ownsTransaction = !inTransaction;
     if (ownsTransaction) {
-      beginTransaction('Format text', kind: EditorCommandKind.style);
+      beginStyleTransaction('Format text');
     }
     final payload = Map<String, dynamic>.from(node.payload);
     if (!identical(fontFamily, _formatUnset)) {
@@ -285,12 +288,7 @@ class EntryEditorViewModel extends EditorController {
   Future<({ProcessedImage image, String assetId})> insertImageAsset({
     required String ownerId,
     required PickedImage picked,
-    required ImageProcessor processor,
-  }) =>
-      ImageInsertionUseCase(
-        assets: _assets,
-        processor: processor,
-      ).processAndStore(ownerId: ownerId, picked: picked);
+  }) => _imageInsertion.processAndStore(ownerId: ownerId, picked: picked);
 
   List<JournalTemplate> get templates => _templateWorkflow.available;
 
@@ -333,18 +331,9 @@ class EntryEditorViewModel extends EditorController {
   Future<bool> exportArchive({
     required String documentId,
     required String fileName,
-    required JournalTransferService transfer,
-  }) =>
-      ArchiveTransferUseCase(
-        archives: _archives,
-        transfer: transfer,
-      ).exportDocument(documentId: documentId, fileName: fileName);
+  }) => _archiveTransfer.exportDocument(documentId: documentId, fileName: fileName);
 
-  Future<EntryDocument?> importArchive(JournalTransferService transfer) =>
-      ArchiveTransferUseCase(
-        archives: _archives,
-        transfer: transfer,
-      ).importDocument();
+  Future<EntryDocument?> importArchive() => _archiveTransfer.importDocument();
 
 }
 

@@ -88,7 +88,7 @@ class EditorController extends ChangeNotifier {
     final current = _document.nodeById(node.id);
     if (current == null || current.locked) return;
     if (!_history.inTransaction) {
-      beginTransaction(label, kind: EditorCommandKind.node);
+      beginNodeTransaction(label);
     }
     _document = _document.replaceNode(node);
     notifyListeners();
@@ -105,7 +105,7 @@ class EditorController extends ChangeNotifier {
     final node = _document.nodeById(id);
     if (node == null || node.locked) return;
     if (!_history.inTransaction) {
-      beginTransaction(label, kind: EditorCommandKind.transform);
+      beginTransformTransaction(label);
     }
     _document = _document.replaceWorldTransforms({id: transform});
     notifyListeners();
@@ -114,10 +114,7 @@ class EditorController extends ChangeNotifier {
   /// Inserts a node through the immutable editor boundary.
   void addNode(CanvasNode node, {bool select = true}) {
     if (_document.nodeById(node.id) != null) return;
-    beginTransaction(
-      'Add ${node.type.name}',
-      kind: EditorCommandKind.insert,
-    );
+    beginInsertTransaction('Add ${node.type.name}');
     _document = _document.insertNodes([node]);
     if (select) {
       _selection
@@ -165,10 +162,31 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void beginTransaction(
-    String label, {
-    EditorCommandKind kind = EditorCommandKind.document,
-  }) {
+  void beginTransformTransaction(String label) =>
+      _beginTransaction(label, EditorCommandKind.transform);
+
+  void beginStyleTransaction(String label) =>
+      _beginTransaction(label, EditorCommandKind.style);
+
+  void beginNodeTransaction(String label) =>
+      _beginTransaction(label, EditorCommandKind.node);
+
+  void beginBoardTransaction(String label) =>
+      _beginTransaction(label, EditorCommandKind.board);
+
+  void beginInsertTransaction(String label) =>
+      _beginTransaction(label, EditorCommandKind.insert);
+
+  void beginDeleteTransaction(String label) =>
+      _beginTransaction(label, EditorCommandKind.delete);
+
+  void beginGroupTransaction(String label) =>
+      _beginTransaction(label, EditorCommandKind.group);
+
+  void beginReorderTransaction(String label) =>
+      _beginTransaction(label, EditorCommandKind.reorder);
+
+  void _beginTransaction(String label, EditorCommandKind kind) {
     _textTimer?.cancel();
     _history.begin(_snapshot(), label, kind: kind);
   }
@@ -204,7 +222,7 @@ class EditorController extends ChangeNotifier {
         .map((node) => node.id)
         .toSet();
     if (ids.isEmpty) return;
-    beginTransaction('Stroke', kind: EditorCommandKind.style);
+    beginStyleTransaction('Stroke');
     for (final id in ids) {
       final node = _nodeById(id);
       if (node == null || node.locked) continue;
@@ -339,13 +357,13 @@ class EditorController extends ChangeNotifier {
   }
 
   void nudge(Offset delta) {
-    beginTransaction('Nudge', kind: EditorCommandKind.transform);
+    beginTransformTransaction('Nudge');
     moveSelection(delta, snap: false);
     unawaited(commitTransaction());
   }
 
   void updateBoard(BoardSettings next) {
-    beginTransaction('Board settings', kind: EditorCommandKind.board);
+    beginBoardTransaction('Board settings');
     _document = _document.copyWith(board: next);
     notifyListeners();
     unawaited(commitTransaction());
@@ -370,7 +388,7 @@ class EditorController extends ChangeNotifier {
   }) {
     final sourceList = List<CanvasNode>.unmodifiable(sources);
     if (sourceList.isEmpty) return;
-    beginTransaction(label, kind: EditorCommandKind.insert);
+    beginInsertTransaction(label);
     final idMap = <String, String>{};
     void collect(CanvasNode node) {
       idMap[node.id] = _uuid.v4();
@@ -405,7 +423,7 @@ class EditorController extends ChangeNotifier {
 
   void deleteSelection() {
     if (_selection.isEmpty) return;
-    beginTransaction('Delete', kind: EditorCommandKind.delete);
+    beginDeleteTransaction('Delete');
     final expanded = _expandedSelectedNodes;
     final selected = expanded
         .where((node) => !node.locked)
@@ -431,7 +449,7 @@ class EditorController extends ChangeNotifier {
   void duplicateSelection() {
     final selected = _selectedGraphNodes;
     if (selected.isEmpty) return;
-    beginTransaction('Duplicate', kind: EditorCommandKind.insert);
+    beginInsertTransaction('Duplicate');
     final selectedIds = Set<String>.from(_selection);
     final idMap = <String, String>{
       for (final id in _collectNodeIds(selected)) id: _uuid.v4(),
@@ -480,7 +498,7 @@ class EditorController extends ChangeNotifier {
 
   void paste({Offset offset = const Offset(4, 4)}) {
     if (_clipboard.isEmpty) return;
-    beginTransaction('Paste', kind: EditorCommandKind.insert);
+    beginInsertTransaction('Paste');
     final idMap = <String, String>{};
     void collect(CanvasNode node) {
       idMap[node.id] = _uuid.v4();
@@ -524,7 +542,7 @@ class EditorController extends ChangeNotifier {
 
   void bringToFront() {
     if (_selection.isEmpty) return;
-    beginTransaction('Bring to front', kind: EditorCommandKind.reorder);
+    beginReorderTransaction('Bring to front');
     final ids = _expandedSelectedNodes.map((node) => node.id).toSet();
     _document = _document.reorderNodes(ids, toEnd: true);
     notifyListeners();
@@ -533,7 +551,7 @@ class EditorController extends ChangeNotifier {
 
   void sendToBack() {
     if (_selection.isEmpty) return;
-    beginTransaction('Send to back', kind: EditorCommandKind.reorder);
+    beginReorderTransaction('Send to back');
     final ids = _expandedSelectedNodes.map((node) => node.id).toSet();
     _document = _document.reorderNodes(ids, toEnd: false);
     notifyListeners();
@@ -559,7 +577,7 @@ class EditorController extends ChangeNotifier {
   void reorderLayer(String blockId, int targetIndex) {
     final source = _nodeById(blockId);
     if (source == null) return;
-    beginTransaction('Reorder layer', kind: EditorCommandKind.reorder);
+    beginReorderTransaction('Reorder layer');
     _document = _document.reorderNode(blockId, targetIndex);
     notifyListeners();
     unawaited(commitTransaction());
@@ -579,7 +597,7 @@ class EditorController extends ChangeNotifier {
     final normalized = name.trim();
     final node = _document.nodeById(blockId);
     if (node == null || normalized.isEmpty) return;
-    beginTransaction('Rename layer', kind: EditorCommandKind.node);
+    beginNodeTransaction('Rename layer');
     _document = _document.replaceNode(
       node.copyWith(accessibilityLabel: normalized),
     );
@@ -593,7 +611,7 @@ class EditorController extends ChangeNotifier {
         .map(_worldNode)
         .toList(growable: false);
     if (selected.length < 2) return;
-    beginTransaction('Align', kind: EditorCommandKind.transform);
+    beginTransformTransaction('Align');
     final bounds = _boundsFor(selected);
     final transforms = <String, Transform2D>{};
     for (final block in selected) {
@@ -647,7 +665,7 @@ class EditorController extends ChangeNotifier {
         .where((node) => node.type != BlockType.group)
         .toList();
     if (children.length < 2) return;
-    beginTransaction('Group', kind: EditorCommandKind.group);
+    beginGroupTransaction('Group');
     final groupId = _uuid.v4();
     _document = _document.groupNodes(
       children.map((node) => node.id),
@@ -668,7 +686,7 @@ class EditorController extends ChangeNotifier {
         .whereType<String>()
         .toSet();
     if (groupIds.isEmpty) return;
-    beginTransaction('Ungroup', kind: EditorCommandKind.group);
+    beginGroupTransaction('Ungroup');
     _document = _document.ungroupNodes(groupIds);
     notifyListeners();
     unawaited(commitTransaction());
@@ -680,7 +698,7 @@ class EditorController extends ChangeNotifier {
     final node = _document.nodeById(id);
     if (node == null || node.locked) return;
     if (!_history.inTransaction) {
-      beginTransaction('Edit text', kind: EditorCommandKind.node);
+      beginNodeTransaction('Edit text');
     }
     final payload = Map<String, dynamic>.from(node.payload)
       ..['text'] = text
@@ -781,7 +799,7 @@ class EditorController extends ChangeNotifier {
     CanvasNode Function(CanvasNode node) update,
   ) {
     if (_selection.isEmpty) return;
-    beginTransaction(label, kind: EditorCommandKind.node);
+    beginNodeTransaction(label);
     for (final id in _expandedSelectedNodes.map((node) => node.id).toSet()) {
       final node = _document.nodeById(id);
       if (node == null) continue;

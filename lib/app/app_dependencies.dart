@@ -6,11 +6,14 @@ import '../services/audio_playback.dart';
 import '../services/hive_repositories.dart';
 import '../services/hive_journal_data_source.dart';
 import '../services/image_source.dart';
+import '../services/image_processing.dart';
 import '../services/jamendo_music_catalog.dart';
 import '../services/journal_transfer_service.dart';
 import '../services/persistence_coordinator.dart';
 import '../services/repositories.dart';
 import '../ui/features/editor/view_models/entry_editor_view_model.dart';
+import '../ui/features/editor/use_cases/archive_transfer_use_case.dart';
+import '../ui/features/editor/use_cases/image_insertion_use_case.dart';
 
 /// Composition root for the application’s long-lived data dependencies.
 ///
@@ -23,8 +26,8 @@ class AppDependencies {
         const DisabledMusicCatalogRepository(),
     AudioPlaybackFactory audioPlaybackFactory = _disabledAudioFactory,
     ImageSourceService? imageSource,
-    ImageProcessor imageProcessor = const ImageProcessor(),
-    JournalTransferService archiveTransfer = const JournalTransferService(),
+    ImageProcessingService imageProcessor = const ImageProcessor(),
+    JournalTransferGateway archiveTransfer = const JournalTransferService(),
     EntryEditorViewModelFactory? editorViewModelFactory,
   }) {
     final persistence = PersistenceCoordinator(
@@ -36,6 +39,8 @@ class AppDependencies {
           repositories: wiredRepositories,
           musicCatalog: musicCatalog,
           audioPlaybackFactory: audioPlaybackFactory,
+          imageProcessor: imageProcessor,
+          archiveTransfer: archiveTransfer,
         );
     return AppDependencies._(
       persistence: persistence,
@@ -89,6 +94,8 @@ class AppDependencies {
         repositories: baseRepositories.withPersistence(persistence),
         musicCatalog: musicCatalog,
         audioPlaybackFactory: audioPlaybackFactory,
+        imageProcessor: imageProcessor,
+        archiveTransfer: archiveTransfer,
       ),
       storage: source,
       hiveRepositorySet: repositorySet,
@@ -100,8 +107,8 @@ class AppDependencies {
   final MusicCatalogRepository musicCatalog;
   final AudioPlaybackFactory audioPlaybackFactory;
   final ImageSourceService imageSource;
-  final ImageProcessor imageProcessor;
-  final JournalTransferService archiveTransfer;
+  final ImageProcessingService imageProcessor;
+  final JournalTransferGateway archiveTransfer;
   final EntryEditorViewModelFactory editorViewModelFactory;
   final HiveJournalDataSource? _storage;
   final HiveRepositorySet? _hiveRepositorySet;
@@ -135,6 +142,8 @@ EntryEditorViewModelFactory createEditorViewModelFactory({
   required JournalRepositories repositories,
   required MusicCatalogRepository musicCatalog,
   required AudioPlaybackFactory audioPlaybackFactory,
+  required ImageProcessingService imageProcessor,
+  required JournalTransferGateway archiveTransfer,
 }) =>
     (document) => EntryEditorViewModel(
       document: document,
@@ -147,4 +156,12 @@ EntryEditorViewModelFactory createEditorViewModelFactory({
       archiveRepository: repositories.archiveRepository,
       musicCatalog: musicCatalog,
       audioPlaybackFactory: audioPlaybackFactory,
+      imageInsertion: ImageInsertionUseCase(
+        assets: repositories.assetRepository,
+        processor: imageProcessor,
+      ),
+      archiveTransfer: ArchiveTransferUseCase(
+        archives: repositories.archiveRepository,
+        transfer: archiveTransfer,
+      ),
     );

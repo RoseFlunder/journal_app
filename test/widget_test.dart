@@ -8,6 +8,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:image/image.dart' as img;
+import 'package:journal_app/app/app_dependencies.dart';
 import 'package:journal_app/main.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/sticker.dart';
@@ -152,7 +153,7 @@ void main() {
       store = TestHiveEnvironment();
       await store.init();
       await tester.pumpWidget(
-        JournalApp(repositories: store.repositories),
+        JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
       );
       await tester.pumpAndSettle();
 
@@ -273,7 +274,7 @@ void main() {
     await store.addEntry();
     await store.addEntry();
     await tester.pumpWidget(
-      JournalApp(repositories: store.repositories),
+      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
     );
     await tester.pumpAndSettle();
 
@@ -339,7 +340,7 @@ void main() {
     store = TestHiveEnvironment();
     await store.init();
     await tester.pumpWidget(
-      JournalApp(repositories: store.repositories),
+      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
     );
     await tester.pumpAndSettle();
 
@@ -444,7 +445,7 @@ void main() {
       await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(
-      JournalApp(repositories: store.repositories),
+      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
     );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
@@ -619,7 +620,7 @@ void main() {
       await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(
-      JournalApp(repositories: store.repositories),
+      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
     );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
@@ -787,7 +788,7 @@ void main() {
       await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(
-      JournalApp(repositories: store.repositories),
+      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
     );
     await tester.pumpAndSettle();
     await createPageFromFab(tester, title: 'Sketches');
@@ -896,7 +897,7 @@ void main() {
         await store.deleteEntry(existing.id);
       }
       await tester.pumpWidget(
-        JournalApp(repositories: store.repositories),
+        JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
       );
       await tester.pumpAndSettle();
       await createPageFromFab(tester);
@@ -1112,7 +1113,7 @@ void main() {
       await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(
-      JournalApp(repositories: store.repositories),
+      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
     );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
@@ -1178,7 +1179,7 @@ void main() {
       await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(
-      JournalApp(repositories: store.repositories),
+      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
     );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
@@ -1208,7 +1209,7 @@ void main() {
     }
     await store.addEntry();
     await tester.pumpWidget(
-      JournalApp(repositories: store.repositories),
+      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Untitled page'));

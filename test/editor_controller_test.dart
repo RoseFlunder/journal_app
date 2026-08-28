@@ -51,7 +51,7 @@ void main() {
         EntryDocumentCodec.toEntry(controller.state.document).blocks.single.id,
         'text',
       );
-      controller.beginTransaction('Transform');
+      controller.beginTransformTransaction('Transform');
       controller.moveSelection(const Offset(5, 3));
       controller.moveSelection(const Offset(2, -1));
       await controller.commitTransaction();
@@ -80,7 +80,7 @@ void main() {
     addTearDown(controller.dispose);
 
     controller.select('text');
-    controller.beginTransaction('Transform');
+    controller.beginTransformTransaction('Transform');
     controller.moveSelection(const Offset(10, 0));
     await controller.commitTransaction();
     controller.deleteSelection();
@@ -128,7 +128,7 @@ void main() {
       addTearDown(controller.dispose);
 
       controller.selectMany(['ink', 'shape', 'locked-shape', 'text']);
-      controller.beginTransaction('Format stroke');
+      controller.beginStyleTransaction('Format stroke');
       controller.updateSelectedDrawableStroke(
         colorValue: 0xFF873F4D,
         opacity: 0.4,
@@ -174,7 +174,7 @@ void main() {
     addTearDown(controller.dispose);
 
     controller.selectMany(['one', 'two', 'locked']);
-    controller.beginTransaction('Transform');
+    controller.beginTransformTransaction('Transform');
     controller.rotateBlocksAround(
       {'one', 'two', 'locked'},
       const Offset(20, 10),
@@ -250,7 +250,7 @@ void main() {
     );
 
     controller.select('one');
-    controller.beginTransaction('Move group');
+    controller.beginTransformTransaction('Move group');
     controller.moveSelection(const Offset(4, 2));
     await controller.commitTransaction();
     expect(controller.blocks.firstWhere((block) => block.id == 'one').x, 4);
@@ -555,7 +555,7 @@ void main() {
     );
 
     controller.select('node');
-    controller.beginTransaction('Move');
+    controller.beginTransformTransaction('Move');
     controller.moveSelection(const Offset(4, 0));
     await controller.commitTransaction();
 
@@ -624,7 +624,7 @@ void main() {
     addTearDown(controller.dispose);
 
     controller.select('group');
-    controller.beginTransaction('Move group');
+    controller.beginTransformTransaction('Move group');
     controller.moveSelection(const Offset(5, 7));
     await controller.commitTransaction();
 

@@ -6,9 +6,16 @@ import 'journal_archive.dart';
 ///
 /// File selection and byte transport are kept out of the editor view. Archive
 /// validation and document persistence remain separate responsibilities.
-class JournalTransferService {
+abstract interface class JournalTransferGateway {
+  Future<bool> exportArchive(JournalArchive archive, {required String fileName});
+
+  Future<JournalArchive?> importArchive();
+}
+
+class JournalTransferService implements JournalTransferGateway {
   const JournalTransferService();
 
+  @override
   Future<bool> exportArchive(
     JournalArchive archive, {
     required String fileName,
@@ -24,6 +31,7 @@ class JournalTransferService {
     return uri != null;
   }
 
+  @override
   Future<JournalArchive?> importArchive() async {
     final picked = await FilePicker.pickFiles(
       type: FileType.custom,

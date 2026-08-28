@@ -6,6 +6,10 @@ import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/services/repositories.dart';
 import 'package:journal_app/services/entry_document_codec.dart';
+import 'package:journal_app/services/image_processing.dart';
+import 'package:journal_app/services/journal_transfer_service.dart';
+import 'package:journal_app/ui/features/editor/use_cases/archive_transfer_use_case.dart';
+import 'package:journal_app/ui/features/editor/use_cases/image_insertion_use_case.dart';
 import 'package:journal_app/ui/features/editor/view_models/entry_editor_view_model.dart';
 import 'package:journal_app/ui/features/editor/view_models/editor_tool_state.dart';
 
@@ -23,6 +27,8 @@ void main() {
       archiveRepository: _NoopEditorCapabilities(),
       musicCatalog: const DisabledMusicCatalogRepository(),
       audioPlaybackFactory: _disabledAudioFactory,
+      imageInsertion: _noOpImageInsertion(),
+      archiveTransfer: _noOpArchiveTransfer(),
     );
     addTearDown(editor.dispose);
 
@@ -52,6 +58,8 @@ void main() {
       archiveRepository: _NoopEditorCapabilities(),
       musicCatalog: const DisabledMusicCatalogRepository(),
       audioPlaybackFactory: _disabledAudioFactory,
+      imageInsertion: _noOpImageInsertion(),
+      archiveTransfer: _noOpArchiveTransfer(),
     );
     addTearDown(editor.dispose);
 
@@ -81,6 +89,8 @@ void main() {
       archiveRepository: _NoopEditorCapabilities(),
       musicCatalog: const DisabledMusicCatalogRepository(),
       audioPlaybackFactory: _disabledAudioFactory,
+      imageInsertion: _noOpImageInsertion(),
+      archiveTransfer: _noOpArchiveTransfer(),
     );
     addTearDown(editor.dispose);
 
@@ -129,11 +139,13 @@ void main() {
       archiveRepository: _NoopEditorCapabilities(),
       musicCatalog: const DisabledMusicCatalogRepository(),
       audioPlaybackFactory: _disabledAudioFactory,
+      imageInsertion: _noOpImageInsertion(),
+      archiveTransfer: _noOpArchiveTransfer(),
     );
     addTearDown(editor.dispose);
 
     editor.select('text');
-    editor.beginTransaction('Move');
+    editor.beginTransformTransaction('Move');
     editor.moveSelection(const Offset(5, -2));
     await editor.commitTransaction();
 
@@ -159,11 +171,13 @@ void main() {
       archiveRepository: _NoopEditorCapabilities(),
       musicCatalog: const DisabledMusicCatalogRepository(),
       audioPlaybackFactory: _disabledAudioFactory,
+      imageInsertion: _noOpImageInsertion(),
+      archiveTransfer: _noOpArchiveTransfer(),
     );
     addTearDown(editor.dispose);
 
     editor.select('text');
-    editor.beginTransaction('Move');
+    editor.beginTransformTransaction('Move');
     editor.moveSelection(const Offset(5, -2));
     editor.cancelTransaction();
 
@@ -186,6 +200,8 @@ void main() {
       archiveRepository: _NoopEditorCapabilities(),
       musicCatalog: const DisabledMusicCatalogRepository(),
       audioPlaybackFactory: _disabledAudioFactory,
+      imageInsertion: _noOpImageInsertion(),
+      archiveTransfer: _noOpArchiveTransfer(),
     );
     addTearDown(editor.dispose);
 
@@ -293,6 +309,16 @@ class _FakeCheckpointRepository implements CheckpointRepository {
 
 AudioPlaybackService _disabledAudioFactory() =>
     const DisabledAudioPlaybackService();
+
+ImageInsertionUseCase _noOpImageInsertion() => ImageInsertionUseCase(
+  assets: _NoopEditorCapabilities(),
+  processor: const ImageProcessor(),
+);
+
+ArchiveTransferUseCase _noOpArchiveTransfer() => ArchiveTransferUseCase(
+  archives: _NoopEditorCapabilities(),
+  transfer: const JournalTransferService(),
+);
 
 /// The focused VM tests exercise core editor behavior; uncalled workflow
 /// capabilities are represented by one explicit no-op test double rather than

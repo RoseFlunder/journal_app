@@ -9,12 +9,11 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../editor/editor_state.dart';
-import '../../../../editor/editor_history.dart';
+import '../../../../editor/image_layout.dart';
 import '../../../../models/document.dart';
 import '../../../../models/sticker.dart';
 import '../../../../models/view_state.dart';
 import '../../../../services/image_source.dart';
-import '../../../../services/journal_transfer_service.dart';
 import '../view_models/entry_editor_view_model.dart';
 import '../view_models/editor_tool_state.dart';
 import 'entry_editor_surface.dart';
@@ -48,8 +47,6 @@ class EntryPage extends StatefulWidget {
     required this.musicController,
     this.controlsVisible = true,
     required this.imageSource,
-    required this.imageProcessor,
-    required this.archiveService,
   });
 
   /// Configured editor state for this page. The owner of the page disposes
@@ -62,8 +59,6 @@ class EntryPage extends StatefulWidget {
   final PageMusicController musicController;
 
   final ImageSourceService imageSource;
-  final ImageProcessor imageProcessor;
-  final JournalTransferService archiveService;
 
   @override
   State<EntryPage> createState() => _EntryPageState();
@@ -451,7 +446,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     final block = _activeTextBlock;
     if (block == null) return;
     _colorTransactionBlockId = block.id;
-    _editor.beginTransaction('Format text', kind: EditorCommandKind.style);
+    _editor.beginStyleTransaction('Format text');
   }
 
   void _endTextColorEdit() {
@@ -474,7 +469,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void _beginStrokeColorEdit() {
     if (!_strokeColorAvailable) return;
     _strokeColorTransactionActive = true;
-    _editor.beginTransaction('Format stroke', kind: EditorCommandKind.style);
+    _editor.beginStyleTransaction('Format stroke');
   }
 
   void _changeStrokeColor(int? value) {
@@ -680,12 +675,13 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     if (_pickingImage) return;
     setState(() => _pickingImage = true);
     try {
-      final picked = await _imageSource.pickImage(context);
+      final origin = await _chooseImageOrigin();
+      if (!mounted || origin == null) return;
+      final picked = await _imageSource.pickImage(origin);
       if (!mounted || picked == null) return;
       final stored = await _editor.insertImageAsset(
         ownerId: _document.id,
         picked: picked,
-        processor: widget.imageProcessor,
       );
       final image = stored.image;
       final assetId = stored.assetId;
@@ -711,6 +707,43 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     } finally {
       if (mounted) setState(() => _pickingImage = false);
     }
+  }
+
+  Future<ImagePickOrigin?> _chooseImageOrigin() {
+    final origins = _imageSource.supportedOrigins;
+    if (origins.length == 1) return Future.value(origins.single);
+    return showModalBottomSheet<ImagePickOrigin>(
+      context: context,
+      backgroundColor: PaperPage.paper,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            if (origins.contains(ImagePickOrigin.gallery))
+              ListTile(
+                key: const ValueKey('pick-image-gallery'),
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Choose from gallery'),
+                onTap: () => Navigator.pop(context, ImagePickOrigin.gallery),
+              ),
+            if (origins.contains(ImagePickOrigin.camera))
+              ListTile(
+                key: const ValueKey('pick-image-camera'),
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Take a photo'),
+                onTap: () => Navigator.pop(context, ImagePickOrigin.camera),
+              ),
+            if (origins.contains(ImagePickOrigin.file))
+              ListTile(
+                key: const ValueKey('pick-image-file'),
+                leading: const Icon(Icons.upload_file_outlined),
+                title: const Text('Choose image file'),
+                onTap: () => Navigator.pop(context, ImagePickOrigin.file),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _addSticker() async {
@@ -851,7 +884,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
           unawaited(_editor.commitTransaction());
         },
         onPreview: (node, label) => _editor.replaceNode(node, label: label),
-        onBeginTransaction: _editor.beginTransaction,
+        onBeginTransaction: _editor.beginStyleTransaction,
         onEndTransaction: () => unawaited(_editor.commitTransaction()),
       ),
     );
@@ -908,7 +941,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       documentId: _document.id,
       fileName:
           '${_document.title.trim().isEmpty ? 'journal' : _document.title.trim()}.cozyjournal',
-      transfer: widget.archiveService,
     );
     if (mounted && exported) {
       ScaffoldMessenger.of(
@@ -920,7 +952,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   Future<void> _importArchive() async {
     if (!mounted) return;
     try {
-      final imported = await _editor.importArchive(widget.archiveService);
+      final imported = await _editor.importArchive();
       if (!mounted || imported == null) return;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1071,10 +1103,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       builder: (context) => EditorTransformInspectorView(
         node: node,
         onApply: (transform, opacity) async {
-          _editor.beginTransaction(
-            'Precise transform',
-            kind: EditorCommandKind.transform,
-          );
+          _editor.beginTransformTransaction('Precise transform');
           _editor.replaceNodeWorldTransform(
             node.id,
             transform,
@@ -1312,10 +1341,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                               _editor.replaceNodeWorldTransform(id, transform),
                           onTextChanged: _editor.replaceText,
                           onInteractionStart: () =>
-                              _editor.beginTransaction(
-                                'Transform',
-                                kind: EditorCommandKind.transform,
-                              ),
+                              _editor.beginTransformTransaction('Transform'),
                           onInteractionEnd: () {
                             _editor.snapSelection();
                             unawaited(_editor.commitTransaction());
