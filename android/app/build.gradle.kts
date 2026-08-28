@@ -16,7 +16,10 @@ plugins {
 
 android {
     namespace = "app.stephandev.journal"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_secure_storage requires Android API 37 or newer. Keep targetSdk
+    // separately controlled by Flutter below so this only enables compilation
+    // against the newer API and does not change runtime behavior.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
