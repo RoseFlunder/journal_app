@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../models/page_music.dart';
-import '../../../../services/audio_playback.dart';
-import '../../../../services/repositories.dart';
 import '../../../../widgets/paper_page.dart';
+import '../view_models/entry_editor_view_model.dart';
 import '../../music/view_models/page_music_controller.dart';
 import '../../music/views/music_picker_sheet.dart';
 
@@ -27,8 +26,7 @@ class EditorMusicView extends StatelessWidget {
   /// to the page host.
   static Future<MusicPickerResult?> showPicker(
     BuildContext context, {
-    required MusicCatalogRepository catalog,
-    required AudioPlaybackFactory audioPlaybackFactory,
+    required EntryEditorViewModel editor,
     PageMusicTrack? current,
   }) => showModalBottomSheet<MusicPickerResult>(
     context: context,
@@ -36,8 +34,8 @@ class EditorMusicView extends StatelessWidget {
     showDragHandle: true,
     isScrollControlled: true,
     builder: (context) => MusicPickerSheet(
-      catalog: catalog,
-      audioPlaybackFactory: audioPlaybackFactory,
+      catalog: editor.musicCatalog,
+      audioPlaybackFactory: editor.audioPlaybackFactory,
       current: current,
     ),
   );

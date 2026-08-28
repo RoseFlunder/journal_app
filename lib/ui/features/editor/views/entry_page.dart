@@ -12,10 +12,8 @@ import '../../../../editor/editor_state.dart';
 import '../../../../models/document.dart';
 import '../../../../models/sticker.dart';
 import '../../../../models/view_state.dart';
-import '../../../../services/audio_playback.dart';
 import '../../../../services/image_source.dart';
 import '../../../../services/journal_transfer_service.dart';
-import '../../../../services/repositories.dart';
 import '../view_models/entry_editor_view_model.dart';
 import '../view_models/editor_tool_state.dart';
 import 'entry_editor_surface.dart';
@@ -48,8 +46,6 @@ class EntryPage extends StatefulWidget {
     required this.onEditingChanged,
     required this.active,
     required this.musicController,
-    required this.musicCatalog,
-    required this.audioPlaybackFactory,
     this.controlsVisible = true,
     this.imageSource,
     this.imageProcessor = const ImageProcessor(),
@@ -63,8 +59,6 @@ class EntryPage extends StatefulWidget {
   final bool controlsVisible;
   final bool active;
   final PageMusicController musicController;
-  final MusicCatalogRepository musicCatalog;
-  final AudioPlaybackFactory audioPlaybackFactory;
 
   final ImageSourceService? imageSource;
   final ImageProcessor imageProcessor;
@@ -1022,8 +1016,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     if (!mounted) return;
     final result = await EditorMusicView.showPicker(
       context,
-      catalog: widget.musicCatalog,
-      audioPlaybackFactory: widget.audioPlaybackFactory,
+      editor: _editor,
       current: _document.music,
     );
     if (!mounted || result == null) return;
