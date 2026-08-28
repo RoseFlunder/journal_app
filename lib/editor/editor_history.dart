@@ -83,20 +83,57 @@ sealed class EditorCommand {
       after: after,
     );
     if (board != null) return board;
+    final intent = _commandIntent(label);
+    final beforeIds = _nodeMap(before.document).keys.toSet();
+    final afterIds = _nodeMap(after.document).keys.toSet();
+    if (intent == _EditorCommandIntent.group) {
+      return GroupEditorCommand(
+        label: label,
+        before: before,
+        after: after,
+      );
+    }
+    if (intent == _EditorCommandIntent.reorder) {
+      return ReorderEditorCommand(
+        label: label,
+        before: before,
+        after: after,
+      );
+    }
+    if (!setEquals(beforeIds, afterIds)) {
+      return switch (intent) {
+        _EditorCommandIntent.insert => InsertEditorCommand(
+          label: label,
+          before: before,
+          after: after,
+        ),
+        _EditorCommandIntent.delete => DeleteEditorCommand(
+          label: label,
+          before: before,
+          after: after,
+        ),
+        _ => StructuralEditorCommand(
+          label: label,
+          before: before,
+          after: after,
+        ),
+      };
+    }
     final nodes = NodeEditorCommand.tryCreate(
       label: label,
       before: before,
       after: after,
     );
-    if (nodes != null) return nodes;
-    final beforeIds = _nodeMap(before.document).keys.toSet();
-    final afterIds = _nodeMap(after.document).keys.toSet();
-    if (!setEquals(beforeIds, afterIds)) {
-      return StructuralEditorCommand(
-        label: label,
-        before: before,
-        after: after,
-      );
+    if (nodes != null) {
+      if (intent == _EditorCommandIntent.style) {
+        return StyleEditorCommand(
+          label: label,
+          affectedIds: nodes.affectedIds,
+          before: before,
+          after: after,
+        );
+      }
+      return nodes;
     }
     return DocumentReplacementCommand(
       label: label,
@@ -212,7 +249,7 @@ final class BoardEditorCommand extends EditorCommand {
 }
 
 /// Typed command for a style, content, visibility, or other node payload edit.
-final class NodeEditorCommand extends EditorCommand {
+base class NodeEditorCommand extends EditorCommand {
   NodeEditorCommand({
     required super.label,
     required super.affectedIds,
@@ -266,7 +303,7 @@ final class NodeEditorCommand extends EditorCommand {
 }
 
 /// Typed command for insertion, deletion, grouping, and layer reordering.
-final class StructuralEditorCommand extends EditorCommand {
+base class StructuralEditorCommand extends EditorCommand {
   StructuralEditorCommand({
     required super.label,
     required this.before,
@@ -291,9 +328,56 @@ final class StructuralEditorCommand extends EditorCommand {
   EditorDocumentSnapshot revert(EditorDocumentSnapshot state) => before;
 }
 
-/// Transitional command for insertions, deletions, styles, and board edits.
-/// It keeps the command API typed while those operations gain specialized
-/// deltas in later editor slices.
+/// Typed command for presentation-only node edits such as text formatting or
+/// stroke color changes. It retains the node command's immutable snapshots
+/// while making the editor operation explicit to history consumers.
+final class StyleEditorCommand extends NodeEditorCommand {
+  StyleEditorCommand({
+    required super.label,
+    required super.affectedIds,
+    required super.before,
+    required super.after,
+  });
+}
+
+/// Typed command for adding nodes or node graphs to the document.
+final class InsertEditorCommand extends StructuralEditorCommand {
+  InsertEditorCommand({
+    required super.label,
+    required super.before,
+    required super.after,
+  });
+}
+
+/// Typed command for removing nodes or node graphs from the document.
+final class DeleteEditorCommand extends StructuralEditorCommand {
+  DeleteEditorCommand({
+    required super.label,
+    required super.before,
+    required super.after,
+  });
+}
+
+/// Typed command for creating, changing, or removing a group hierarchy.
+final class GroupEditorCommand extends StructuralEditorCommand {
+  GroupEditorCommand({
+    required super.label,
+    required super.before,
+    required super.after,
+  });
+}
+
+/// Typed command for changing sibling layer order.
+final class ReorderEditorCommand extends StructuralEditorCommand {
+  ReorderEditorCommand({
+    required super.label,
+    required super.before,
+    required super.after,
+  });
+}
+
+/// Transitional whole-document command for changes that cannot yet be
+/// represented by a more specific editor command.
 final class DocumentReplacementCommand extends EditorCommand {
   DocumentReplacementCommand({
     required super.label,
@@ -420,6 +504,36 @@ Map<String, CanvasNode> _nodeMap(EntryDocument document) {
 
   visit(document.nodes);
   return result;
+}
+
+enum _EditorCommandIntent { insert, delete, style, group, reorder, other }
+
+_EditorCommandIntent _commandIntent(String label) {
+  final normalized = label.trim().toLowerCase();
+  if (normalized.contains('group')) return _EditorCommandIntent.group;
+  if (normalized.contains('reorder') ||
+      normalized.contains('bring to front') ||
+      normalized.contains('send to back')) {
+    return _EditorCommandIntent.reorder;
+  }
+  if (normalized.contains('delete') ||
+      normalized.contains('remove') ||
+      normalized == 'cut') {
+    return _EditorCommandIntent.delete;
+  }
+  if (normalized.contains('insert') ||
+      normalized.startsWith('add ') ||
+      normalized.contains('paste') ||
+      normalized.contains('duplicate')) {
+    return _EditorCommandIntent.insert;
+  }
+  if (normalized.contains('style') ||
+      normalized.contains('format') ||
+      normalized.contains('stroke') ||
+      normalized.contains('text color')) {
+    return _EditorCommandIntent.style;
+  }
+  return _EditorCommandIntent.other;
 }
 
 List<Map<String, dynamic>> _nodeJson(EntryDocument document) => document.nodes

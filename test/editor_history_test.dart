@@ -75,7 +75,7 @@ void main() {
         before: before,
         after: styled,
       ),
-      isA<NodeEditorCommand>(),
+      isA<StyleEditorCommand>(),
     );
     expect(
       EditorCommand.fromStates(
@@ -91,7 +91,47 @@ void main() {
         before: before,
         after: inserted,
       ),
-      isA<StructuralEditorCommand>(),
+      isA<InsertEditorCommand>(),
+    );
+    expect(
+      EditorCommand.fromStates(
+        label: 'Delete',
+        before: inserted,
+        after: before,
+      ),
+      isA<DeleteEditorCommand>(),
+    );
+  });
+
+  test('classifies group and reorder operations by intent', () {
+    final first = _text(id: 'first');
+    final second = _text(id: 'second');
+    final before = _snapshot([first, second]);
+    final reordered = _snapshot([second, first]);
+    final grouped = _snapshot([
+      CanvasNode(
+        id: 'group',
+        type: BlockType.group,
+        transform: const Transform2D(width: 40, height: 20),
+        children: [first, second],
+      ),
+    ]);
+
+    expect(
+      EditorCommand.fromStates(
+        label: 'Reorder layer',
+        before: before,
+        after: reordered,
+      ),
+      isA<ReorderEditorCommand>(),
+    );
+    expect(
+      EditorCommand.fromStates(
+        label: 'Group',
+        before: before,
+        after: grouped,
+      ),
+      isA<GroupEditorCommand>(),
     );
   });
 
