@@ -3,7 +3,8 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-28 after the final architecture boundary closure. The
+Last audited: 2026-08-28 after the final architecture boundary closure and
+local-first cloud synchronization slice. The
 editor controller, history,
 clipboard, and canvas are document/node native; metadata and workflow
 persistence route through feature view models; editor factories, platform
@@ -65,6 +66,23 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
   immutable undo/redo snapshots, and clipboard references.
 - [x] Serialize final text commit, background checkpoint, and storage flush to
   eliminate lifecycle races.
+
+### Optional Google Drive synchronization
+
+- [x] Immutable version vectors, mutation stamps, page tombstones, collection
+  ordering heads, content-hashed assets, and exact local sync metadata exist
+  below the feature boundary.
+- [x] Local-first pull/merge/push coordination is serialized, debounced,
+  retry-safe at the gateway boundary, and suppresses preview feedback. New
+  devices merge pages and assets; concurrent edits retain deterministic
+  conflict copies.
+- [x] Android/Web Google Sign-In and Windows PKCE loopback authentication are
+  isolated behind platform-neutral account and Drive gateways. The feature is
+  disabled by default and configured from public build-time client IDs.
+- [x] The journal shell exposes non-blocking sync status, account binding,
+  reconnect, sign-out, and confirmed device reset actions.
+- [~] OAuth client registration, Google consent-screen verification, privacy
+  review, and cross-device smoke validation remain before production enablement.
 
 ### A4 paper page and camera
 
@@ -200,18 +218,24 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
      content bounds, template scope, and ink width conversion.
    - Add regression tests for the text Done sequence and scrollable More sheet.
 
-3. **Complete page interaction overlay**
+3. **Enable and validate cloud synchronization**
+   - Register the Google OAuth clients, complete consent/privacy review, and
+     run two-account/two-device Android, Web, and Windows smoke tests.
+   - Enable `COZY_BLOOM_CLOUD_SYNC` for production only after the local-first
+     merge, tombstone, asset, and account-reset flows pass validation.
+
+4. **Complete page interaction overlay**
    - Render visible nodes and interaction chrome in their correct coordinate
      spaces.
    - Add culling, smart guides, distribution, haptics, and platform gesture
      parity.
 
-4. **Complete creative editing**
+5. **Complete creative editing**
    - Use Quill for every text node.
    - Complete image crop, replacement, adjustments, and filters.
    - Complete ink, shape, and template workflows.
 
-5. **Export, accessibility, and performance**
+6. **Export, accessibility, and performance**
    - Add image/PDF export, semantics, keyboard parity, goldens, and integration
      tests.
    - Profile Android, Chrome, and Windows for 60-fps manipulation with 100
@@ -239,7 +263,8 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - The editor remains ruled and local-first, with one finite A4 paper page per
   journal entry.
 - Existing saved-data compatibility remains out of scope.
-- Cloud sync, collaboration, generative AI, marketplace features, and rich
-  embedded media remain deferred.
+- Real-time collaboration, generative AI, marketplace features, and rich
+  embedded media remain deferred. Cloud sync is implemented behind its
+  production configuration and validation gate.
 - Music remains separate page ambience and is deferred until editor
   correctness and creative tools are stable.

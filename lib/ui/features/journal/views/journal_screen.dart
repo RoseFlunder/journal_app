@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../../../models/document.dart';
 import '../view_models/journal_view_model.dart';
+import '../view_models/cloud_sync_view_model.dart';
 import '../../editor/view_models/entry_editor_view_model.dart';
 import '../../music/view_models/page_music_controller.dart';
 import '../../../../services/image_source.dart';
@@ -20,12 +21,14 @@ class JournalScreen extends StatefulWidget {
     super.key,
     required this.journal,
     required this.music,
+    required this.cloudSync,
     required this.editorViewModelFactory,
     required this.imageSource,
   });
 
   final JournalViewModel journal;
   final PageMusicController music;
+  final CloudSyncViewModel cloudSync;
   final EntryEditorViewModelFactory editorViewModelFactory;
   final ImageSourceService imageSource;
 
@@ -286,6 +289,7 @@ class _JournalScreenState extends State<JournalScreen> {
                             onOpenPage: goToEntry,
                             onNewPage: _createPage,
                             onDeletePage: _journal.deletePage,
+                            cloudSync: widget.cloudSync,
                           ),
                           for (final document in _journal.documents)
                             _buildEntryPage(document),

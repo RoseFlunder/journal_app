@@ -79,6 +79,35 @@ The client ID is an application identifier distributed with the client build,
 not a user login. Page music is streamed on demand and is not copied into Hive
 or `.cozyjournal` backups.
 
+### Optional Google Drive sync
+
+Cloud sync is opt-in and local-first. Without an account, the journal remains
+fully available offline. When enabled and connected, committed pages, their
+referenced media, page order, and page music references are synchronized to
+Google Drive's hidden `appDataFolder` using the narrow `drive.appdata` scope.
+The data is protected by Google but is not end-to-end encrypted.
+
+Enable the feature only after configuring OAuth clients for Android, Web, and
+Windows. Add the public client IDs to the same defines file and set the feature
+flag:
+
+```json
+{
+  "COZY_BLOOM_CLOUD_SYNC": "true",
+  "GOOGLE_ANDROID_CLIENT_ID": "...",
+  "GOOGLE_WEB_CLIENT_ID": "...",
+  "GOOGLE_DESKTOP_CLIENT_ID": "...",
+  "GOOGLE_SERVER_CLIENT_ID": "..."
+}
+```
+
+The first connected Google account permanently binds the local journal to that
+account. Signing out keeps local pages; changing accounts requires the
+explicit device-reset action. Templates, preferences, checkpoints, recovery
+history, credentials, and editor history remain device-local. Sync runs while
+the app is open and retries transient failures; there is no background push
+while the app is closed.
+
 Useful checks:
 
 ```text
@@ -130,8 +159,22 @@ focused Hive capability sources keep the same path compatible with Web.
 - `lib/services/repositories.dart`: repository capability contracts
 - `lib/services/hive_repositories.dart`: Hive repository adapters
 - `lib/services/persistence_coordinator.dart`: ordered save/flush lifecycle
+- `lib/services/sync_models.dart`: immutable cloud heads, version vectors, and
+  asset descriptors
+- `lib/services/cloud_sync_coordinator.dart`: local-first merge, retry, and
+  lifecycle coordination
+- `lib/services/cloud_sync_repository.dart`: immutable sync state and the
+  feature-facing synchronization contract
+- `lib/services/cloud_gateway.dart`: platform-neutral account and Drive
+  capability contracts plus the REST adapter
+- `lib/services/platform_cloud_account_gateway_*.dart`: Android/Web/Windows
+  authentication implementations
+- `lib/platform/cloud_sign_in_button*.dart`: platform presentation adapter for
+  the Web sign-in control
 - `lib/ui/features/journal/views/journal_screen.dart`: PageView over TOC and entries
 - `lib/ui/features/journal/views/contents_page.dart`: table of contents
+- `lib/ui/features/journal/view_models/cloud_sync_view_model.dart`: sync
+  account/progress state presented to the journal shell
 - `lib/ui/features/editor/views/entry_page.dart`: entry page rendering
 - `lib/widgets/paper_page.dart`: M2 paper surface and painter
 - `lib/widgets/page_viewport.dart`: M3 zoom and pan viewport

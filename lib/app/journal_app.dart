@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../ui/features/journal/view_models/journal_view_model.dart';
 import '../ui/features/journal/views/journal_screen.dart';
 import '../ui/features/music/view_models/page_music_controller.dart';
+import '../ui/features/journal/view_models/cloud_sync_view_model.dart';
 import '../widgets/paper_page.dart';
 import 'app_dependencies.dart';
 
@@ -93,12 +94,22 @@ class _ConfiguredJournalScreenState extends State<_ConfiguredJournalScreen> {
     playback: widget.dependencies.audioPlaybackFactory(),
     persistResolvedTrack: _journal.persistResolvedTrack,
   );
+  late final CloudSyncViewModel _cloudSync = CloudSyncViewModel(
+    coordinator: widget.dependencies.cloudSync,
+  );
 
   @override
   Widget build(BuildContext context) => JournalScreen(
     journal: _journal,
     music: _music,
+    cloudSync: _cloudSync,
     editorViewModelFactory: widget.dependencies.editorViewModelFactory,
     imageSource: widget.dependencies.imageSource,
   );
+
+  @override
+  void dispose() {
+    _cloudSync.dispose();
+    super.dispose();
+  }
 }

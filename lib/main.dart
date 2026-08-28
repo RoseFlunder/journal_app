@@ -176,9 +176,13 @@ class _JournalLifecycleState extends State<_JournalLifecycle>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(widget.dependencies.cloudSync.onAppResumed());
+    }
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      widget.dependencies.cloudSync.onAppPaused();
       unawaited(_flushStore());
     }
   }

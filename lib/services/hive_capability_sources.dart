@@ -121,6 +121,77 @@ class HiveDocumentDataSource {
     });
   }
 
+  /// Applies a cloud document without incrementing its local revision. This
+  /// method is intentionally kept on the internal source so feature code can
+  /// only persist through the normal repository contract.
+  Future<void> upsertExact(EntryDocument document) async {
+    await _ensureLoaded();
+    final index = _documents.indexWhere((item) => item.id == document.id);
+    final updated = List<EntryDocument>.from(_documents);
+    if (index < 0) {
+      updated.add(document);
+    } else {
+      updated[index] = document;
+    }
+    _documents = List<EntryDocument>.unmodifiable(updated);
+    final order = _documents.map((item) => item.id).toList(growable: false);
+    await storage.enqueue(() async {
+      await storage.writeEntry(
+        document.id,
+        EntryDocumentCodec.toEntry(document).toJson(),
+      );
+      await storage.writeMeta('entryOrder', order);
+      _publish();
+    });
+  }
+
+  /// Removes a cloud tombstoned document without changing any sync metadata.
+  Future<void> deleteExact(String id) async {
+    await _ensureLoaded();
+    final remaining = _documents.where((item) => item.id != id).toList();
+    if (remaining.length == _documents.length) return;
+    _documents = List<EntryDocument>.unmodifiable(remaining);
+    final order = remaining.map((item) => item.id).toList(growable: false);
+    await storage.enqueue(() async {
+      await storage.deleteEntry(id);
+      await storage.writeMeta('entryOrder', order);
+      _publish();
+    });
+  }
+
+  Future<void> clearAll() async {
+    await _ensureLoaded();
+    final ids = storage.entryKeys.toList();
+    _documents = const <EntryDocument>[];
+    await storage.enqueue(() async {
+      for (final id in ids) {
+        await storage.deleteEntry(id.toString());
+      }
+      await storage.writeMeta('entryOrder', const <String>[]);
+      _publish();
+    });
+  }
+
+  Future<void> reorderExact(Iterable<EntryDocument> ordered) async {
+    await _ensureLoaded();
+    final byId = <String, EntryDocument>{
+      for (final document in _documents) document.id: document,
+    };
+    final next = <EntryDocument>[
+      for (final document in ordered)
+        if (byId[document.id] != null) byId[document.id]!,
+    ];
+    if (next.length != _documents.length) return;
+    _documents = List<EntryDocument>.unmodifiable(next);
+    await storage.enqueue(() async {
+      await storage.writeMeta(
+        'entryOrder',
+        next.map((document) => document.id).toList(growable: false),
+      );
+      _publish();
+    });
+  }
+
   Future<void> dispose() async {
     if (!_changes.isClosed) await _changes.close();
   }
@@ -222,6 +293,41 @@ class HiveAssetDataSource {
     } catch (_) {
       return null;
     }
+  }
+
+  AssetRecord? snapshot(String id) {
+    final raw = storage.readAsset(id);
+    if (raw is! Map) return null;
+    try {
+      return AssetRecord.fromJson(Map<String, dynamic>.from(raw));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> putExact(
+    String id,
+    String ownerId,
+    AssetKind kind,
+    String mime,
+    List<int> bytes,
+  ) {
+    final record = AssetRecord(
+      entryId: ownerId,
+      kind: kind,
+      mime: mime,
+      data: List<int>.unmodifiable(bytes),
+    );
+    return storage.enqueue(() => storage.writeAsset(id, record.toJson()));
+  }
+
+  Future<void> clearAll() async {
+    final ids = storage.assetKeys.toList();
+    await storage.enqueue(() async {
+      for (final id in ids) {
+        await storage.deleteAsset(id.toString());
+      }
+    });
   }
 
   Future<void> collectUnreferencedAssets({

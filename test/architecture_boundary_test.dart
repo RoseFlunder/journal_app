@@ -10,6 +10,11 @@ void main() {
       'hive_repositories.dart',
       'storage_records.dart',
       'models/entry.dart',
+      'package:google_sign_in/',
+      'package:google_sign_in_web/',
+      'package:oauth2/',
+      'package:flutter_secure_storage/',
+      'package:http/',
     ];
     final files = Directory('lib/ui')
         .listSync(recursive: true)
@@ -50,7 +55,7 @@ void main() {
         isNot(
           matches(
             RegExp(
-              r'''import\s+['"].*services/(?:repositories|hive_|journal_transfer_service|image_processing)''',
+              r'''import\s+['"].*services/(?:repositories|hive_|journal_transfer_service|image_processing|platform_cloud_account_gateway|cloud_gateway|cloud_sync_coordinator|sync_local_store)''',
             ),
           ),
         ),

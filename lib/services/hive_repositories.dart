@@ -6,6 +6,7 @@ import 'hive_capability_sources.dart';
 import 'hive_journal_data_source.dart';
 import 'journal_archive.dart';
 import 'repositories.dart';
+import 'sync_local_store.dart';
 
 /// Document capability adapter backed by the internal Hive document source.
 class HiveDocumentRepository implements DocumentRepository {
@@ -204,11 +205,17 @@ class HiveRepositorySet {
           persistence ?? HivePersistenceRepository.fromDataSource(source),
       archiveRepository: HiveArchiveRepository.fromDataSource(archive),
     );
+    syncLocalStore = HiveSyncLocalStore(
+      storage: source,
+      documents: documents,
+      assets: assets,
+    );
     _documentSource = documents;
     _checkpointSource = checkpoints;
   }
 
   late final JournalRepositories repositories;
+  late final SyncLocalStore syncLocalStore;
   HiveDocumentDataSource? _documentSource;
   HiveCheckpointDataSource? _checkpointSource;
 

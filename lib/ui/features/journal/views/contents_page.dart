@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
-import 'dart:typed_data';
-
 import '../../../../models/document.dart';
 import '../../../../models/sticker.dart';
 import '../../../../widgets/paper_page.dart';
+import '../view_models/cloud_sync_view_model.dart';
+import '../../../../platform/cloud_sign_in_button.dart';
 
 /// Botanical home/contents page. It intentionally stays focused on the
 /// journal list; calendar and search are deferred.
@@ -16,6 +17,7 @@ class ContentsPage extends StatelessWidget {
     required this.onOpenPage,
     required this.onNewPage,
     required this.onDeletePage,
+    required this.cloudSync,
   });
 
   final List<EntryDocument> documents;
@@ -23,6 +25,7 @@ class ContentsPage extends StatelessWidget {
   final ValueChanged<int> onOpenPage;
   final VoidCallback onNewPage;
   final Future<void> Function(String id) onDeletePage;
+  final CloudSyncViewModel cloudSync;
 
   Future<void> _confirmDelete(
     BuildContext context,
@@ -67,6 +70,10 @@ class ContentsPage extends StatelessWidget {
           'Cozy Bloom Journal',
           style: Theme.of(context).textTheme.headlineSmall,
         ),
+        actions: [
+          _CloudSyncAction(viewModel: cloudSync),
+          const SizedBox(width: 8),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: PaperPage.sage,
@@ -350,4 +357,187 @@ class _EntryCard extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _CloudSyncAction extends StatelessWidget {
+  const _CloudSyncAction({required this.viewModel});
+
+  final CloudSyncViewModel viewModel;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: viewModel,
+        builder: (context, _) {
+          final state = viewModel.state;
+          final busy = state.phase == CloudSyncPhase.signingIn ||
+              state.phase == CloudSyncPhase.initialSync ||
+              state.phase == CloudSyncPhase.syncing;
+          return IconButton(
+            tooltip: _tooltip(state.phase),
+            onPressed: busy || state.phase == CloudSyncPhase.disabled
+                ? null
+                : () => _openPanel(context),
+            icon: busy
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(_icon(state.phase)),
+          );
+        },
+      );
+
+  Future<void> _openPanel(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => _CloudSyncPanel(viewModel: viewModel),
+    );
+  }
+
+  static IconData _icon(CloudSyncPhase phase) => switch (phase) {
+        CloudSyncPhase.disabled => Icons.cloud_off_outlined,
+        CloudSyncPhase.signedOut => Icons.cloud_outlined,
+        CloudSyncPhase.signingIn => Icons.cloud_outlined,
+        CloudSyncPhase.initialSync => Icons.cloud_sync_outlined,
+        CloudSyncPhase.syncing => Icons.cloud_sync_outlined,
+        CloudSyncPhase.synced => Icons.cloud_done_outlined,
+        CloudSyncPhase.offline => Icons.cloud_off_outlined,
+        CloudSyncPhase.authorizationRequired => Icons.lock_clock_outlined,
+        CloudSyncPhase.failed => Icons.cloud_off_outlined,
+      };
+
+  static String _tooltip(CloudSyncPhase phase) => switch (phase) {
+        CloudSyncPhase.disabled => 'Cloud sync is not configured',
+        CloudSyncPhase.signedOut => 'Connect Google Drive',
+        CloudSyncPhase.signingIn => 'Connecting Google Drive',
+        CloudSyncPhase.initialSync => 'Syncing journal',
+        CloudSyncPhase.syncing => 'Syncing journal',
+        CloudSyncPhase.synced => 'Google Drive synced',
+        CloudSyncPhase.offline => 'Sync offline — tap to retry',
+        CloudSyncPhase.authorizationRequired => 'Reconnect Google Drive',
+        CloudSyncPhase.failed => 'Sync failed — tap for details',
+      };
+}
+
+class _CloudSyncPanel extends StatelessWidget {
+  const _CloudSyncPanel({required this.viewModel});
+
+  final CloudSyncViewModel viewModel;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+          child: ListenableBuilder(
+            listenable: viewModel,
+            builder: (context, _) {
+              final state = viewModel.state;
+              final account = state.account;
+              final label = account == null
+                  ? 'Not connected'
+                  : account.email.isEmpty
+                      ? 'Google Drive connected'
+                      : account.email;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Cloud sync', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 8),
+                  Text(label),
+                  const SizedBox(height: 8),
+                  if (state.lastSyncedAt != null)
+                    Text(
+                      'Last synced ${DateFormat.Hm().format(state.lastSyncedAt!.toLocal())}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  if (state.error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      state.error.toString(),
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  if (state.phase == CloudSyncPhase.signedOut)
+                    ...[
+                      kIsWeb
+                          ? buildCloudSignInButton()
+                          : FilledButton.icon(
+                              onPressed: () async {
+                                await viewModel.connect();
+                                if (context.mounted) Navigator.pop(context);
+                              },
+                              icon: const Icon(Icons.login),
+                              label: const Text('Connect Google Drive'),
+                            ),
+                      _resetButton(context),
+                    ]
+                  else if (state.phase == CloudSyncPhase.authorizationRequired)
+                    ...[
+                      FilledButton.icon(
+                        onPressed: () => viewModel.reconnect(),
+                        icon: const Icon(Icons.lock_open),
+                        label: const Text('Reconnect'),
+                      ),
+                      _resetButton(context),
+                    ]
+                  else ...[
+                    FilledButton.icon(
+                      onPressed: () => viewModel.syncNow(),
+                      icon: const Icon(Icons.sync),
+                      label: const Text('Sync now'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () async {
+                        await viewModel.signOut();
+                        if (context.mounted) Navigator.pop(context);
+                      },
+                      child: const Text('Sign out (keep local pages)'),
+                    ),
+                    TextButton(
+                      onPressed: () => _confirmReset(context),
+                      child: const Text('Reset this device for another account'),
+                    ),
+                  ],
+                ],
+              );
+            },
+          ),
+        ),
+      );
+
+  Future<void> _confirmReset(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Reset this device?'),
+        content: const Text(
+          'This removes local pages, images, and the account link. Google Drive data is not deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await viewModel.resetLocalData();
+      if (context.mounted) Navigator.pop(context);
+    }
+  }
+
+  Widget _resetButton(BuildContext context) => TextButton(
+        onPressed: () => _confirmReset(context),
+        child: const Text('Reset this device for another account'),
+      );
 }
