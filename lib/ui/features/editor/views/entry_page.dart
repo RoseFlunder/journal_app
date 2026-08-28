@@ -7,11 +7,9 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../editor/editor_state.dart';
 import '../../../../models/document.dart';
-import '../../../../models/page_music.dart';
 import '../../../../models/sticker.dart';
 import '../../../../models/view_state.dart';
 import '../../../../services/image_source.dart';
@@ -30,8 +28,8 @@ import 'editor_shape_picker_view.dart';
 import 'editor_alignment_view.dart';
 import 'editor_transform_inspector_view.dart';
 import 'editor_ink_settings_view.dart';
+import 'editor_music_view.dart';
 import '../../music/view_models/page_music_controller.dart';
-import '../../music/views/music_picker_sheet.dart';
 import '../../../../widgets/entry_chrome.dart';
 import '../../../../widgets/page_viewport.dart';
 import '../../../../widgets/paper_page.dart';
@@ -1078,24 +1076,16 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   Future<void> _showMusicPicker() async {
     await widget.musicController.stopAndReset();
     if (!mounted) return;
-    final result = await showModalBottomSheet<MusicPickerResult>(
-      context: context,
-      backgroundColor: PaperPage.paper,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => MusicPickerSheet(
-        catalog: _editor.musicCatalog,
-        audioPlaybackFactory: _editor.audioPlaybackFactory,
-        current: _document.music,
-      ),
+    final result = await EditorMusicView.showPicker(
+      context,
+      catalog: _editor.musicCatalog,
+      audioPlaybackFactory: _editor.audioPlaybackFactory,
+      current: _document.music,
     );
     if (!mounted || result == null) return;
     final track = result.remove ? null : result.track;
-    final next = _document.copyWith(
-      music: track,
-      modifiedAt: DateTime.now(),
-    );
-    _publishDocument(next);
+    await _editor.updateMusic(track);
+    if (!mounted) return;
     await widget.musicController.setActivePage(
       widget.active ? _document.id : null,
       widget.active ? track : null,
@@ -1257,107 +1247,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
-  }
-
-  Widget _buildMusicChip() => ListenableBuilder(
-    listenable: widget.musicController,
-    builder: (context, _) {
-      final controller = widget.musicController;
-      final track = controller.pageId == _document.id
-          ? controller.track ?? _document.music
-          : _document.music;
-      if (track == null) return const SizedBox.shrink();
-      final loading = widget.active && controller.isLoading;
-      final playing = widget.active && controller.isPlaying;
-      final failed = widget.active && controller.error != null;
-      return Material(
-        color: PaperPage.paper,
-        elevation: 2,
-        borderRadius: BorderRadius.circular(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 280),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                key: const ValueKey('page-music-play-pause'),
-                tooltip: failed
-                    ? 'Retry page music'
-                    : playing
-                    ? 'Pause page music'
-                    : 'Play page music',
-                onPressed: !widget.active || loading
-                    ? null
-                    : () async {
-                        await controller.toggle();
-                        if (!context.mounted || controller.error == null) {
-                          return;
-                        }
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(controller.error!)),
-                        );
-                      },
-                icon: loading
-                    ? const SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(
-                        failed
-                            ? Icons.refresh
-                            : playing
-                            ? Icons.pause
-                            : Icons.play_arrow,
-                      ),
-              ),
-              Flexible(
-                child: Text(
-                  track.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              IconButton(
-                tooltip: 'Page music details',
-                onPressed: () => _showMusicDetails(track),
-                icon: const Icon(Icons.info_outline, size: 20),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-  );
-
-  Future<void> _showMusicDetails(PageMusicTrack track) async {
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(track.title),
-        content: Text(
-          track.isLegacy
-              ? 'This page contains a legacy local music reference. Replace or remove it from More tools.'
-              : '${track.artist}\n\nStreamed from Jamendo under the linked Creative Commons license.',
-        ),
-        actions: [
-          if (track.licenseUrl.isNotEmpty)
-            TextButton(
-              onPressed: () => launchUrl(Uri.parse(track.licenseUrl)),
-              child: const Text('License'),
-            ),
-          if (track.trackPageUrl.isNotEmpty)
-            TextButton(
-              onPressed: () => launchUrl(Uri.parse(track.trackPageUrl)),
-              child: const Text('Open on Jamendo'),
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
   }
 
   void _showLayers() {
@@ -1641,7 +1530,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                   top: 12,
                   child: EntryChrome(
                     visible: widget.controlsVisible,
-                    child: _buildMusicChip(),
+                    child: EditorMusicView(
+                      documentId: _document.id,
+                      documentTrack: _document.music,
+                      controller: widget.musicController,
+                      active: widget.active,
+                    ),
                   ),
                 ),
               if (!_editing)
@@ -1655,7 +1549,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (_document.music != null) ...[
-                          _buildMusicChip(),
+                          EditorMusicView(
+                            documentId: _document.id,
+                            documentTrack: _document.music,
+                            controller: widget.musicController,
+                            active: widget.active,
+                          ),
                           const SizedBox(height: 8),
                         ],
                         EditorToolbarView(

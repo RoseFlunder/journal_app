@@ -8,6 +8,7 @@ import 'dart:typed_data';
 
 import '../../../../editor/editor_controller.dart';
 import '../../../../models/document.dart';
+import '../../../../models/page_music.dart';
 import '../../../../models/template.dart';
 import '../../../../services/audio_playback.dart';
 import '../../../../services/image_source.dart';
@@ -182,6 +183,11 @@ class EntryEditorViewModel extends EditorController {
       _setWorkflowError(error.toString());
     }
   }
+
+  /// Persists page ambience metadata through the editor boundary.
+  Future<void> updateMusic(PageMusicTrack? track) => updateMetadata(
+    document.copyWith(music: track, modifiedAt: DateTime.now()),
+  );
 
   void clearWorkflowError() => _setWorkflowError(null);
 
