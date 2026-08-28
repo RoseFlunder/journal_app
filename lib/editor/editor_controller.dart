@@ -107,18 +107,6 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Applies an immutable update to one node without exposing the mutable
-  /// compatibility adapter to callers.
-  void updateNode(
-    String id,
-    CanvasNode Function(CanvasNode node) update, {
-    String label = 'Edit node',
-  }) {
-    final node = _document.nodeById(id);
-    if (node == null || node.locked) return;
-    replaceNode(update(node), label: label);
-  }
-
   /// Inserts a node through the immutable editor boundary.
   void addNode(CanvasNode node, {bool select = true}) {
     if (_document.nodeById(node.id) != null) return;
@@ -679,18 +667,21 @@ class EditorController extends ChangeNotifier {
   /// Starts/extends a coalesced text transaction. Call [flushText] when a
   /// text field loses focus so typing never writes once per keystroke.
   void replaceText(String id, String text, {List<dynamic>? delta}) {
+    final node = _document.nodeById(id);
+    if (node == null || node.locked) return;
     if (!_history.inTransaction) beginTransaction('Edit text');
-    updateNode(id, (node) {
-      final payload = Map<String, dynamic>.from(node.payload)
-        ..['text'] = text
-        ..['richTextDelta'] = delta == null
-            ? <dynamic>[
-                {'insert': text},
-                {'insert': '\n'},
-              ]
-            : List<dynamic>.from(delta);
-      return node.copyWith(payload: payload);
-    }, label: 'Edit text');
+    final payload = Map<String, dynamic>.from(node.payload)
+      ..['text'] = text
+      ..['richTextDelta'] = delta == null
+          ? <dynamic>[
+              {'insert': text},
+              {'insert': '\n'},
+            ]
+          : List<dynamic>.from(delta);
+    replaceNode(
+      node.copyWith(payload: payload),
+      label: 'Edit text',
+    );
     _textTimer?.cancel();
     _textTimer = Timer(const Duration(milliseconds: 500), () {
       unawaited(commitTransaction());

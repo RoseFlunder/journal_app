@@ -844,12 +844,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       isScrollControlled: true,
       builder: (context) => EditorImageEditorView(
         node: node,
-        onCommit: (id, update, label) {
-          _editor.updateNode(id, update, label: label);
+        onCommit: (node, label) {
+          _editor.replaceNode(node, label: label);
           unawaited(_editor.commitTransaction());
         },
-        onPreview: (id, update, label) =>
-            _editor.updateNode(id, update, label: label),
+        onPreview: (node, label) => _editor.replaceNode(node, label: label),
         onBeginTransaction: _editor.beginTransaction,
         onEndTransaction: () => unawaited(_editor.commitTransaction()),
       ),
@@ -1076,11 +1075,13 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
             transform,
             label: 'Precise transform',
           );
-          _editor.updateNode(
-            node.id,
-            (current) => current.copyWith(opacity: opacity),
-            label: 'Precise transform',
-          );
+          final current = _editor.document.nodeById(node.id);
+          if (current != null) {
+            _editor.replaceNode(
+              current.copyWith(opacity: opacity),
+              label: 'Precise transform',
+            );
+          }
           await _editor.commitTransaction();
         },
         onNudge: _editor.nudge,

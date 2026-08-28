@@ -225,23 +225,17 @@ class EntryEditorViewModel extends EditorController {
     if (node == null || node.type != BlockType.text || node.locked) return;
     final ownsTransaction = !inTransaction;
     if (ownsTransaction) beginTransaction('Format text');
-    updateNode(
-      nodeId,
-      (current) {
-        final payload = Map<String, dynamic>.from(current.payload);
-        if (!identical(fontFamily, _formatUnset)) {
-          payload['fontFamily'] = fontFamily as String?;
-        }
-        if (fontSize != null) payload['fontSize'] = fontSize;
-        if (!identical(textColorValue, _formatUnset)) {
-          payload['textColorValue'] = textColorValue as int?;
-        }
-        if (bold != null) payload['bold'] = bold;
-        if (italic != null) payload['italic'] = italic;
-        return current.copyWith(payload: payload);
-      },
-      label: 'Format text',
-    );
+    final payload = Map<String, dynamic>.from(node.payload);
+    if (!identical(fontFamily, _formatUnset)) {
+      payload['fontFamily'] = fontFamily as String?;
+    }
+    if (fontSize != null) payload['fontSize'] = fontSize;
+    if (!identical(textColorValue, _formatUnset)) {
+      payload['textColorValue'] = textColorValue as int?;
+    }
+    if (bold != null) payload['bold'] = bold;
+    if (italic != null) payload['italic'] = italic;
+    replaceNode(node.copyWith(payload: payload), label: 'Format text');
     if (ownsTransaction) await commitTransaction();
   }
 

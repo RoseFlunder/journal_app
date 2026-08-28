@@ -17,10 +17,8 @@ class EditorImageEditorView extends StatefulWidget {
   });
 
   final CanvasNode node;
-  final void Function(String id, CanvasNode Function(CanvasNode node), String label)
-  onCommit;
-  final void Function(String id, CanvasNode Function(CanvasNode node), String label)
-  onPreview;
+  final void Function(CanvasNode node, String label) onCommit;
+  final void Function(CanvasNode node, String label) onPreview;
   final ValueChanged<String> onBeginTransaction;
   final VoidCallback onEndTransaction;
 
@@ -33,6 +31,7 @@ class _EditorImageEditorViewState extends State<EditorImageEditorView> {
   static const _portraitCrop = Rect.fromLTWH(0.22, 0, 0.56, 1);
   static const _wideCrop = Rect.fromLTWH(0, 0.2, 1, 0.6);
 
+  late CanvasNode _currentNode = widget.node;
   late Rect? _crop = widget.node.crop;
   late double _opacity = widget.node.opacity;
   late double _brightness = widget.node.brightness;
@@ -53,12 +52,18 @@ class _EditorImageEditorViewState extends State<EditorImageEditorView> {
   void _commit(
     CanvasNode Function(CanvasNode node) update, {
     String label = 'Edit image',
-  }) => widget.onCommit(widget.node.id, update, label);
+  }) {
+    _currentNode = update(_currentNode);
+    widget.onCommit(_currentNode, label);
+  }
 
   void _preview(
     CanvasNode Function(CanvasNode node) update, {
     required String label,
-  }) => widget.onPreview(widget.node.id, update, label);
+  }) {
+    _currentNode = update(_currentNode);
+    widget.onPreview(_currentNode, label);
+  }
 
   @override
   Widget build(BuildContext context) => SafeArea(
