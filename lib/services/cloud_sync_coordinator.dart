@@ -55,6 +55,7 @@ class CloudSyncCoordinator extends ChangeNotifier
   int _retryAttempt = 0;
   CloudSyncState _state;
   Future<void>? _activeSync;
+  Future<void>? _accountHandling;
   bool _applyingRemote = false;
   bool _initialized = false;
 
@@ -89,13 +90,15 @@ class CloudSyncCoordinator extends ChangeNotifier
     if (!_initialized) await init();
     _setState(_state.copyWith(phase: CloudSyncPhase.signingIn, error: null));
     try {
-      final signedIn = await account.signIn();
-      await _acceptAccount(signedIn);
-      await syncNow(initial: true);
-    } on CloudAuthorizationException {
-      _setState(
-        _state.copyWith(phase: CloudSyncPhase.authorizationRequired),
-      );
+      final signedIn = await account.authenticate();
+      await _handleAuthenticatedAccount(signedIn);
+    } on CloudAuthorizationException catch (error) {
+      _setState(_state.copyWith(
+        phase: error.code == CloudAuthErrorCode.canceled
+            ? CloudSyncPhase.signedOut
+            : CloudSyncPhase.authorizationRequired,
+        error: error.code == CloudAuthErrorCode.canceled ? null : error,
+      ));
     } catch (error) {
       _setState(_state.copyWith(phase: CloudSyncPhase.failed, error: error));
     }
@@ -106,8 +109,9 @@ class CloudSyncCoordinator extends ChangeNotifier
     if (!enabled) return;
     if (!_initialized) await init();
     try {
-      await account.authorizeDrive();
-      await syncNow(initial: true);
+      await account.requestDriveAuthorization();
+      final current = _state.account;
+      if (current != null) await _handleAuthenticatedAccount(current);
     } catch (error) {
       _setState(
         _state.copyWith(
@@ -217,8 +221,7 @@ class CloudSyncCoordinator extends ChangeNotifier
     try {
       final restored = await account.restoreSession();
       if (restored == null) return;
-      await _acceptAccount(restored);
-      await syncNow(initial: true);
+      await _handleAuthenticatedAccount(restored);
     } catch (error) {
       _setState(_state.copyWith(phase: CloudSyncPhase.failed, error: error));
     }
@@ -831,9 +834,27 @@ class CloudSyncCoordinator extends ChangeNotifier
   }
 
   Future<void> _handleAuthenticatedAccount(CloudAccount accountInfo) async {
+    final active = _accountHandling;
+    if (active != null) return active;
+    final operation = _processAuthenticatedAccount(accountInfo);
+    _accountHandling = operation;
+    try {
+      await operation;
+    } finally {
+      if (identical(_accountHandling, operation)) _accountHandling = null;
+    }
+  }
+
+  Future<void> _processAuthenticatedAccount(CloudAccount accountInfo) async {
     try {
       await _acceptAccount(accountInfo);
-      await account.authorizeDrive();
+      if (!await account.hasDriveAuthorization()) {
+        _setState(_state.copyWith(
+          phase: CloudSyncPhase.authorizationRequired,
+          error: null,
+        ));
+        return;
+      }
       await syncNow(initial: true);
     } on CloudAccountMismatchException catch (error) {
       _setState(_state.copyWith(phase: CloudSyncPhase.failed, error: error));

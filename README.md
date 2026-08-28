@@ -94,12 +94,17 @@ flag:
 ```json
 {
   "COZY_BLOOM_CLOUD_SYNC": "true",
-  "GOOGLE_ANDROID_CLIENT_ID": "...",
   "GOOGLE_WEB_CLIENT_ID": "...",
   "GOOGLE_DESKTOP_CLIENT_ID": "...",
   "GOOGLE_SERVER_CLIENT_ID": "..."
 }
 ```
+
+Android identifies the app by its package name and signing SHA fingerprints;
+the Dart configuration uses the Web client as `GOOGLE_SERVER_CLIENT_ID` when
+`google-services.json` is not bundled. Web authorization is intentionally a
+separate user action after sign-in and may need to be repeated when its
+short-lived access token expires.
 
 The first connected Google account permanently binds the local journal to that
 account. Signing out keeps local pages; changing accounts requires the

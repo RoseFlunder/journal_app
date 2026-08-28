@@ -51,9 +51,14 @@ abstract interface class CloudAccountGateway {
 
   Future<CloudAccount?> restoreSession();
 
-  Future<CloudAccount> signIn();
+  /// Authenticates the Google account without requesting Drive access.
+  Future<CloudAccount> authenticate();
 
-  Future<void> authorizeDrive();
+  /// Checks Drive authorization without showing UI.
+  Future<bool> hasDriveAuthorization();
+
+  /// Requests Drive authorization from an explicit user action.
+  Future<void> requestDriveAuthorization();
 
   Future<String?> accessToken();
 
@@ -78,11 +83,14 @@ class DisabledCloudAccountGateway implements CloudAccountGateway {
   Future<CloudAccount?> restoreSession() async => null;
 
   @override
-  Future<CloudAccount> signIn() =>
+  Future<CloudAccount> authenticate() =>
       Future<CloudAccount>.error(const CloudUnavailableException());
 
   @override
-  Future<void> authorizeDrive() =>
+  Future<bool> hasDriveAuthorization() async => false;
+
+  @override
+  Future<void> requestDriveAuthorization() =>
       Future<void>.error(const CloudUnavailableException());
 
   @override
@@ -447,11 +455,43 @@ class HttpDriveSyncGateway implements DriveSyncGateway {
   }
 }
 
+enum CloudAuthErrorCode {
+  authorizationRequired,
+  canceled,
+  configuration,
+  denied,
+  expired,
+  providerUnavailable,
+  timeout,
+}
+
 class CloudAuthorizationException implements Exception {
-  const CloudAuthorizationException();
+  const CloudAuthorizationException([
+    this.code = CloudAuthErrorCode.authorizationRequired,
+    this.details,
+  ]);
+
+  final CloudAuthErrorCode code;
+  final String? details;
+
+  String get userMessage => switch (code) {
+        CloudAuthErrorCode.canceled => 'Google sign-in was canceled.',
+        CloudAuthErrorCode.configuration =>
+          'Google synchronization is not configured for this build.',
+        CloudAuthErrorCode.denied =>
+          'Google Drive access was declined. You can try again any time.',
+        CloudAuthErrorCode.expired =>
+          'Google Drive authorization expired. Please reconnect.',
+        CloudAuthErrorCode.providerUnavailable =>
+          'Google sign-in is unavailable on this device.',
+        CloudAuthErrorCode.timeout =>
+          'Google sign-in timed out. Please try again.',
+        CloudAuthErrorCode.authorizationRequired =>
+          'Google Drive authorization is required.',
+      };
 
   @override
-  String toString() => 'Google Drive authorization is required.';
+  String toString() => userMessage;
 }
 
 class CloudHttpException implements Exception {

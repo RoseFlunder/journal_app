@@ -73,3 +73,14 @@ abstract interface class CloudSyncRepository {
 }
 
 const _unset = Object();
+
+/// Converts service failures into messages suitable for the Settings UI.
+String cloudSyncErrorMessage(Object? error) => switch (error) {
+      CloudAuthorizationException(:final userMessage) => userMessage,
+      CloudUnavailableException() => 'Google synchronization is not configured.',
+      CloudHttpException(statusCode: final statusCode) =>
+        statusCode == 401 || statusCode == 403
+            ? 'Google Drive authorization expired. Please reconnect.'
+            : 'Google Drive could not be reached. Please try again.',
+      _ => 'Google Drive synchronization failed. Please try again.',
+    };

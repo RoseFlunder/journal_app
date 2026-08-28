@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 export '../../../../services/cloud_sync_repository.dart'
-    show CloudSyncPhase, CloudSyncRepository, CloudSyncState;
+    show CloudSyncPhase, CloudSyncRepository, CloudSyncState, cloudSyncErrorMessage;
 import '../../../../services/cloud_sync_repository.dart';
 
 /// Presentation adapter for cloud synchronization. Drive and OAuth details

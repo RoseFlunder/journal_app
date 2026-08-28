@@ -64,33 +64,65 @@ class PlatformCloudAccountGateway implements CloudAccountGateway {
   }
 
   @override
-  Future<CloudAccount> signIn() async {
+  Future<CloudAccount> authenticate() async {
     if (_isWindows) return _signInWindows();
     await _initializeGoogle();
     if (!GoogleSignIn.instance.supportsAuthenticate()) {
-      throw const CloudAuthorizationException();
+      throw const CloudAuthorizationException(
+        CloudAuthErrorCode.providerUnavailable,
+      );
     }
-    final user = await GoogleSignIn.instance.authenticate(
-      scopeHint: googleDriveScopes,
-    );
+    late final GoogleSignInAccount user;
+    try {
+      user = await GoogleSignIn.instance.authenticate();
+    } on GoogleSignInException catch (error) {
+      throw _mapGoogleException(error);
+    }
     _googleUser = user;
-    await authorizeDrive();
+    _setState(CloudAuthState(phase: CloudAuthPhase.signedIn, account: _toAccount(user)));
     return _toAccount(user);
   }
 
   @override
-  Future<void> authorizeDrive() async {
+  Future<bool> hasDriveAuthorization() async {
     if (_isWindows) {
-      if (_windowsClient == null) await _signInWindows();
+      final client = _windowsClient;
+      if (client == null) return false;
+      try {
+        if (client.credentials.isExpired) await client.refreshCredentials();
+        return client.credentials.scopes?.contains(googleDriveAppDataScope) ?? false;
+      } on oauth2.AuthorizationException {
+        throw const CloudAuthorizationException(CloudAuthErrorCode.expired);
+      }
+    }
+    await _initializeGoogle();
+    final user = _googleUser;
+    if (user == null) return false;
+    try {
+      final authorization = await user.authorizationClient.authorizationForScopes(
+        [googleDriveAppDataScope],
+      );
+      return authorization != null && authorization.accessToken.isNotEmpty;
+    } on GoogleSignInException catch (error) {
+      throw _mapGoogleException(error);
+    }
+  }
+
+  @override
+  Future<void> requestDriveAuthorization() async {
+    if (_isWindows) {
+      await _signInWindows();
       return;
     }
     await _initializeGoogle();
     final user = _googleUser;
-    if (user == null) throw const CloudAuthorizationException();
+    if (user == null) {
+      throw const CloudAuthorizationException(CloudAuthErrorCode.authorizationRequired);
+    }
     try {
-      await user.authorizationClient.authorizeScopes(googleDriveScopes);
-    } on GoogleSignInException {
-      throw const CloudAuthorizationException();
+      await user.authorizationClient.authorizeScopes([googleDriveAppDataScope]);
+    } on GoogleSignInException catch (error) {
+      throw _mapGoogleException(error);
     }
     _setState(CloudAuthState(phase: CloudAuthPhase.signedIn, account: _toAccount(user)));
   }
@@ -112,10 +144,14 @@ class PlatformCloudAccountGateway implements CloudAccountGateway {
     await _initializeGoogle();
     final user = _googleUser;
     if (user == null) return null;
-    final authorization = await user.authorizationClient.authorizationForScopes(
-      [googleDriveAppDataScope],
-    );
-    return authorization?.accessToken;
+    try {
+      final authorization = await user.authorizationClient.authorizationForScopes(
+        [googleDriveAppDataScope],
+      );
+      return authorization?.accessToken;
+    } on GoogleSignInException catch (error) {
+      throw _mapGoogleException(error);
+    }
   }
 
   @override
@@ -142,8 +178,10 @@ class PlatformCloudAccountGateway implements CloudAccountGateway {
 
   Future<void> _initializeGoogle() async {
     if (_initialized) return;
+    if (_config.serverClientId == null) {
+      throw const CloudAuthorizationException(CloudAuthErrorCode.configuration);
+    }
     await GoogleSignIn.instance.initialize(
-      clientId: _config.androidClientId,
       serverClientId: _config.serverClientId,
     );
     _subscription = GoogleSignIn.instance.authenticationEvents.listen(
@@ -170,23 +208,40 @@ class PlatformCloudAccountGateway implements CloudAccountGateway {
     final serialized = await _secureStorage.read(key: _credentialsKey);
     final accountJson = await _secureStorage.read(key: _accountKey);
     if (serialized == null || accountJson == null) return null;
+    CloudAccount? account;
     try {
       final credentials = oauth2.Credentials.fromJson(serialized);
       _windowsClient = _newOAuthClient(credentials);
-      final account = _accountFromJson(
+      account = _accountFromJson(
         jsonDecode(accountJson) as Map<String, dynamic>,
       );
+      if (_windowsClient!.credentials.isExpired) {
+        await _windowsClient!.refreshCredentials();
+      }
       _setState(CloudAuthState(phase: CloudAuthPhase.signedIn, account: account));
       return account;
+    } on oauth2.AuthorizationException catch (error) {
+      await _clearWindowsCredentials();
+      if (account != null) {
+        _setState(CloudAuthState(
+          phase: CloudAuthPhase.authorizationRequired,
+          account: account,
+          error: const CloudAuthorizationException(CloudAuthErrorCode.expired),
+        ));
+        return account;
+      }
+      throw CloudAuthorizationException(CloudAuthErrorCode.expired, error.toString());
     } catch (_) {
-      await signOut();
+      await _clearWindowsCredentials();
       return null;
     }
   }
 
   Future<CloudAccount> _signInWindows() async {
     final clientId = _config.desktopClientId;
-    if (clientId == null) throw const CloudAuthorizationException();
+    if (clientId == null) {
+      throw const CloudAuthorizationException(CloudAuthErrorCode.configuration);
+    }
     _setState(const CloudAuthState(phase: CloudAuthPhase.authorizing));
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final redirect = Uri(
@@ -225,14 +280,28 @@ class PlatformCloudAccountGateway implements CloudAccountGateway {
         ..headers.contentType = ContentType.html
         ..write('<p>Cozy Bloom Journal is connected. You can close this tab.</p>');
       await response.close();
-      final client = await grant.handleAuthorizationResponse(
-        request.uri.queryParameters,
-      );
+      late final oauth2.Client client;
+      try {
+        client = await grant.handleAuthorizationResponse(
+          request.uri.queryParameters,
+        );
+      } on oauth2.AuthorizationException catch (error) {
+        throw CloudAuthorizationException(
+          error.error == 'access_denied'
+              ? CloudAuthErrorCode.denied
+              : CloudAuthErrorCode.authorizationRequired,
+          error.description,
+        );
+      } on TimeoutException {
+        throw const CloudAuthorizationException(CloudAuthErrorCode.timeout);
+      }
       _windowsClient = client;
       final account = await _fetchWindowsAccount(client);
       await _saveWindowsSession(client.credentials, account);
       _setState(CloudAuthState(phase: CloudAuthPhase.signedIn, account: account));
       return account;
+    } on TimeoutException {
+      throw const CloudAuthorizationException(CloudAuthErrorCode.timeout);
     } finally {
       await server.close(force: true);
     }
@@ -317,5 +386,25 @@ class PlatformCloudAccountGateway implements CloudAccountGateway {
   void _setState(CloudAuthState next) {
     _state = next;
     if (!_events.isClosed) _events.add(next);
+  }
+
+  Future<void> _clearWindowsCredentials() async {
+    _windowsClient?.close();
+    _windowsClient = null;
+    await _secureStorage.delete(key: _credentialsKey);
+  }
+
+  static CloudAuthorizationException _mapGoogleException(
+    GoogleSignInException error,
+  ) {
+    final code = switch (error.code) {
+      GoogleSignInExceptionCode.canceled => CloudAuthErrorCode.canceled,
+      GoogleSignInExceptionCode.clientConfigurationError ||
+      GoogleSignInExceptionCode.providerConfigurationError =>
+        CloudAuthErrorCode.configuration,
+      GoogleSignInExceptionCode.uiUnavailable => CloudAuthErrorCode.providerUnavailable,
+      _ => CloudAuthErrorCode.authorizationRequired,
+    };
+    return CloudAuthorizationException(code, error.description);
   }
 }

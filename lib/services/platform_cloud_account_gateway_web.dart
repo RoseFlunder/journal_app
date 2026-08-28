@@ -6,7 +6,7 @@ import 'cloud_auth_config.dart';
 import 'cloud_gateway.dart';
 
 /// Google Identity Services implementation for Flutter Web. The web SDK
-/// requires its own rendered sign-in button; [signIn] is therefore intended
+/// requires its own rendered sign-in button; [authenticate] is therefore intended
 /// for mobile/desktop and the authentication event stream is authoritative on
 /// Web.
 class PlatformCloudAccountGateway implements CloudAccountGateway {
@@ -41,21 +41,39 @@ class PlatformCloudAccountGateway implements CloudAccountGateway {
   }
 
   @override
-  Future<CloudAccount> signIn() =>
-      Future<CloudAccount>.error(const CloudAuthorizationException());
+  Future<CloudAccount> authenticate() =>
+      Future<CloudAccount>.error(const CloudAuthorizationException(
+        CloudAuthErrorCode.providerUnavailable,
+      ));
 
   @override
-  Future<void> authorizeDrive() async {
+  Future<bool> hasDriveAuthorization() async {
+    await _initialize();
+    final user = _user;
+    if (user == null) return false;
+    try {
+      final authorization = await user.authorizationClient.authorizationForScopes(
+        [googleDriveAppDataScope],
+      );
+      _token = authorization?.accessToken;
+      return _token != null && _token!.isNotEmpty;
+    } on GoogleSignInException catch (error) {
+      throw _mapGoogleException(error);
+    }
+  }
+
+  @override
+  Future<void> requestDriveAuthorization() async {
     await _initialize();
     final user = _user;
     if (user == null) throw const CloudAuthorizationException();
     late final GoogleSignInClientAuthorization authorization;
     try {
       authorization = await user.authorizationClient.authorizeScopes(
-        googleDriveScopes,
+        [googleDriveAppDataScope],
       );
-    } on GoogleSignInException {
-      throw const CloudAuthorizationException();
+    } on GoogleSignInException catch (error) {
+      throw _mapGoogleException(error);
     }
     _token = authorization.accessToken;
     _setState(CloudAuthState(phase: CloudAuthPhase.signedIn, account: _toAccount(user)));
@@ -80,8 +98,8 @@ class PlatformCloudAccountGateway implements CloudAccountGateway {
   ) async {
     try {
       return await user.authorizationClient.authorizationForScopes(scopes);
-    } on GoogleSignInException {
-      throw const CloudAuthorizationException();
+    } on GoogleSignInException catch (error) {
+      throw _mapGoogleException(error);
     }
   }
 
@@ -102,6 +120,9 @@ class PlatformCloudAccountGateway implements CloudAccountGateway {
 
   Future<void> _initialize() async {
     if (_initialized) return;
+    if (_config.webClientId == null) {
+      throw const CloudAuthorizationException(CloudAuthErrorCode.configuration);
+    }
     await GoogleSignIn.instance.initialize(clientId: _config.webClientId);
     _subscription = GoogleSignIn.instance.authenticationEvents.listen(
       (event) {
@@ -134,4 +155,18 @@ class PlatformCloudAccountGateway implements CloudAccountGateway {
         email: user.email,
         name: user.displayName,
       );
+
+  static CloudAuthorizationException _mapGoogleException(
+    GoogleSignInException error,
+  ) {
+    final code = switch (error.code) {
+      GoogleSignInExceptionCode.canceled => CloudAuthErrorCode.canceled,
+      GoogleSignInExceptionCode.clientConfigurationError ||
+      GoogleSignInExceptionCode.providerConfigurationError =>
+        CloudAuthErrorCode.configuration,
+      GoogleSignInExceptionCode.uiUnavailable => CloudAuthErrorCode.providerUnavailable,
+      _ => CloudAuthErrorCode.authorizationRequired,
+    };
+    return CloudAuthorizationException(code, error.description);
+  }
 }

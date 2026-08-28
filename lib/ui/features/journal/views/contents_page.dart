@@ -456,7 +456,7 @@ class _CloudSyncPanel extends StatelessWidget {
                   if (state.error != null) ...[
                     const SizedBox(height: 8),
                     Text(
-                      state.error.toString(),
+                      cloudSyncErrorMessage(state.error),
                       style: TextStyle(color: Theme.of(context).colorScheme.error),
                     ),
                   ],
@@ -480,7 +480,7 @@ class _CloudSyncPanel extends StatelessWidget {
                       FilledButton.icon(
                         onPressed: () => viewModel.reconnect(),
                         icon: const Icon(Icons.lock_open),
-                        label: const Text('Reconnect'),
+                        label: const Text('Enable Google Drive sync'),
                       ),
                       _resetButton(context),
                     ]

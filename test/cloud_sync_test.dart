@@ -302,6 +302,24 @@ void main() {
     viewModel.dispose();
     await repository.dispose();
   });
+
+  test('authentication does not implicitly request Drive authorization', () async {
+    final documents = _FakeDocuments();
+    final account = _FakeAccount('account-1')..driveAuthorized = false;
+    final coordinator = _coordinator(
+      documents,
+      _BoundStore(documents, deviceId: 'device-a'),
+      account,
+      InMemoryDriveSyncGateway(),
+    );
+    await coordinator.init();
+    await coordinator.connect();
+
+    expect(coordinator.state.phase, CloudSyncPhase.authorizationRequired);
+    expect(account.requestAuthorizationCount, 0);
+
+    await coordinator.close();
+  });
 }
 
 EntryDocument _document(String id, String title, {String? assetId}) => EntryDocument(
@@ -448,6 +466,8 @@ class _FakeAccount implements CloudAccountGateway {
   final CloudAccount _account;
   final StreamController<CloudAuthState> _states =
       StreamController<CloudAuthState>.broadcast();
+  bool driveAuthorized = true;
+  int requestAuthorizationCount = 0;
 
   @override
   CloudAuthState get state => const CloudAuthState.signedOut();
@@ -459,10 +479,13 @@ class _FakeAccount implements CloudAccountGateway {
   Future<CloudAccount?> restoreSession() async => null;
 
   @override
-  Future<CloudAccount> signIn() async => _account;
+  Future<CloudAccount> authenticate() async => _account;
 
   @override
-  Future<void> authorizeDrive() async {}
+  Future<bool> hasDriveAuthorization() async => driveAuthorized;
+
+  @override
+  Future<void> requestDriveAuthorization() async => requestAuthorizationCount++;
 
   @override
   Future<String?> accessToken() async => 'test-token';
