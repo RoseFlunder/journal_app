@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:journal_app/models/document.dart';
-import 'package:journal_app/models/template.dart';
 import 'package:journal_app/services/hive_journal_data_source.dart';
 import 'package:journal_app/services/hive_repositories.dart';
 import 'package:journal_app/services/repositories.dart';
@@ -49,15 +48,6 @@ void main() {
       [1, 2, 3],
     );
     expect(repositories.assetRepository.readAsset(assetId), [1, 2, 3]);
-
-    final template = JournalTemplate(
-      id: 'direct-template',
-      name: 'Direct',
-      document: updated,
-      createdAt: DateTime.utc(2026),
-    );
-    await repositories.templateRepository.saveTemplate(template);
-    expect(repositories.templateRepository.templates.single.name, 'Direct');
 
     await repositories.documentRepository.deleteDocument(created.id);
     expect(repositories.documentRepository.documents, isEmpty);

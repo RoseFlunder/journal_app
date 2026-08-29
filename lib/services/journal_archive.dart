@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../models/document.dart';
-import '../models/template.dart';
 
 /// One immutable media file embedded in a `.cozyjournal` archive.
 class ArchiveAsset {
@@ -29,7 +28,6 @@ class JournalArchive {
   const JournalArchive({
     required this.document,
     this.assets = const [],
-    this.templates = const [],
   });
 
   static const format = 'cozyjournal';
@@ -37,7 +35,6 @@ class JournalArchive {
 
   final EntryDocument document;
   final List<ArchiveAsset> assets;
-  final List<JournalTemplate> templates;
 
   Uint8List encode() {
     final envelope = <String, dynamic>{
@@ -45,7 +42,6 @@ class JournalArchive {
       'schemaVersion': schemaVersion,
       'document': document.toJson(),
       'assets': assets.map((asset) => asset.toJson()).toList(),
-      'templates': templates.map((template) => template.toJson()).toList(),
     };
     return Uint8List.fromList(utf8.encode(jsonEncode(envelope)));
   }
@@ -67,17 +63,9 @@ class JournalArchive {
         .whereType<Map<Object?, Object?>>()
         .map((asset) => ArchiveAsset.fromJson(Map<String, dynamic>.from(asset)))
         .toList(growable: false);
-    final templates = (raw['templates'] as List<dynamic>? ?? const [])
-        .whereType<Map<Object?, Object?>>()
-        .map(
-          (template) =>
-              JournalTemplate.fromJson(Map<String, dynamic>.from(template)),
-        )
-        .toList(growable: false);
     return JournalArchive(
       document: EntryDocument.fromJson(Map<String, dynamic>.from(document)),
       assets: assets,
-      templates: templates,
     );
   }
 }

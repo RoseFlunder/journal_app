@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:hive/hive.dart';
 import 'package:journal_app/models/document.dart';
 import 'package:journal_app/models/entry.dart';
-import 'package:journal_app/models/template.dart';
 import 'package:journal_app/services/entry_document_codec.dart';
 import 'package:journal_app/services/hive_journal_data_source.dart';
 import 'package:journal_app/services/hive_repositories.dart';
@@ -41,7 +40,6 @@ class TestHiveEnvironment {
       Hive.box<dynamic>('assets').clear(),
       Hive.box<dynamic>('meta').clear(),
       Hive.box<dynamic>('entryCheckpoints').clear(),
-      Hive.box<dynamic>('journalTemplates').clear(),
     ]);
     await environment.init();
     return environment;
@@ -113,14 +111,6 @@ class TestHiveEnvironment {
 
   Future<void> restoreCheckpoint(String checkpointId) =>
       repositories.checkpointRepository.restoreCheckpoint(checkpointId);
-
-  List<JournalTemplate> get templates => repositories.templateRepository.templates;
-
-  Future<void> saveTemplate(JournalTemplate template) =>
-      repositories.templateRepository.saveTemplate(template);
-
-  Future<void> deleteTemplate(String id) =>
-      repositories.templateRepository.deleteTemplate(id);
 
   List<int> get recentColorValues =>
       repositories.preferenceRepository.recentColorValues;

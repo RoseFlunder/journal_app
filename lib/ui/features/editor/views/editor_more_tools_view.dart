@@ -25,8 +25,6 @@ class EditorMoreToolsView extends StatefulWidget {
     required this.onUndo,
     required this.onRedo,
     required this.onEditImage,
-    required this.onSaveTemplate,
-    required this.onInsertTemplate,
     required this.onExportArchive,
     required this.onImportArchive,
     required this.onGroup,
@@ -59,8 +57,6 @@ class EditorMoreToolsView extends StatefulWidget {
   final VoidCallback onUndo;
   final VoidCallback onRedo;
   final VoidCallback onEditImage;
-  final VoidCallback onSaveTemplate;
-  final VoidCallback onInsertTemplate;
   final VoidCallback onExportArchive;
   final VoidCallback onImportArchive;
   final VoidCallback onGroup;
@@ -121,21 +117,6 @@ class _EditorMoreToolsViewState extends State<EditorMoreToolsView> {
               subtitle: const Text('Crop, flip, mask, and opacity'),
               onTap: () => _close(widget.onEditImage),
             ),
-          ListTile(
-            leading: const Icon(Icons.dashboard_customize_outlined),
-            title: const Text('Save selection as template'),
-            subtitle: const Text('Reuse selected objects locally'),
-            enabled: widget.hasSelection,
-            onTap: widget.hasSelection
-                ? () => _close(widget.onSaveTemplate)
-                : null,
-          ),
-          ListTile(
-            leading: const Icon(Icons.library_books_outlined),
-            title: const Text('Insert template'),
-            subtitle: const Text('Add a saved board at the camera center'),
-            onTap: () => _close(widget.onInsertTemplate),
-          ),
           ListTile(
             leading: const Icon(Icons.file_upload_outlined),
             title: const Text('Export .cozyjournal backup'),

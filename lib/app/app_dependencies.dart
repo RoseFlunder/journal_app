@@ -211,7 +211,6 @@ EntryEditorViewModelFactory createEditorViewModelFactory({
       documentRepository: repositories.documentRepository,
       checkpointRepository: repositories.checkpointRepository,
       assetRepository: repositories.assetRepository,
-      templateRepository: repositories.templateRepository,
       preferenceRepository: repositories.preferenceRepository,
       persistenceRepository: repositories.persistence,
       archiveRepository: repositories.archiveRepository,

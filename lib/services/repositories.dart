@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import '../models/document.dart';
 import '../models/asset_kind.dart';
 import '../models/checkpoint.dart';
-import '../models/template.dart';
 import 'journal_archive.dart';
 
 export 'music_catalog_repository.dart'
@@ -42,14 +41,6 @@ abstract interface class CheckpointRepository {
   Future<void> restoreCheckpoint(String checkpointId);
 }
 
-abstract interface class TemplateRepository {
-  List<JournalTemplate> get templates;
-
-  Future<void> saveTemplate(JournalTemplate template);
-
-  Future<void> deleteTemplate(String id);
-}
-
 abstract interface class PreferencesRepository {
   List<int> get recentColorValues;
 
@@ -68,7 +59,7 @@ abstract interface class PersistenceRepository {
 }
 
 /// Archive capability kept separate from document CRUD because it coordinates
-/// documents, assets, and templates as one portable transfer.
+/// documents and assets as one portable transfer.
 abstract interface class ArchiveRepository {
   JournalArchive? archiveForDocument(String id);
 
@@ -98,7 +89,6 @@ class JournalRepositories {
     required this.documentRepository,
     required this.assetRepository,
     required this.checkpointRepository,
-    required this.templateRepository,
     required this.preferenceRepository,
     required this.persistence,
     required this.archiveRepository,
@@ -107,7 +97,6 @@ class JournalRepositories {
   final DocumentRepository documentRepository;
   final AssetRepository assetRepository;
   final CheckpointRepository checkpointRepository;
-  final TemplateRepository templateRepository;
   final PreferencesRepository preferenceRepository;
   final PersistenceRepository persistence;
   final ArchiveRepository archiveRepository;
@@ -120,7 +109,6 @@ class JournalRepositories {
         documentRepository: documentRepository,
         assetRepository: assetRepository,
         checkpointRepository: checkpointRepository,
-        templateRepository: templateRepository,
         preferenceRepository: preferenceRepository,
         persistence: next,
         archiveRepository: archiveRepository,

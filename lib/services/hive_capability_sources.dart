@@ -8,7 +8,6 @@ import '../models/checkpoint.dart';
 import '../models/document.dart';
 import '../models/entry.dart';
 import '../models/storage_records.dart';
-import '../models/template.dart';
 import 'entry_document_codec.dart';
 import 'hive_journal_data_source.dart';
 import 'journal_archive.dart';
@@ -354,15 +353,6 @@ class HiveAssetDataSource {
         collectNodes(document.nodes);
       } catch (_) {}
     }
-    for (final key in storage.templateKeys) {
-      final raw = storage.readTemplate(key.toString());
-      if (raw is! Map) continue;
-      try {
-        collectNodes(
-          JournalTemplate.fromJson(Map<String, dynamic>.from(raw)).document.nodes,
-        );
-      } catch (_) {}
-    }
     for (final key in storage.assetKeys.toList()) {
       if (!referenced.contains(key.toString())) {
         await storage.deleteAsset(key.toString());
@@ -475,32 +465,6 @@ class HiveCheckpointDataSource {
   }
 }
 
-/// Internal template data source.
-class HiveTemplateDataSource {
-  HiveTemplateDataSource(this.storage);
-
-  final HiveJournalDataSource storage;
-
-  List<JournalTemplate> get templates {
-    final result = <JournalTemplate>[];
-    for (final key in storage.templateKeys.whereType<String>()) {
-      final raw = storage.readTemplate(key);
-      if (raw is! Map) continue;
-      try {
-        result.add(JournalTemplate.fromJson(Map<String, dynamic>.from(raw)));
-      } catch (_) {}
-    }
-    result.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return List<JournalTemplate>.unmodifiable(result);
-  }
-
-  Future<void> saveTemplate(JournalTemplate template) =>
-      storage.enqueue(() => storage.writeTemplate(template.id, template.toJson()));
-
-  Future<void> deleteTemplate(String id) =>
-      storage.enqueue(() => storage.deleteTemplate(id));
-}
-
 /// Internal color preference data source.
 class HivePreferencesDataSource {
   HivePreferencesDataSource(this.storage);
@@ -538,20 +502,18 @@ class HivePreferencesDataSource {
   }
 }
 
-/// Internal archive data source coordinating document, asset, and template
-/// capability data sources without exposing the aggregate store.
+/// Internal archive data source coordinating document and asset capability
+/// data sources without exposing the aggregate store.
 class HiveArchiveDataSource {
   HiveArchiveDataSource(
     this.storage, {
     required this.documents,
     required this.assets,
-    required this.templates,
   });
 
   final HiveJournalDataSource storage;
   final HiveDocumentDataSource documents;
   final HiveAssetDataSource assets;
-  final HiveTemplateDataSource templates;
 
   JournalArchive? archiveForDocument(String documentId) {
     final document = documents.documentById(documentId);
@@ -576,7 +538,6 @@ class HiveArchiveDataSource {
     return JournalArchive(
       document: document,
       assets: archiveAssets,
-      templates: templates.templates,
     );
   }
 
@@ -593,9 +554,6 @@ class HiveArchiveDataSource {
     }
     final imported = _remapAssets(archive.document, assetIds, target.id);
     await documents.replaceRestoredDocument(imported);
-    for (final template in archive.templates) {
-      await templates.saveTemplate(template);
-    }
     return documents.documentById(target.id) ?? imported;
   }
 

@@ -10,7 +10,6 @@ import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/page_music.dart';
 import 'package:journal_app/models/sticker.dart';
 import 'package:journal_app/models/document.dart';
-import 'package:journal_app/models/template.dart';
 import 'package:journal_app/editor/image_layout.dart';
 import 'package:journal_app/services/image_processing.dart';
 import 'support/hive_test_environment.dart';
@@ -324,12 +323,11 @@ void main() {
     }
 
     test(
-      'repository capabilities round-trip documents, assets, and templates',
+      'repository capabilities round-trip documents and assets',
       () async {
         final store = await freshStore();
         final documents = store.repositories.documentRepository;
         final assets = store.repositories.assetRepository;
-        final templates = store.repositories.templateRepository;
         final document = await documents.createDocument(
           title: 'Repository page',
         );
@@ -366,16 +364,6 @@ void main() {
         );
         expect(assets.readAsset(asset), [1, 2, 3]);
 
-        final template = JournalTemplate(
-          id: 'template-1',
-          name: 'Starter',
-          document: updated,
-          createdAt: DateTime.utc(2026),
-        );
-        await templates.saveTemplate(template);
-        expect(templates.templates.single.name, 'Starter');
-        await templates.deleteTemplate(template.id);
-        expect(templates.templates, isEmpty);
         await documents.deleteDocument(document.id);
         expect(documents.documents, isEmpty);
       },

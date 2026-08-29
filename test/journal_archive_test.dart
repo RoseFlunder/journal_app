@@ -2,12 +2,11 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/models/entry.dart';
-import 'package:journal_app/models/template.dart';
 import 'package:journal_app/services/journal_archive.dart';
 import 'package:journal_app/services/entry_document_codec.dart';
 
 void main() {
-  test('cozyjournal archive round-trips document, assets, and templates', () {
+  test('cozyjournal archive round-trips document and assets', () {
     final document = EntryDocumentCodec.fromEntry(
       Entry(
         id: 'archive-entry',
@@ -26,12 +25,6 @@ void main() {
         ],
       ),
     );
-    final template = JournalTemplate(
-      id: 'template-1',
-      name: 'Starter',
-      document: document,
-      createdAt: DateTime.utc(2026),
-    );
     final archive = JournalArchive(
       document: document,
       assets: [
@@ -41,14 +34,12 @@ void main() {
           bytes: Uint8List.fromList([1, 2, 3]),
         ),
       ],
-      templates: [template],
     );
 
     final decoded = JournalArchive.decode(archive.encode());
     expect(decoded.document.id, 'archive-entry');
     expect(decoded.document.nodes.single.payload['assetId'], 'asset-1');
     expect(decoded.assets.single.bytes, [1, 2, 3]);
-    expect(decoded.templates.single.name, 'Starter');
   });
 
   test('cozyjournal archive rejects invalid format and schema', () {

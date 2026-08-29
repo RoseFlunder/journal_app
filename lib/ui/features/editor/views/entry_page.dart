@@ -21,7 +21,6 @@ import 'editor_canvas_view.dart';
 import 'editor_layers_view.dart';
 import 'editor_image_editor_view.dart';
 import 'editor_history_view.dart';
-import 'editor_templates_view.dart';
 import 'editor_toolbar_view.dart';
 import 'editor_more_tools_view.dart';
 import 'editor_alignment_view.dart';
@@ -859,51 +858,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _saveTemplate() async {
-    final selectedNodes = _editor.selectedNodeGraphSnapshot();
-    if (selectedNodes.isEmpty) return;
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => const _TextPromptDialog(
-        title: 'Save template',
-        label: 'Template name',
-      ),
-    );
-    if (!mounted || name == null || name.trim().isEmpty) return;
-    final now = DateTime.now();
-    await _editor.saveTemplateSelection(
-      name: name.trim(),
-      source: _document,
-      nodes: selectedNodes,
-      createdAt: now,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved template “${name.trim()}”')),
-      );
-    }
-  }
-
-  void _showTemplates() {
-    final templates = _editor.templates;
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: PaperPage.paper,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => EditorTemplatesView(
-        templates: templates,
-        onInsert: (template) => _editor.insertTemplate(
-          nodes: template.document.nodes,
-          offset: Offset(
-            PageViewport.modelPageSize.width / 2,
-            PageViewport.modelPageSize.height / 2,
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _exportArchive() async {
     if (!mounted) return;
     final exported = await _editor.exportArchive(
@@ -979,8 +933,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         onUndo: _undo,
         onRedo: _redo,
         onEditImage: _showImageEditor,
-        onSaveTemplate: _saveTemplate,
-        onInsertTemplate: _showTemplates,
         onExportArchive: _exportArchive,
         onImportArchive: _importArchive,
         onGroup: _editor.groupSelection,

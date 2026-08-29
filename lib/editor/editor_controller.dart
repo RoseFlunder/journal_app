@@ -379,12 +379,12 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Inserts a complete template graph as one command, remapping every node
+  /// Inserts a complete node graph as one command, remapping every node
   /// and group reference so the source remains reusable.
   void insertNodeGraph(
     Iterable<CanvasNode> sources, {
     Offset offset = Offset.zero,
-    String label = 'Insert template',
+    String label = 'Insert composition',
   }) {
     final sourceList = List<CanvasNode>.unmodifiable(sources);
     if (sourceList.isEmpty) return;
@@ -741,7 +741,7 @@ class EditorController extends ChangeNotifier {
   }
 
   /// Returns the selected structural graph as immutable nodes for feature
-  /// workflows such as template persistence and insertion.
+  /// workflows such as clipboard persistence and insertion.
   List<CanvasNode> selectedNodeGraphSnapshot() =>
       _selectedGraphNodes;
 
@@ -872,7 +872,7 @@ class EditorController extends ChangeNotifier {
     );
   }
 
-  /// Returns complete immutable roots for clipboard/duplicate/template
+  /// Returns complete immutable roots for clipboard and duplicate operations
   /// actions, including the parent group when a child is selected.
   List<CanvasNode> get _selectedGraphNodes {
     final ids = _expandedSelectedNodes.map((node) => node.id).toSet();

@@ -3,13 +3,11 @@
 // ignore_for_file: prefer_initializing_formals, use_super_parameters
 
 import 'dart:async';
-import 'dart:ui';
 import 'dart:typed_data';
 
 import '../../../../editor/editor_controller.dart';
 import '../../../../models/document.dart';
 import '../../../../models/page_music.dart';
-import '../../../../models/template.dart';
 import '../../../../models/view_state.dart';
 import '../../../../services/audio_playback.dart';
 import '../../../../services/image_source.dart';
@@ -18,7 +16,6 @@ import '../../../../services/repositories.dart';
 import '../use_cases/archive_transfer_use_case.dart';
 import '../use_cases/checkpoint_recovery_use_case.dart';
 import '../use_cases/image_insertion_use_case.dart';
-import '../use_cases/template_workflow.dart';
 import 'editor_tool_state.dart';
 import '../../music/view_models/music_picker_view_model.dart';
 
@@ -35,7 +32,6 @@ class EntryEditorViewModel extends EditorController {
     required DocumentRepository documentRepository,
     required CheckpointRepository checkpointRepository,
     required AssetRepository assetRepository,
-    required TemplateRepository templateRepository,
     required PreferencesRepository preferenceRepository,
     required PersistenceRepository persistenceRepository,
     required ArchiveRepository archiveRepository,
@@ -48,7 +44,6 @@ class EntryEditorViewModel extends EditorController {
        _documentRepository = documentRepository,
        _checkpointRepository = checkpointRepository,
        _assets = assetRepository,
-       _templates = templateRepository,
        _preferences = preferenceRepository,
        _persistence = persistenceRepository,
        _musicCatalog = musicCatalog,
@@ -70,7 +65,6 @@ class EntryEditorViewModel extends EditorController {
   final DocumentRepository _documentRepository;
   final CheckpointRepository _checkpointRepository;
   final AssetRepository _assets;
-  final TemplateRepository _templates;
   final PreferencesRepository _preferences;
   final PersistenceRepository _persistence;
   final MusicCatalogRepository _musicCatalog;
@@ -276,9 +270,6 @@ class EntryEditorViewModel extends EditorController {
 
   String? get selectedId => selection.isEmpty ? null : selection.last;
 
-  late final TemplateWorkflow _templateWorkflow = TemplateWorkflow(
-    templates: _templates,
-  );
   late final CheckpointRecoveryUseCase _checkpointRecovery =
       CheckpointRecoveryUseCase(
         checkpoints: _checkpointRepository,
@@ -289,30 +280,6 @@ class EntryEditorViewModel extends EditorController {
     required String ownerId,
     required PickedImage picked,
   }) => _imageInsertion.processAndStore(ownerId: ownerId, picked: picked);
-
-  List<JournalTemplate> get templates => _templateWorkflow.available;
-
-  Future<void> saveTemplateSelection({
-    required String name,
-    required EntryDocument source,
-    required Iterable<CanvasNode> nodes,
-    required DateTime createdAt,
-  }) =>
-      _templateWorkflow.saveSelection(
-        name: name,
-        source: source,
-        nodes: nodes,
-        createdAt: createdAt,
-      );
-
-  void insertTemplate({
-    required Iterable<CanvasNode> nodes,
-    required Offset offset,
-  }) =>
-      _templateWorkflow.insert(
-        TemplateInsertion(nodes: List<CanvasNode>.unmodifiable(nodes), offset: offset),
-        this,
-      );
 
   List<CheckpointInfo> checkpointsFor(String id) =>
       _checkpointRecovery.forDocument(id);

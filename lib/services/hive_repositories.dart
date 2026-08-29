@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import '../models/document.dart';
-import '../models/template.dart';
 import 'hive_capability_sources.dart';
 import 'hive_journal_data_source.dart';
 import 'journal_archive.dart';
@@ -97,23 +96,6 @@ class HiveCheckpointRepository implements CheckpointRepository {
       _source.restoreCheckpoint(checkpointId);
 }
 
-/// Template capability adapter backed by the internal Hive template source.
-class HiveTemplateRepository implements TemplateRepository {
-  HiveTemplateRepository.fromDataSource(this._source);
-
-  final HiveTemplateDataSource _source;
-
-  @override
-  List<JournalTemplate> get templates => _source.templates;
-
-  @override
-  Future<void> saveTemplate(JournalTemplate template) =>
-      _source.saveTemplate(template);
-
-  @override
-  Future<void> deleteTemplate(String id) => _source.deleteTemplate(id);
-}
-
 /// Preferences capability adapter backed by the internal Hive meta source.
 class HivePreferencesRepository implements PreferencesRepository {
   HivePreferencesRepository.fromDataSource(this._source);
@@ -180,13 +162,11 @@ class HiveRepositorySet {
       documents: () => documents.documents,
     );
     final checkpoints = HiveCheckpointDataSource(source, documents: documents);
-    final templates = HiveTemplateDataSource(source);
     final preferences = HivePreferencesDataSource(source);
     final archive = HiveArchiveDataSource(
       source,
       documents: documents,
       assets: assets,
-      templates: templates,
     );
     repositories = JournalRepositories(
       documentRepository: HiveDocumentRepository.fromDataSource(
@@ -197,7 +177,6 @@ class HiveRepositorySet {
       checkpointRepository: HiveCheckpointRepository.fromDataSource(
         checkpoints,
       ),
-      templateRepository: HiveTemplateRepository.fromDataSource(templates),
       preferenceRepository: HivePreferencesRepository.fromDataSource(
         preferences,
       ),

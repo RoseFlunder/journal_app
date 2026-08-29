@@ -3,13 +3,11 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image;
 import 'package:journal_app/models/document.dart';
-import 'package:journal_app/models/template.dart';
 import 'package:journal_app/services/image_source.dart';
 import 'package:journal_app/services/image_processing.dart';
 import 'package:journal_app/services/repositories.dart';
 import 'package:journal_app/ui/features/editor/use_cases/checkpoint_recovery_use_case.dart';
 import 'package:journal_app/ui/features/editor/use_cases/image_insertion_use_case.dart';
-import 'package:journal_app/ui/features/editor/use_cases/template_workflow.dart';
 
 void main() {
   test('image insertion processes bytes before storing an asset', () async {
@@ -32,36 +30,6 @@ void main() {
     expect(result.image.height, 1);
     expect(assets.ownerId, 'entry');
     expect(assets.bytes, isNotEmpty);
-  });
-
-  test('template workflow persists immutable node selections', () async {
-    final repository = _FakeTemplates();
-    final workflow = TemplateWorkflow(templates: repository);
-    final now = DateTime.utc(2026);
-    final source = EntryDocument(
-      id: 'entry',
-      title: 'Source',
-      createdAt: now,
-      modifiedAt: now,
-      board: const BoardSettings(gridVisible: true),
-    );
-    final node = CanvasNode(
-      id: 'node',
-      type: BlockType.text,
-      transform: const Transform2D(width: 20, height: 10),
-      payload: const {'text': 'Hello'},
-    );
-
-    await workflow.saveSelection(
-      name: 'Greeting',
-      source: source,
-      nodes: [node],
-      createdAt: now,
-    );
-
-    expect(repository.saved, hasLength(1));
-    expect(repository.saved.single.document.nodes.single.id, 'node');
-    expect(repository.saved.single.document.board.gridVisible, isTrue);
   });
 
   test('checkpoint workflow restores the current immutable document', () async {
@@ -114,19 +82,6 @@ class _FakeAssets implements AssetRepository {
   Future<void> collectUnreferencedAssets({
     Iterable<String> retainedAssetIds = const <String>[],
   }) async {}
-}
-
-class _FakeTemplates implements TemplateRepository {
-  final List<JournalTemplate> saved = <JournalTemplate>[];
-
-  @override
-  List<JournalTemplate> get templates => List.unmodifiable(saved);
-
-  @override
-  Future<void> saveTemplate(JournalTemplate template) async => saved.add(template);
-
-  @override
-  Future<void> deleteTemplate(String id) async {}
 }
 
 class _FakeCheckpoints implements CheckpointRepository {

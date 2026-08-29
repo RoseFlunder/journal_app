@@ -339,7 +339,7 @@ void main() {
   });
 
   test(
-    'template insertion remaps groups and is undoable as one command',
+    'node graph insertion remaps groups and is undoable as one command',
     () async {
       final controller = EditorController(
         document: _documentFromBlocks(const []),
@@ -347,19 +347,19 @@ void main() {
       );
       addTearDown(controller.dispose);
       final group = ContentBlock(
-        id: 'template-group',
+        id: 'graph-group',
         type: BlockType.group,
-        childIds: ['template-child'],
+        childIds: ['graph-child'],
         hidden: true,
       );
-      final child = _text(id: 'template-child', x: 4, y: 5)..groupId = group.id;
-      final template = EntryDocumentCodec.fromLegacyBlocks(
-        id: 'template',
-        title: 'Template',
+      final child = _text(id: 'graph-child', x: 4, y: 5)..groupId = group.id;
+      final graph = EntryDocumentCodec.fromLegacyBlocks(
+        id: 'graph',
+        title: 'Composition',
         createdAt: DateTime.utc(2026),
         blocks: [group, child],
       );
-      controller.insertNodeGraph(template.nodes, offset: const Offset(10, 20));
+      controller.insertNodeGraph(graph.nodes, offset: const Offset(10, 20));
       await Future<void>.delayed(Duration.zero);
 
       expect(controller.blocks, hasLength(2));

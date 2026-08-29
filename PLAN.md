@@ -17,7 +17,7 @@ are removed. Journal contents receives asset reads through its view model
 rather than a repository. The journal shell caches one configured editor view
 model per entry, and `EntryPage` only renders and dispatches through that
 model. Feature-native canvas, toolbar, More tools, layers, image, history,
-template, shape, alignment, transform, ink, music, and settings views are
+shape, alignment, transform, ink, music, and settings views are
 active, and the obsolete toolbar export and image-editor path are gone.
 Platform services do not render presentation UI, and `JournalApp` receives one
 configured `AppDependencies` object in production and tests.
@@ -52,7 +52,7 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
   background checkpoint creation is missing.
 - [~] Saving and retryable failure UI exists; Saved feedback, error details,
   and failure integration coverage are missing.
-- [x] Journal, asset, checkpoint, and template repository interfaces have Hive
+- [x] Journal, asset, and checkpoint repository interfaces have Hive
   implementations backed by direct capability adapters; storage tests exercise
   those same sources without a mutable aggregate facade.
 - [x] The composition root owns persistence, music, platform services, and
@@ -62,7 +62,7 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
   Production Hive
   adapters depend on focused internal data sources; the obsolete mutable
   `JournalStore` aggregate and its test-only adapters have been removed.
-- [x] Asset collection protects live documents, checkpoints, templates,
+- [x] Asset collection protects live documents, checkpoints,
   immutable undo/redo snapshots, and clipboard references.
 - [x] Serialize final text commit, background checkpoint, and storage flush to
   eliminate lifecycle races.
@@ -126,7 +126,7 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 ### Groups and layers
 
 - [x] Structural groups preserve move, align, lock, hide, delete, duplicate,
-  clipboard, template insertion, and reorder semantics.
+  clipboard insertion, and reorder semantics.
 - [x] The immutable document nests group children, remaps graph IDs, and
   applies world-space gesture transforms while retaining parent-local child
   coordinates.
@@ -164,7 +164,7 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
   frames, warmth, filter presets, and original/edited comparison.
 - [ ] Add image-editor interaction and golden tests.
 
-### Ink, shapes, and templates
+### Ink and shapes
 
 - [x] Draw mode creates one persisted vector ink block per stroke with live
   preview, color, width, and opacity controls.
@@ -175,20 +175,14 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [~] Rectangle, ellipse, line, and arrow shapes serialize and render.
 - [ ] Add shape styling, polygons, configurable corners, optional text, and
   shape-specific resize rules.
-- [~] Templates persist, insert as one undoable command, and preserve group
-  IDs.
-- [~] “Save selection as template” now saves the selected structural graph and
-  inserts near the board center; camera-state placement and UI coverage remain.
-- [ ] Add template thumbnails, rename/delete, starter content, favorites, and
-  explicit board-versus-selection templates.
 
 ### Recovery, export, and accessibility
 
 - [~] Checkpoint history and numeric transform controls provide recovery and
   non-drag precision.
 - [ ] Add command-history labels and undo/redo cursor UI.
-- [x] Versioned `.cozyjournal` archive import/export includes documents,
-  assets, and templates.
+- [x] Versioned `.cozyjournal` archive import/export includes documents and
+  assets.
 - [ ] Add pre-import checkpoints, corrupt-asset recovery, and platform
   file-picker integration tests.
 - [ ] Add PNG, JPEG, and PDF export for full board, current view, and selection.
@@ -215,7 +209,7 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
 2. **Correctness hardening**
    - Fix image edge resizing, image-sheet state, lifecycle ordering, visible
-     content bounds, template scope, and ink width conversion.
+     content bounds, and ink width conversion.
    - Add regression tests for the text Done sequence and scrollable More sheet.
 
 3. **Enable and validate cloud synchronization**
@@ -233,7 +227,7 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 5. **Complete creative editing**
    - Use Quill for every text node.
    - Complete image crop, replacement, adjustments, and filters.
-   - Complete ink, shape, and template workflows.
+   - Complete ink and shape workflows.
 
 6. **Export, accessibility, and performance**
    - Add image/PDF export, semantics, keyboard parity, goldens, and integration
