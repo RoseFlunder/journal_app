@@ -31,6 +31,7 @@ class EditorToolbarView extends StatelessWidget {
     this.onRecentColorAdded,
     this.onFavoriteColorsChanged,
     this.onSampleColor,
+    this.onInkSettings,
     this.strokeColorValue,
     this.strokeColorAvailable = false,
     this.onStrokeColorChanged,
@@ -79,6 +80,7 @@ class EditorToolbarView extends StatelessWidget {
   final ValueChanged<int>? onRecentColorAdded;
   final ValueChanged<Set<int>>? onFavoriteColorsChanged;
   final Future<Color?> Function()? onSampleColor;
+  final VoidCallback? onInkSettings;
   final int? strokeColorValue;
   final bool strokeColorAvailable;
   final ValueChanged<int?>? onStrokeColorChanged;
@@ -231,6 +233,13 @@ class EditorToolbarView extends StatelessWidget {
                     onRecentColorAdded: onRecentColorAdded,
                     onFavoriteColorsChanged: onFavoriteColorsChanged,
                     onSampleColor: onSampleColor,
+                  ),
+                if (inkColorAvailable)
+                  _Action(
+                    tooltip: 'Brush settings',
+                    icon: Icons.brush_outlined,
+                    label: compact ? null : 'Brush',
+                    onPressed: onInkSettings,
                   ),
                 if (inkColorAvailable)
                   _ColorPickerButton(

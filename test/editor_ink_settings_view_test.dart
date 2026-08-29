@@ -69,4 +69,50 @@ void main() {
     expect(previews.single.strokeType, InkStrokeType.airbrush);
     expect(find.byKey(const ValueKey('ink-stroke-option-airbrush')), findsNothing);
   });
+
+  testWidgets('ink settings keeps Apply above the bottom inset', (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(360, 640));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                padding: const EdgeInsets.only(bottom: 32),
+              ),
+              child: Center(
+                child: ElevatedButton(
+                  onPressed: () => showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    useSafeArea: true,
+                    builder: (_) => const EditorInkSettingsView(
+                      initial: InkSettings(),
+                      onPreview: _ignoreSettings,
+                      onPickColor: _ignoreColor,
+                    ),
+                  ),
+                  child: const Text('Open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    final apply = tester.getRect(find.text('Apply'));
+    expect(apply.bottom, lessThanOrEqualTo(608));
+    expect(tester.takeException(), isNull);
+  });
 }
+
+void _ignoreSettings(InkSettings _) {}
+
+Future<InkSettings?> _ignoreColor(
+  BuildContext context,
+  InkSettings settings,
+) async => null;

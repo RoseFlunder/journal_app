@@ -813,6 +813,17 @@ void main() {
     await tester.tap(find.text('Draw'));
     await tester.pumpAndSettle();
 
+    expect(find.byTooltip('Text color'), findsNothing);
+    expect(find.byTooltip('Decrease font size'), findsNothing);
+    expect(find.byTooltip('Increase font size'), findsNothing);
+    expect(find.byTooltip('Brush settings'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Brush settings'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ink-stroke-selector')), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.byTooltip('Ink color'));
     await tester.pumpAndSettle();
     expect(find.text('Ink color'), findsOneWidget);
