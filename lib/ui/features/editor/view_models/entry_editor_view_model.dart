@@ -39,6 +39,7 @@ class EntryEditorViewModel extends EditorController {
     required AudioPlaybackFactory audioPlaybackFactory,
     required ImageInsertionUseCase imageInsertion,
     required ArchiveTransferUseCase archiveTransfer,
+    DocumentViewPreferencesRepository? viewPreferencesRepository,
     super.maxHistory,
   }) : _documentId = document.id,
        _documentRepository = documentRepository,
@@ -50,6 +51,7 @@ class EntryEditorViewModel extends EditorController {
        _audioPlaybackFactory = audioPlaybackFactory,
        _imageInsertion = imageInsertion,
        _archiveTransfer = archiveTransfer,
+       _viewPreferences = viewPreferencesRepository,
        super(
          document: document,
          persistDocument: (EntryDocument next) =>
@@ -71,6 +73,7 @@ class EntryEditorViewModel extends EditorController {
   final AudioPlaybackFactory _audioPlaybackFactory;
   final ImageInsertionUseCase _imageInsertion;
   final ArchiveTransferUseCase _archiveTransfer;
+  final DocumentViewPreferencesRepository? _viewPreferences;
 
   bool _editing = false;
   bool _selectMode = false;
@@ -190,10 +193,55 @@ class EntryEditorViewModel extends EditorController {
     document.copyWith(music: track, modifiedAt: DateTime.now()),
   );
 
-  /// Persists the page camera state as document metadata.
-  Future<void> updateView(ViewState view) => updateMetadata(
-    document.copyWith(view: view, modifiedAt: DateTime.now()),
-  );
+  /// Persists the page camera state in the device-local view preference
+  /// record. It is intentionally not a document edit or a cloud mutation.
+  Future<void> updateView(ViewState view) async {
+    final preferences = _viewPreferences;
+    if (preferences == null) {
+      await updateMetadata(document.copyWith(view: view));
+      return;
+    }
+    final next = document.copyWith(view: view);
+    updateDocumentMetadata(next);
+    _documentRepository.previewDocument(next);
+    try {
+      await preferences.savePreferences(
+        _documentId,
+        DocumentViewPreferences(
+          view: view,
+          gridVisible: document.board.gridVisible,
+        ),
+      );
+      _setWorkflowError(null);
+    } catch (error) {
+      _setWorkflowError(error.toString());
+    }
+  }
+
+  /// Persists grid visibility alongside the device-local camera preferences.
+  /// Grid visibility is retained on the compatibility document projection for
+  /// widgets, but never becomes durable page content or a cloud edit.
+  Future<void> updateGridVisibility(bool visible) async {
+    final preferences = _viewPreferences;
+    if (preferences == null) {
+      updateBoard(board.copyWith(gridVisible: visible));
+      return;
+    }
+    final next = document.copyWith(
+      board: document.board.copyWith(gridVisible: visible),
+    );
+    updateDocumentMetadata(next);
+    _documentRepository.previewDocument(next);
+    try {
+      await preferences.savePreferences(
+        _documentId,
+        DocumentViewPreferences(view: next.view, gridVisible: visible),
+      );
+      _setWorkflowError(null);
+    } catch (error) {
+      _setWorkflowError(error.toString());
+    }
+  }
 
   /// Persists the page title as document metadata.
   Future<void> updateTitle(String title) => updateMetadata(

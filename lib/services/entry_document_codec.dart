@@ -3,9 +3,12 @@ import 'dart:ui';
 
 import '../models/document.dart';
 import '../models/entry.dart';
+import 'storage_codec.dart';
 
-/// Translates the immutable editor document to and from legacy storage
-/// records. This is the only production boundary where [Entry] and
+/// Translates the immutable editor document to and from legacy compatibility
+/// records. This adapter remains available for old fixtures and import paths;
+/// permanent Hive, archive, and cloud writes use [JournalDocumentCodec]
+/// instead. This is the only production boundary where [Entry] and
 /// [ContentBlock] are allowed to participate in document conversion.
 abstract final class EntryDocumentCodec {
   /// Decodes a legacy flattened entry graph into a nested immutable document.
@@ -27,8 +30,8 @@ abstract final class EntryDocumentCodec {
     schemaVersion: entry.schemaVersion,
   );
 
-  /// Encodes an immutable document into the flattened record shape expected
-  /// by the current Hive store.
+  /// Encodes an immutable document into the flattened compatibility shape
+  /// expected by legacy callers. It must not be used for new persistence.
   static Entry toEntry(EntryDocument document) => Entry(
     id: document.id,
     title: document.title,

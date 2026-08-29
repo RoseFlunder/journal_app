@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import '../models/asset_kind.dart';
 import '../models/document.dart';
+import 'storage_codec.dart';
 
 /// The relationship between two immutable synchronization clocks.
 enum SyncRelation { equal, before, after, concurrent }
@@ -14,7 +15,12 @@ class SyncVersionVector {
       : values = UnmodifiableMapView(<String, int>{
           for (final entry in values.entries)
             if (entry.value > 0) entry.key: entry.value,
-        });
+        }) {
+    if (values.keys.any((key) => key.trim().isEmpty) ||
+        values.values.any((value) => value < 0)) {
+      throw const FormatException('Sync version vector contains invalid data');
+    }
+  }
 
   final Map<String, int> values;
 
@@ -55,11 +61,20 @@ class SyncVersionVector {
   Map<String, dynamic> toJson() => <String, dynamic>{...values};
 
   factory SyncVersionVector.fromJson(Object? raw) {
-    if (raw is! Map) return SyncVersionVector();
+    if (raw is! Map) {
+      throw const FormatException('Sync version vector is not an object');
+    }
+    for (final entry in raw.entries) {
+      if (entry.key is! String || entry.value is! num ||
+          !(entry.value as num).isFinite ||
+          (entry.value as num) < 0 ||
+          (entry.value as num) != (entry.value as num).toInt()) {
+        throw const FormatException('Sync version vector contains invalid data');
+      }
+    }
     return SyncVersionVector(<String, int>{
       for (final entry in raw.entries)
-        if (entry.key is String && entry.value is num)
-          entry.key as String: (entry.value as num).toInt(),
+        entry.key as String: (entry.value as num).toInt(),
     });
   }
 
@@ -80,7 +95,7 @@ class SyncMutationStamp implements Comparable<SyncMutationStamp> {
     required this.modifiedAt,
     required this.deviceId,
     required this.counter,
-  });
+  }) : assert(counter >= 1);
 
   final DateTime modifiedAt;
   final String deviceId;
@@ -103,17 +118,20 @@ class SyncMutationStamp implements Comparable<SyncMutationStamp> {
 
   factory SyncMutationStamp.fromJson(Object? raw) {
     if (raw is! Map) {
-      return SyncMutationStamp(
-        modifiedAt: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-        deviceId: '',
-        counter: 0,
-      );
+      throw const FormatException('Sync mutation stamp is not an object');
+    }
+    final modifiedAt = DateTime.tryParse(raw['modifiedAt'] as String? ?? '');
+    final deviceId = raw['deviceId'];
+    final counter = raw['counter'];
+    if (modifiedAt == null || deviceId is! String || deviceId.isEmpty ||
+        counter is! num || !counter.isFinite || counter < 1 ||
+        counter != counter.toInt()) {
+      throw const FormatException('Sync mutation stamp is invalid');
     }
     return SyncMutationStamp(
-      modifiedAt: DateTime.tryParse(raw['modifiedAt'] as String? ?? '') ??
-          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-      deviceId: raw['deviceId'] as String? ?? '',
-      counter: (raw['counter'] as num?)?.toInt() ?? 0,
+      modifiedAt: modifiedAt.toUtc(),
+      deviceId: deviceId,
+      counter: counter.toInt(),
     );
   }
 }
@@ -123,10 +141,11 @@ class SyncMutationStamp implements Comparable<SyncMutationStamp> {
 class SyncedAssetDescriptor {
   const SyncedAssetDescriptor({
     required this.id,
-    required this.ownerId,
+    this.ownerId = '',
     required this.kind,
     required this.mime,
     required this.sha256,
+    this.byteLength,
   });
 
   final String id;
@@ -134,26 +153,39 @@ class SyncedAssetDescriptor {
   final AssetKind kind;
   final String mime;
   final String sha256;
+  final int? byteLength;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
-        'ownerId': ownerId,
-        'kind': kind.name,
+        'kind': assetKindDiscriminator(kind),
         'mime': mime,
         'sha256': sha256,
+        'byteLength': byteLength,
       };
 
-  factory SyncedAssetDescriptor.fromJson(Map<String, dynamic> json) =>
-      SyncedAssetDescriptor(
-        id: json['id'] as String,
-        ownerId: json['ownerId'] as String? ?? '',
-        kind: AssetKind.values.firstWhere(
-          (value) => value.name == json['kind'],
-          orElse: () => AssetKind.image,
-        ),
-        mime: json['mime'] as String? ?? 'application/octet-stream',
-        sha256: json['sha256'] as String? ?? '',
-      );
+  factory SyncedAssetDescriptor.fromJson(Map<String, dynamic> json) {
+    final kind = assetKindFromDiscriminator(json['kind']);
+    final id = json['id'];
+    final mime = json['mime'];
+    final hash = json['sha256'];
+    final byteLength = json['byteLength'];
+    if (id is! String || id.isEmpty || mime is! String ||
+        mime.isEmpty || !mime.contains('/') || mime.contains(RegExp(r'\s')) ||
+        hash is! String || !RegExp(r'^[0-9a-f]{64}$').hasMatch(hash) ||
+        (byteLength != null &&
+            (byteLength is! num || !byteLength.isFinite || byteLength < 0 ||
+                byteLength != byteLength.toInt()))) {
+      throw const FormatException('Sync asset descriptor is invalid');
+    }
+    return SyncedAssetDescriptor(
+      id: id,
+      ownerId: json['ownerId'] as String? ?? '',
+      kind: kind,
+      mime: mime,
+      sha256: hash,
+      byteLength: (byteLength as num?)?.toInt(),
+    );
+  }
 }
 
 /// A complete immutable page head, including tombstones for deleted pages.
@@ -208,41 +240,72 @@ class SyncedDocumentHead {
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'schemaVersion': 1,
+        'format': JournalStorageFormat.sync,
+        'schemaVersion': JournalStorageFormat.schemaVersion,
         'entityType': 'document',
         'documentId': documentId,
         'deviceId': deviceId,
         'vector': vector.toJson(),
         'stamp': stamp.toJson(),
-        'document': document?.toJson(),
+        'document': document == null
+            ? null
+            : JournalDocumentCodec.canonicalDocument(document!),
         'deletedAt': deletedAt?.toUtc().toIso8601String(),
         'assets': assets.map((asset) => asset.toJson()).toList(),
       };
 
   factory SyncedDocumentHead.fromJson(Map<String, dynamic> json) {
+    if (json['format'] != JournalStorageFormat.sync ||
+        json['entityType'] != 'document') {
+      throw const FormatException('Unsupported sync record format');
+    }
+    if (json['schemaVersion'] != JournalStorageFormat.schemaVersion) {
+      throw const FormatException('Unsupported sync schema');
+    }
     final rawAssets = json['assets'];
+    final documentId = json['documentId'];
+    final deviceId = json['deviceId'];
+    final rawDeletedAt = json['deletedAt'];
+    if (documentId is! String || documentId.isEmpty ||
+        deviceId is! String || deviceId.isEmpty ||
+        rawAssets is! List ||
+        (rawDeletedAt != null && rawDeletedAt is! String)) {
+      throw const FormatException('Sync document head metadata is invalid');
+    }
+    final deletedAt = rawDeletedAt == null
+        ? null
+        : DateTime.tryParse(rawDeletedAt as String);
+    if (rawDeletedAt != null && deletedAt == null) {
+      throw const FormatException('Sync tombstone timestamp is invalid');
+    }
+    final rawDocument = json['document'];
+    if (rawDocument != null && rawDocument is! Map) {
+      throw const FormatException('Sync document payload is invalid');
+    }
+    final document = rawDocument is Map
+        ? JournalDocumentCodec.decodeDocument(rawDocument)
+        : null;
+    if (document != null && document.id != documentId) {
+      throw const FormatException('Sync document ID does not match head');
+    }
+    if (document == null && deletedAt == null) {
+      throw const FormatException('Sync head without a document must be a tombstone');
+    }
+    final assets = <SyncedAssetDescriptor>[];
+    for (final asset in rawAssets) {
+      if (asset is! Map) {
+        throw const FormatException('Sync asset descriptor is invalid');
+      }
+      assets.add(SyncedAssetDescriptor.fromJson(Map<String, dynamic>.from(asset)));
+    }
     return SyncedDocumentHead(
-      documentId: json['documentId'] as String,
-      deviceId: json['deviceId'] as String? ?? '',
+      documentId: documentId,
+      deviceId: deviceId,
       vector: SyncVersionVector.fromJson(json['vector']),
       stamp: SyncMutationStamp.fromJson(json['stamp']),
-      document: json['document'] is Map
-          ? EntryDocument.fromJson(
-              Map<String, dynamic>.from(json['document'] as Map),
-            )
-          : null,
-      deletedAt: DateTime.tryParse(json['deletedAt'] as String? ?? ''),
-      assets: rawAssets is List
-          ? List<SyncedAssetDescriptor>.unmodifiable(
-              rawAssets
-                  .whereType<Map<Object?, Object?>>()
-                  .map(
-                    (asset) => SyncedAssetDescriptor.fromJson(
-                      Map<String, dynamic>.from(asset),
-                    ),
-                  ),
-            )
-          : const <SyncedAssetDescriptor>[],
+      document: document,
+      deletedAt: deletedAt?.toUtc(),
+      assets: assets,
     );
   }
 }
@@ -256,7 +319,13 @@ class SyncedCollectionHead {
     required this.stamp,
     required Iterable<String> documentIds,
     this.driveFileId,
-  }) : documentIds = List.unmodifiable(documentIds);
+  }) : documentIds = List.unmodifiable(documentIds) {
+    if (deviceId.isEmpty ||
+        this.documentIds.any((id) => id.isEmpty) ||
+        this.documentIds.toSet().length != this.documentIds.length) {
+      throw const FormatException('Sync collection head is invalid');
+    }
+  }
 
   final String deviceId;
   final SyncVersionVector vector;
@@ -281,7 +350,8 @@ class SyncedCollectionHead {
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'schemaVersion': 1,
+        'format': JournalStorageFormat.sync,
+        'schemaVersion': JournalStorageFormat.schemaVersion,
         'entityType': 'collection',
         'deviceId': deviceId,
         'vector': vector.toJson(),
@@ -289,14 +359,27 @@ class SyncedCollectionHead {
         'documentIds': documentIds,
       };
 
-  factory SyncedCollectionHead.fromJson(Map<String, dynamic> json) =>
-      SyncedCollectionHead(
-        deviceId: json['deviceId'] as String? ?? '',
-        vector: SyncVersionVector.fromJson(json['vector']),
-        stamp: SyncMutationStamp.fromJson(json['stamp']),
-        documentIds: (json['documentIds'] as List<dynamic>? ?? const [])
-            .whereType<String>(),
-      );
+  factory SyncedCollectionHead.fromJson(Map<String, dynamic> json) {
+    if (json['format'] != JournalStorageFormat.sync ||
+        json['entityType'] != 'collection') {
+      throw const FormatException('Unsupported sync record format');
+    }
+    if (json['schemaVersion'] != JournalStorageFormat.schemaVersion) {
+      throw const FormatException('Unsupported sync schema');
+    }
+    final deviceId = json['deviceId'];
+    final rawIds = json['documentIds'];
+    if (deviceId is! String || deviceId.isEmpty || rawIds is! List ||
+        rawIds.any((id) => id is! String || id.isEmpty)) {
+      throw const FormatException('Sync collection head is invalid');
+    }
+    return SyncedCollectionHead(
+      deviceId: deviceId,
+      vector: SyncVersionVector.fromJson(json['vector']),
+      stamp: SyncMutationStamp.fromJson(json['stamp']),
+      documentIds: rawIds.cast<String>(),
+    );
+  }
 }
 
 /// Drive file metadata used by the gateway; it intentionally contains no

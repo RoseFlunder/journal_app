@@ -119,7 +119,9 @@ class _BlockWidgetState extends State<BlockWidget> {
   Widget build(BuildContext context) {
     final controlSize = 48 / math.max(widget.controlScale, 0.01);
     final controlBorder = 2.5 / math.max(widget.controlScale, 0.01);
-    final content = widget.block.type == BlockType.shape
+    final content = widget.block.isOpaque
+        ? const Center(child: Icon(Icons.help_outline, semanticLabel: 'Unsupported content'))
+        : widget.block.type == BlockType.shape
         ? CustomPaint(
             painter: _ShapePainter(widget.block),
             child: const SizedBox.expand(),

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'canvas.dart';
+import 'node_content.dart';
 import 'page_music.dart';
 import 'view_state.dart';
 export 'canvas.dart'
@@ -14,6 +15,7 @@ export 'canvas.dart'
         InkStrokeTypeLabel,
         JournalFonts,
         inkStrokeTypeFromName;
+export 'node_content.dart';
 
 /// Immutable world-space transform shared by every board node.
 class Transform2D {
@@ -62,6 +64,24 @@ class Transform2D {
   );
 }
 
+/// Durable page coordinate space. The editor continues to render the A4
+/// portrait page at 100 x 141.4 model units on every platform.
+class PageSpec {
+  const PageSpec({
+    this.format = 'a4Portrait',
+    this.coordinateSystemVersion = 1,
+    this.width = 100,
+    this.height = 141.4,
+  });
+
+  const PageSpec.a4Portrait() : this();
+
+  final String format;
+  final int coordinateSystemVersion;
+  final double width;
+  final double height;
+}
+
 /// Immutable discriminated board node. Payload remains JSON-compatible so
 /// RichText Delta, image adjustments, ink strokes, and future node types can
 /// evolve without changing the common transform contract.
@@ -78,14 +98,32 @@ class CanvasNode implements CanvasRenderable {
     this.visible = true,
     this.accessibilityLabel,
     Iterable<CanvasNode> children = const [],
-  }) : payload = _freezeMap(payload),
-       children = UnmodifiableListView(List<CanvasNode>.from(children));
+    this.nodeVersion = 1,
+    this.opaqueType,
+    Map<String, dynamic>? opaqueJson,
+    CanvasNodeContent? content,
+  }) : payload = _freezeMap(
+         payload.isEmpty && content != null ? content.toPayload() : payload,
+       ),
+       children = UnmodifiableListView(List<CanvasNode>.from(children)),
+       opaqueJson = opaqueJson == null ? null : _freezeMap(opaqueJson),
+       content = content ?? CanvasNodeContent.fromLegacy(type, payload) {
+    if (!isOpaque && this.content.type != type) {
+      throw ArgumentError.value(
+        content,
+        'content',
+        'Typed node content must match the node discriminator',
+      );
+    }
+  }
 
   @override
   final String id;
   @override
   final BlockType type;
   final Transform2D transform;
+  /// Compatibility view of the typed content. New domain code should use
+  /// [content]; this map is retained only for editor and legacy adapters.
   final Map<String, dynamic> payload;
   @override
   final double opacity;
@@ -94,9 +132,22 @@ class CanvasNode implements CanvasRenderable {
   final bool visible;
   final String? accessibilityLabel;
   final List<CanvasNode> children;
+  /// Version of the node payload in the permanent storage format.
+  final int nodeVersion;
+
+  /// Non-null when the node was written by a newer node kind/version. Opaque
+  /// nodes remain locked and are round-tripped without being interpreted.
+  final String? opaqueType;
+  final Map<String, dynamic>? opaqueJson;
+  final CanvasNodeContent content;
 
   @override
-  String get text => payload['text'] as String? ?? '';
+  bool get isOpaque => opaqueType != null || opaqueJson != null || nodeVersion != 1;
+
+  @override
+  String get text => content is TextNodeContent
+      ? (content as TextNodeContent).plainText
+      : payload['text'] as String? ?? '';
 
   @override
   String? get assetId => payload['assetId'] as String?;
@@ -238,22 +289,47 @@ class CanvasNode implements CanvasRenderable {
     bool? visible,
     Object? accessibilityLabel = _unset,
     Iterable<CanvasNode>? children,
-  }) => CanvasNode(
-    id: id ?? this.id,
-    type: type ?? this.type,
-    transform: transform ?? this.transform,
-    payload: payload ?? this.payload,
-    opacity: opacity ?? this.opacity,
-    locked: locked ?? this.locked,
-    visible: visible ?? this.visible,
-    accessibilityLabel: identical(accessibilityLabel, _unset)
-        ? this.accessibilityLabel
-        : accessibilityLabel as String?,
-    children: children ?? this.children,
-  );
+    int? nodeVersion,
+    Object? opaqueType = _unset,
+    Object? opaqueJson = _unset,
+    Object? content = _unset,
+  }) {
+    final nextContent = identical(content, _unset)
+        ? (payload == null ? this.content : null)
+        : content as CanvasNodeContent?;
+    final nextPayload = payload ??
+        (identical(content, _unset)
+            ? this.payload
+            : nextContent?.toPayload() ?? const <String, dynamic>{});
+    return CanvasNode(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      transform: transform ?? this.transform,
+      payload: nextPayload,
+      opacity: opacity ?? this.opacity,
+      locked: locked ?? this.locked,
+      visible: visible ?? this.visible,
+      accessibilityLabel: identical(accessibilityLabel, _unset)
+          ? this.accessibilityLabel
+          : accessibilityLabel as String?,
+      children: children ?? this.children,
+      nodeVersion: nodeVersion ?? this.nodeVersion,
+      opaqueType: identical(opaqueType, _unset)
+          ? this.opaqueType
+          : opaqueType as String?,
+      opaqueJson: identical(opaqueJson, _unset)
+          ? this.opaqueJson
+          : opaqueJson as Map<String, dynamic>?,
+      content: nextContent,
+    );
+  }
 
   @override
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson() {
+    if (isOpaque && opaqueJson != null) {
+      return _thawMap(opaqueJson!);
+    }
+    return {
     'id': id,
     'type': type.name,
     'transform': transform.toJson(),
@@ -264,6 +340,7 @@ class CanvasNode implements CanvasRenderable {
     'accessibilityLabel': accessibilityLabel,
     'children': children.map((node) => node.toJson()).toList(),
   };
+  }
 
   factory CanvasNode.fromJson(Map<String, dynamic> json) {
     final transform = json['transform'] is Map
@@ -271,7 +348,9 @@ class CanvasNode implements CanvasRenderable {
             Map<String, dynamic>.from(json['transform'] as Map),
           )
         : Transform2D.fromJson(json);
-    final type = switch (json['type'] as String?) {
+    final rawType = json['kind'] as String? ?? json['type'] as String?;
+    final type = switch (rawType) {
+      'text' => BlockType.text,
       'image' => BlockType.image,
       'sticker' => BlockType.sticker,
       'ink' => BlockType.ink,
@@ -279,28 +358,73 @@ class CanvasNode implements CanvasRenderable {
       'group' => BlockType.group,
       _ => BlockType.text,
     };
+    final rawVersion = json['version'];
+    final version = rawVersion == null
+        ? 1
+        : rawVersion is num && rawVersion.isFinite && rawVersion == rawVersion.toInt()
+        ? rawVersion.toInt()
+        : -1;
+    final isKnown = rawType == 'text' ||
+        rawType == 'image' ||
+        rawType == 'sticker' ||
+        rawType == 'ink' ||
+        rawType == 'shape' ||
+        rawType == 'group';
+    final rawPayload = json['data'] is Map
+        ? Map<String, dynamic>.from(json['data'] as Map)
+        : json['payload'] is Map
+        ? Map<String, dynamic>.from(json['payload'] as Map)
+        : const <String, dynamic>{};
+    if (json['kind'] != null && json['data'] != null && json['data'] is! Map) {
+      throw const FormatException('Canvas node data must be an object');
+    }
+    final rawOpacity = json['opacity'];
+    final opacity = rawOpacity == null
+        ? 1.0
+        : rawOpacity is num && rawOpacity.isFinite &&
+            rawOpacity >= 0 && rawOpacity <= 1
+        ? rawOpacity.toDouble()
+        : double.nan;
+    final rawChildren = json['children'];
+    if (rawChildren != null && rawChildren is! List) {
+      throw const FormatException('Canvas node children must be a list');
+    }
     return CanvasNode(
       id: json['id'] as String,
       type: type,
       transform: transform,
-      payload: json['payload'] is Map
-          ? Map<String, dynamic>.from(json['payload'] as Map)
-          : const {},
-      opacity: ((json['opacity'] as num?)?.toDouble() ?? 1)
-          .clamp(0.0, 1.0)
-          .toDouble(),
-      locked: json['locked'] as bool? ?? false,
+      payload: rawPayload,
+      opacity: opacity,
+      locked: (json['locked'] as bool? ?? false) || !isKnown || version != 1,
       visible: json['visible'] as bool? ?? true,
       accessibilityLabel: json['accessibilityLabel'] as String?,
-      children: (json['children'] as List<dynamic>? ?? const [])
+      children: (rawChildren as List<dynamic>? ?? const [])
           .whereType<Map<Object?, Object?>>()
           .map(
             (child) => CanvasNode.fromJson(Map<String, dynamic>.from(child)),
           ),
+      nodeVersion: version,
+      opaqueType: isKnown && version == 1 ? null : (rawType ?? 'unknown'),
+      opaqueJson: isKnown && version == 1 ? null : json,
+      content: isKnown && version == 1
+          ? null
+          : OpaqueNodeContent(json),
     );
   }
 
 }
+
+Map<String, dynamic> _thawMap(Map<String, dynamic> source) => {
+      for (final entry in source.entries) entry.key: _thawValue(entry.value),
+    };
+
+Object? _thawValue(Object? value) => switch (value) {
+      Map<Object?, Object?> map => _thawMap(
+          Map<String, dynamic>.from(map),
+        ),
+      List<Object?> list => [for (final item in list) _thawValue(item)],
+      _ => value,
+    };
 
 /// Immutable document boundary for repository, editor, archive, and sync
 /// code. The legacy Entry adapter is intentionally retained only as a
@@ -314,6 +438,7 @@ class EntryDocument {
     required this.createdAt,
     required this.modifiedAt,
     Iterable<CanvasNode> nodes = const [],
+    this.pageSpec = const PageSpec.a4Portrait(),
     this.board = const BoardSettings(),
     this.view,
     this.music,
@@ -331,7 +456,10 @@ class EntryDocument {
   final DateTime createdAt;
   final DateTime modifiedAt;
   final List<CanvasNode> nodes;
+  final PageSpec pageSpec;
   final BoardSettings board;
+  /// Compatibility projection of device-local view preferences. It is not
+  /// included in canonical document records.
   final ViewState? view;
   final PageMusicTrack? music;
   final double titleFontSize;
@@ -339,6 +467,8 @@ class EntryDocument {
   final int? titleTextColorValue;
   final bool titleBold;
   final bool titleItalic;
+  /// Local storage metadata retained for compatibility projections only.
+  /// Canonical codecs store both values outside the durable document tree.
   final int revision;
   final int schemaVersion;
 
@@ -346,6 +476,7 @@ class EntryDocument {
     String? title,
     DateTime? modifiedAt,
     Iterable<CanvasNode>? nodes,
+    PageSpec? pageSpec,
     BoardSettings? board,
     Object? view = _copyWithUnset,
     Object? music = _copyWithUnset,
@@ -362,6 +493,7 @@ class EntryDocument {
     createdAt: createdAt,
     modifiedAt: modifiedAt ?? this.modifiedAt,
     nodes: nodes ?? this.nodes,
+    pageSpec: pageSpec ?? this.pageSpec,
     board: board ?? this.board,
     view: identical(view, _copyWithUnset) ? this.view : view as ViewState?,
     music: identical(music, _copyWithUnset)
@@ -390,6 +522,7 @@ class EntryDocument {
     nodes: (json['nodes'] as List<dynamic>? ?? const [])
         .whereType<Map<Object?, Object?>>()
         .map((node) => CanvasNode.fromJson(Map<String, dynamic>.from(node))),
+    pageSpec: _pageSpecFromJson(json['page']),
     board: BoardSettings.fromJson(
       json['board'] is Map
           ? Map<String, dynamic>.from(json['board'] as Map)
@@ -752,6 +885,12 @@ class EntryDocument {
     'createdAt': createdAt.toIso8601String(),
     'modifiedAt': modifiedAt.toIso8601String(),
     'nodes': nodes.map((node) => node.toJson()).toList(),
+    'page': <String, dynamic>{
+      'format': pageSpec.format,
+      'coordinateSystemVersion': pageSpec.coordinateSystemVersion,
+      'width': pageSpec.width,
+      'height': pageSpec.height,
+    },
     'board': board.toJson(),
     'view': view?.toJson(),
     'music': music?.toJson(),
@@ -832,3 +971,14 @@ Object? _freezeValue(Object? value) => switch (value) {
   ),
   _ => value,
 };
+
+PageSpec _pageSpecFromJson(Object? value) {
+  if (value is! Map) return const PageSpec.a4Portrait();
+  return PageSpec(
+    format: value['format'] as String? ?? 'a4Portrait',
+    coordinateSystemVersion:
+        (value['coordinateSystemVersion'] as num?)?.toInt() ?? 1,
+    width: (value['width'] as num?)?.toDouble() ?? 100,
+    height: (value['height'] as num?)?.toDouble() ?? 141.4,
+  );
+}

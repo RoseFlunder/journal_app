@@ -1,14 +1,14 @@
-/// Immutable reference to music attached to a journal page.
+/// Stable, durable music identity attached to a journal page.
 ///
-/// Remote audio remains owned by its provider. The journal stores only the
-/// metadata required to display attribution and request playback later.
-class PageMusicTrack {
-  const PageMusicTrack({
+/// This value deliberately has no stream URL. Providers can rotate signed
+/// playback URLs, so only this identity and its attribution are part of the
+/// frozen document contract.
+class MusicReference {
+  const MusicReference({
     required this.provider,
     required this.trackId,
     required this.title,
     required this.artist,
-    required this.streamUrl,
     required this.trackPageUrl,
     required this.licenseUrl,
     this.artworkUrl = '',
@@ -16,31 +16,53 @@ class PageMusicTrack {
     this.legacyAssetId,
   });
 
-  const PageMusicTrack.legacy(String assetId)
-    : provider = 'legacyAsset',
-      trackId = assetId,
-      title = 'Legacy page music',
-      artist = '',
-      artworkUrl = '',
-      streamUrl = '',
-      trackPageUrl = '',
-      licenseUrl = '',
-      duration = Duration.zero,
-      legacyAssetId = assetId;
-
   final String provider;
   final String trackId;
   final String title;
   final String artist;
-  final String artworkUrl;
-  final String streamUrl;
   final String trackPageUrl;
   final String licenseUrl;
+  final String artworkUrl;
   final Duration duration;
   final String? legacyAssetId;
 
-  bool get isPlayable => provider == 'jamendo' && streamUrl.isNotEmpty;
   bool get isLegacy => legacyAssetId != null;
+}
+
+/// Runtime catalog result for a durable [MusicReference]. The stream URL is
+/// intentionally kept at this edge and is never emitted by the canonical
+/// document codec.
+class PageMusicTrack extends MusicReference {
+  const PageMusicTrack({
+    required super.provider,
+    required super.trackId,
+    required super.title,
+    required super.artist,
+    required this.streamUrl,
+    required super.trackPageUrl,
+    required super.licenseUrl,
+    super.artworkUrl = '',
+    super.duration = Duration.zero,
+    super.legacyAssetId,
+  });
+
+  const PageMusicTrack.legacy(String assetId)
+      : streamUrl = '',
+        super(
+          provider: 'legacyAsset',
+          trackId: assetId,
+          title: 'Legacy page music',
+          artist: '',
+          artworkUrl: '',
+          trackPageUrl: '',
+          licenseUrl: '',
+          duration: Duration.zero,
+          legacyAssetId: assetId,
+        );
+
+  final String streamUrl;
+
+  bool get isPlayable => provider == 'jamendo' && streamUrl.isNotEmpty;
 
   PageMusicTrack copyWith({String? streamUrl}) => PageMusicTrack(
     provider: provider,
@@ -77,9 +99,11 @@ class PageMusicTrack {
     streamUrl: json['streamUrl'] as String? ?? '',
     trackPageUrl: json['trackPageUrl'] as String? ?? '',
     licenseUrl: json['licenseUrl'] as String? ?? '',
-    duration: Duration(
-      seconds: (json['durationSeconds'] as num?)?.toInt() ?? 0,
-    ),
+    duration: json['durationMs'] is num
+        ? Duration(milliseconds: (json['durationMs'] as num).toInt())
+        : Duration(
+            seconds: (json['durationSeconds'] as num?)?.toInt() ?? 0,
+          ),
     legacyAssetId: json['legacyAssetId'] as String?,
   );
 

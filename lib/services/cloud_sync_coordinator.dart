@@ -13,6 +13,7 @@ import 'cloud_sync_repository.dart';
 import 'repositories.dart';
 import 'sync_local_store.dart';
 import 'sync_models.dart';
+import 'storage_codec.dart';
 
 export 'cloud_sync_repository.dart';
 
@@ -38,6 +39,7 @@ class CloudSyncCoordinator extends ChangeNotifier
   static const _documentType = 'document-head';
   static const _collectionType = 'collection-head';
   static const _assetType = 'asset';
+  static const _syncNamespace = 'cozy-bloom-sync-v2';
   static const _jsonMime = 'application/vnd.cozy-bloom.journal+json';
   static const _uuid = Uuid();
 
@@ -58,6 +60,7 @@ class CloudSyncCoordinator extends ChangeNotifier
   Future<void>? _accountHandling;
   bool _applyingRemote = false;
   bool _initialized = false;
+  bool _localCollectionEditThisSync = false;
 
   @override
   CloudSyncState get state => _state;
@@ -254,6 +257,7 @@ class CloudSyncCoordinator extends ChangeNotifier
     );
     try {
       await persistence.flush();
+      _localCollectionEditThisSync = false;
       await _captureLocalChanges();
       final remote = await drive.listRecords();
       final remoteHeads = await _readRemoteHeads(remote);
@@ -358,7 +362,12 @@ class CloudSyncCoordinator extends ChangeNotifier
     }
     final existingCollection = local.collectionHead;
     final ids = current.keys.toList(growable: false);
+    // A newly connected empty device has no local ordering claim. Creating an
+    // empty head here would race the remote collection head and could win by
+    // timestamp before the first pull. Let the remote order merge first.
+    if (existingCollection == null && ids.isEmpty) return;
     if (existingCollection == null || !_sameIds(existingCollection.documentIds, ids)) {
+      _localCollectionEditThisSync = true;
       counter++;
       await local.saveCollectionHead(
         SyncedCollectionHead(
@@ -383,6 +392,7 @@ class CloudSyncCoordinator extends ChangeNotifier
     final grouped = <String, List<SyncedDocumentHead>>{};
     _remoteCollections = <SyncedCollectionHead>[];
     for (final record in records) {
+      if (!_isCurrentNamespace(record)) continue;
       if (record.properties['type'] != _documentType &&
           record.properties['type'] != _collectionType) {
         continue;
@@ -404,7 +414,10 @@ class CloudSyncCoordinator extends ChangeNotifier
         grouped.putIfAbsent(head.documentId, () => <SyncedDocumentHead>[]).add(
               head.copyWith(driveFileId: record.fileId),
             );
-      } catch (_) {}
+      } catch (_) {
+        // Ignore malformed remote records; a later sync can retry them after
+        // the owning device republishes a valid head.
+      }
     }
     return grouped;
   }
@@ -425,7 +438,8 @@ class CloudSyncCoordinator extends ChangeNotifier
     }
     final assetsByHash = <String, DriveSyncRecord>{
       for (final record in records)
-        if (record.properties['type'] == _assetType &&
+        if (_isCurrentNamespace(record) &&
+            record.properties['type'] == _assetType &&
             record.properties['sha256'] != null)
           record.properties['sha256']!: record,
     };
@@ -438,6 +452,9 @@ class CloudSyncCoordinator extends ChangeNotifier
         // The Drive metadata is not trusted until the downloaded bytes match
         // the content hash embedded in the immutable page head.
         if (descriptor.sha256.isEmpty ||
+            record.mimeType != descriptor.mime ||
+            descriptor.byteLength != null &&
+                descriptor.byteLength != bytes.length ||
             sha256.convert(bytes).toString() != descriptor.sha256) {
           continue;
         }
@@ -545,8 +562,20 @@ class CloudSyncCoordinator extends ChangeNotifier
         ...?_remoteCollections,
       ];
       if (candidates.isEmpty) return;
-      final winner = _chooseCollectionWinner(candidates);
+      var winner = _chooseCollectionWinner(candidates);
       final currentIds = documents.documents.map((document) => document.id);
+      final localWasEdited = _localCollectionEditThisSync;
+      final localHead = localCollection;
+      if (localWasEdited &&
+          localHead != null &&
+          localHead.vector.relationTo(winner.vector) ==
+              SyncRelation.concurrent) {
+        // A local reorder was captured immediately before this merge. Keep it
+        // for this transaction so a stale remote head cannot overwrite an
+        // edit before it is published; the next device observes the new head
+        // and applies the normal deterministic conflict ordering.
+        winner = localHead;
+      }
       final mergedIds = <String>[
         ...winner.documentIds,
         ...currentIds.where((id) => !winner.documentIds.contains(id)),
@@ -555,7 +584,7 @@ class CloudSyncCoordinator extends ChangeNotifier
       final localNeedsPublish = localCollection != null &&
           (relation == SyncRelation.concurrent ||
               !_sameIdSet(winner.documentIds, currentIds));
-      if (!_sameIds(winner.documentIds, mergedIds) ||
+      if (!_sameIds(currentIds, mergedIds) ||
           relation != SyncRelation.equal) {
         if (!_sameIds(
           documents.documents.map((document) => document.id),
@@ -608,6 +637,7 @@ class CloudSyncCoordinator extends ChangeNotifier
     final existingByKey = <String, DriveSyncRecord>{
       for (final record in records)
         if (record.properties['type'] == _documentType &&
+            _isCurrentNamespace(record) &&
             record.properties['deviceId'] != null &&
             record.properties['documentId'] != null)
           '${record.properties['documentId']}:${record.properties['deviceId']}': record,
@@ -626,6 +656,7 @@ class CloudSyncCoordinator extends ChangeNotifier
               mimeType: _jsonMime,
               properties: <String, String>{
                 'type': _documentType,
+                'namespace': _syncNamespace,
                 'documentId': head.documentId,
                 'deviceId': head.deviceId,
               },
@@ -646,6 +677,7 @@ class CloudSyncCoordinator extends ChangeNotifier
       final old = _firstWhereOrNull(
         records,
         (record) =>
+            _isCurrentNamespace(record) &&
             record.properties['type'] == _collectionType &&
             record.properties['deviceId'] == collection.deviceId,
       );
@@ -655,6 +687,7 @@ class CloudSyncCoordinator extends ChangeNotifier
               mimeType: _jsonMime,
               properties: <String, String>{
                 'type': _collectionType,
+                'namespace': _syncNamespace,
                 'deviceId': collection.deviceId,
               },
               bytes: payload,
@@ -686,6 +719,7 @@ class CloudSyncCoordinator extends ChangeNotifier
       final existing = _firstWhereOrNull(
         records,
         (record) =>
+            _isCurrentNamespace(record) &&
             record.properties['type'] == _assetType &&
             record.properties['sha256'] == descriptor.sha256,
       );
@@ -695,6 +729,7 @@ class CloudSyncCoordinator extends ChangeNotifier
         mimeType: descriptor.mime,
         properties: <String, String>{
           'type': _assetType,
+          'namespace': _syncNamespace,
           'sha256': descriptor.sha256,
           'assetId': descriptor.id,
         },
@@ -750,7 +785,7 @@ class CloudSyncCoordinator extends ChangeNotifier
       final relation = candidate.vector.relationTo(winner.vector);
       if (relation == SyncRelation.after ||
           (relation == SyncRelation.concurrent &&
-              candidate.stamp.compareTo(winner.stamp) > 0)) {
+              _compareDocumentHeads(candidate, winner) > 0)) {
         winner = candidate;
       }
     }
@@ -764,8 +799,8 @@ class CloudSyncCoordinator extends ChangeNotifier
     for (final candidate in candidates.skip(1)) {
       final relation = candidate.vector.relationTo(winner.vector);
       if (relation == SyncRelation.after ||
-          (relation == SyncRelation.concurrent &&
-              candidate.stamp.compareTo(winner.stamp) > 0)) {
+          ((relation == SyncRelation.concurrent || relation == SyncRelation.equal) &&
+              _compareCollectionHeads(candidate, winner) > 0)) {
         winner = candidate;
       }
     }
@@ -790,6 +825,7 @@ class CloudSyncCoordinator extends ChangeNotifier
           kind: asset?.kind ?? AssetKind.image,
           mime: asset?.mime ?? 'application/octet-stream',
           sha256: asset == null ? '' : sha256.convert(asset.bytes).toString(),
+          byteLength: asset?.bytes.length,
         );
       }),
     );
@@ -894,6 +930,27 @@ class CloudSyncCoordinator extends ChangeNotifier
   }
 }
 
+int _compareDocumentHeads(SyncedDocumentHead left, SyncedDocumentHead right) {
+  final byStamp = left.stamp.compareTo(right.stamp);
+  if (byStamp != 0) return byStamp;
+  final byDevice = left.deviceId.compareTo(right.deviceId);
+  if (byDevice != 0) return byDevice;
+  return left.documentId.compareTo(right.documentId);
+}
+
+int _compareCollectionHeads(
+  SyncedCollectionHead left,
+  SyncedCollectionHead right,
+) {
+  final byStamp = left.stamp.compareTo(right.stamp);
+  if (byStamp != 0) return byStamp;
+  final byDevice = left.deviceId.compareTo(right.deviceId);
+  if (byDevice != 0) return byDevice;
+  final leftIds = left.documentIds.join('\u0000');
+  final rightIds = right.documentIds.join('\u0000');
+  return leftIds.compareTo(rightIds);
+}
+
 bool _isTransientStatus(int statusCode) =>
     statusCode == 408 || statusCode == 429 || statusCode >= 500;
 
@@ -910,14 +967,16 @@ String _extension(String mime) => switch (mime) {
       'image/jpeg' => 'jpg',
       'image/webp' => 'webp',
       _ => 'bin',
-    };
+};
+
+bool _isCurrentNamespace(DriveSyncRecord record) =>
+    record.properties['namespace'] == 'cozy-bloom-sync-v2';
 
 bool _sameDocument(EntryDocument? left, EntryDocument right) {
   if (left == null) return false;
   // Revisions count local storage writes and deliberately do not participate
   // in cloud content identity.
-  return jsonEncode(left.copyWith(revision: 0).toJson()) ==
-      jsonEncode(right.copyWith(revision: 0).toJson());
+  return JournalDocumentCodec.sameContent(left, right);
 }
 
 bool _sameIds(Iterable<String> left, Iterable<String> right) {

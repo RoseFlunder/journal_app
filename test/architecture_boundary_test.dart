@@ -9,6 +9,8 @@ void main() {
       'hive_journal_data_source.dart',
       'hive_repositories.dart',
       'storage_records.dart',
+      'storage_codec.dart',
+      'entry_document_codec.dart',
       'models/entry.dart',
       'package:google_sign_in/',
       'package:google_sign_in_web/',

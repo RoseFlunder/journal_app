@@ -40,6 +40,8 @@ class TestHiveEnvironment {
       Hive.box<dynamic>('assets').clear(),
       Hive.box<dynamic>('meta').clear(),
       Hive.box<dynamic>('entryCheckpoints').clear(),
+      Hive.box<dynamic>('syncHeads').clear(),
+      Hive.box<dynamic>('storageQuarantine').clear(),
     ]);
     await environment.init();
     return environment;

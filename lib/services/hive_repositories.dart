@@ -6,6 +6,7 @@ import 'hive_journal_data_source.dart';
 import 'journal_archive.dart';
 import 'repositories.dart';
 import 'sync_local_store.dart';
+import 'storage_codec.dart';
 
 /// Document capability adapter backed by the internal Hive document source.
 class HiveDocumentRepository implements DocumentRepository {
@@ -66,6 +67,15 @@ class HiveAssetRepository implements AssetRepository {
   @override
   String? assetMime(String id) => _source.assetMime(id);
 
+  Future<AssetDescriptor> putImmutableAsset(
+    AssetKind kind,
+    String mime,
+    List<int> bytes,
+  ) =>
+      _source.putImmutableAsset(kind, mime, bytes);
+
+  AssetBlob? readAssetBlob(String id) => _source.readAssetBlob(id);
+
   @override
   Future<void> collectUnreferencedAssets({
     Iterable<String> retainedAssetIds = const <String>[],
@@ -116,6 +126,52 @@ class HivePreferencesRepository implements PreferencesRepository {
       _source.updateColorPreferences(recent: recent, favorites: favorites);
 }
 
+/// Adapter for presentation-only state. The document source also reads this
+/// record when reconstructing the editor projection, so repository callers and
+/// direct source users observe the same local camera state.
+class HiveDocumentViewPreferencesRepository
+    implements DocumentViewPreferencesRepository {
+  HiveDocumentViewPreferencesRepository(this._storage);
+
+  final HiveJournalDataSource _storage;
+
+  @override
+  DocumentViewPreferences preferencesFor(String documentId) {
+    final raw = _storage.readMeta('viewPreferences:$documentId');
+    if (raw is! Map) return const DocumentViewPreferences();
+    try {
+      final stored = StoredViewPreferences.fromJson(raw);
+      return DocumentViewPreferences(
+        view: stored.view,
+        gridVisible: stored.gridVisible,
+      );
+    } catch (_) {
+      return const DocumentViewPreferences();
+    }
+  }
+
+  @override
+  Future<void> savePreferences(
+    String documentId,
+    DocumentViewPreferences preferences,
+  ) =>
+      _storage.enqueue(
+        () => _storage.writeMeta(
+          'viewPreferences:$documentId',
+          StoredViewPreferences(
+            view: preferences.view,
+            gridVisible: preferences.gridVisible,
+          ).toJson(),
+        ),
+      );
+
+  @override
+  Future<void> clearPreferences(String documentId) =>
+      _storage.enqueue(
+        () => _storage.deleteMeta('viewPreferences:$documentId'),
+      );
+}
+
 /// Archive capability adapter backed by focused internal data sources.
 class HiveArchiveRepository implements ArchiveRepository {
   HiveArchiveRepository.fromDataSource(this._source);
@@ -163,6 +219,7 @@ class HiveRepositorySet {
     );
     final checkpoints = HiveCheckpointDataSource(source, documents: documents);
     final preferences = HivePreferencesDataSource(source);
+    final viewPreferences = HiveDocumentViewPreferencesRepository(source);
     final archive = HiveArchiveDataSource(
       source,
       documents: documents,
@@ -183,6 +240,7 @@ class HiveRepositorySet {
       persistence:
           persistence ?? HivePersistenceRepository.fromDataSource(source),
       archiveRepository: HiveArchiveRepository.fromDataSource(archive),
+      viewPreferencesRepository: viewPreferences,
     );
     syncLocalStore = HiveSyncLocalStore(
       storage: source,

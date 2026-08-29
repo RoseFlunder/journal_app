@@ -145,6 +145,7 @@ class BoardSettings {
 /// this contract. Mutable setters stay below the storage compatibility edge.
 abstract interface class CanvasRenderable {
   String get id;
+  bool get isOpaque;
   BlockType get type;
   String get text;
   String? get assetId;

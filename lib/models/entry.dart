@@ -55,6 +55,8 @@ class ContentBlock implements CanvasRenderable {
   @override
   final String id;
   @override
+  bool get isOpaque => false;
+  @override
   BlockType type;
 
   /// Content of a [BlockType.text] block.

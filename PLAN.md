@@ -3,7 +3,8 @@
 Source of truth for the mobile-first, local-first, paper-style creative journal.
 Existing saved pages may be discarded while the document architecture changes.
 
-Last audited: 2026-08-28 after the final architecture boundary closure and
+Last audited: 2026-08-29 after the final persistence contract freeze,
+architecture boundary closure, and
 local-first cloud synchronization slice. The
 editor controller, history,
 clipboard, and canvas are document/node native; metadata and workflow
@@ -22,10 +23,12 @@ active, and the obsolete toolbar export and image-editor path are gone.
 Platform services do not render presentation UI, and `JournalApp` receives one
 configured `AppDependencies` object in production and tests.
 Storage shutdown is awaitable, and architecture tests cover both feature views
-and the editor core.
+and the editor core. Fresh production data uses the versioned v2 persistence
+namespace; compatibility adapters remain isolated for legacy fixtures and
+explicit import edges.
 Focused editor, repository, boundary, and widget suites pass; the full Flutter
-test suite passes. Android app-bundle, Web release, and Windows release builds
-also pass on this commit.
+test suite and Android app-bundle, Web release, and Windows release builds pass
+on this commit.
 
 Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
@@ -66,6 +69,14 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
   immutable undo/redo snapshots, and clipboard references.
 - [x] Serialize final text commit, background checkpoint, and storage flush to
   eliminate lifecycle races.
+- [x] Freeze the canonical persistence contract: typed immutable node content,
+  versioned document/manifest/asset/checkpoint/view records, content-addressed
+  assets, strict validation with quarantine, and UTC-normalized metadata.
+- [x] Freeze `.cozyjournal` ZIP v2 and the dedicated cloud sync namespace;
+  imports validate hashes, references, duplicate paths, and resource limits.
+- [x] Keep camera/grid visibility device-local and exclude it from document,
+  archive, and cloud fingerprints; retain unsupported nodes as opaque locked
+  values.
 
 ### Optional Google Drive synchronization
 
@@ -197,7 +208,14 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
 ## Next Implementation Order
 
-1. **Complete the document-model and composition migration**
+1. **Preserve the frozen persistence contract**
+   - Treat `cozy-bloom-storage-v2`, archive v2, and sync v2 as permanent
+     formats. Any incompatible change requires a new decoder and explicit
+     migration with golden fixtures; never reset the namespace again.
+   - Keep `Entry`/`ContentBlock` conversion confined to the compatibility
+     storage codec until all legacy fixtures and import edges are retired.
+
+2. **Complete the document-model and composition migration**
    - Keep `Entry`/`ContentBlock` conversion confined to the storage codec and
      keep storage compatibility tests on the direct Hive capability sources.
    - [x] Editor-page cross-repository workflows are delegated to focused
@@ -207,29 +225,29 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
      services are injected from the app composition root, editor capabilities
      are required rather than nullable, and storage shutdown is awaitable.
 
-2. **Correctness hardening**
+3. **Correctness hardening**
    - Fix image edge resizing, image-sheet state, lifecycle ordering, visible
      content bounds, and ink width conversion.
    - Add regression tests for the text Done sequence and scrollable More sheet.
 
-3. **Enable and validate cloud synchronization**
+4. **Enable and validate cloud synchronization**
    - Register the Google OAuth clients, complete consent/privacy review, and
      run two-account/two-device Android, Web, and Windows smoke tests.
    - Enable `COZY_BLOOM_CLOUD_SYNC` for production only after the local-first
      merge, tombstone, asset, and account-reset flows pass validation.
 
-4. **Complete page interaction overlay**
+5. **Complete page interaction overlay**
    - Render visible nodes and interaction chrome in their correct coordinate
      spaces.
    - Add culling, smart guides, distribution, haptics, and platform gesture
      parity.
 
-5. **Complete creative editing**
+6. **Complete creative editing**
    - Use Quill for every text node.
    - Complete image crop, replacement, adjustments, and filters.
    - Complete ink and shape workflows.
 
-6. **Export, accessibility, and performance**
+7. **Export, accessibility, and performance**
    - Add image/PDF export, semantics, keyboard parity, goldens, and integration
      tests.
    - Profile Android, Chrome, and Windows for 60-fps manipulation with 100

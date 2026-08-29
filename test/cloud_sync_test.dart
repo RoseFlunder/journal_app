@@ -136,6 +136,7 @@ void main() {
       mimeType: descriptor.mime,
       properties: {
         'type': 'asset',
+        'namespace': 'cozy-bloom-sync-v2',
         'sha256': descriptor.sha256,
         'assetId': descriptor.id,
       },
@@ -146,6 +147,7 @@ void main() {
       mimeType: 'application/json',
       properties: {
         'type': 'document-head',
+        'namespace': 'cozy-bloom-sync-v2',
         'documentId': head.documentId,
         'deviceId': head.deviceId,
       },

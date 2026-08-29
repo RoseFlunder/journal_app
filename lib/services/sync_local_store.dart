@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:uuid/uuid.dart';
 
 import '../models/asset_kind.dart';
@@ -64,8 +66,8 @@ abstract interface class SyncLocalStore {
   Future<void> clearAllLocalData();
 }
 
-/// Hive implementation of [SyncLocalStore]. Sync records live in the existing
-/// meta box; the raw storage source remains below the repository boundary.
+/// Hive implementation of [SyncLocalStore]. Sync records live in a dedicated
+/// box so saving one head never rewrites every page's snapshot in the meta box.
 class HiveSyncLocalStore implements SyncLocalStore {
   HiveSyncLocalStore({
     required this.storage,
@@ -104,15 +106,28 @@ class HiveSyncLocalStore implements SyncLocalStore {
     _heads
       ..clear()
       ..addAll(_readHeads());
-    final rawCollection = storage.readMeta(_collectionKey);
+    final rawCollection = storage.readSyncHead(_collectionKey) ??
+        storage.readMeta(_collectionKey);
     if (rawCollection is Map) {
       try {
         _collection = SyncedCollectionHead.fromJson(
           Map<String, dynamic>.from(rawCollection),
         );
-      } catch (_) {
+      } catch (error) {
+        unawaited(
+          storage.quarantine('sync-head', _collectionKey, rawCollection, error),
+        );
         _collection = null;
       }
+    } else if (rawCollection != null) {
+      unawaited(
+        storage.quarantine(
+          'sync-head',
+          _collectionKey,
+          rawCollection,
+          const FormatException('Sync collection head is not an object'),
+        ),
+      );
     }
   }
 
@@ -146,13 +161,17 @@ class HiveSyncLocalStore implements SyncLocalStore {
   @override
   Future<void> saveDocumentHead(SyncedDocumentHead head) async {
     _heads[head.documentId] = head;
-    await _persistHeads();
+    await storage.enqueue(
+      () => storage.writeSyncHead(head.documentId, head.toJson()),
+    );
   }
 
   @override
   Future<void> saveCollectionHead(SyncedCollectionHead head) async {
     _collection = head;
-    await storage.enqueue(() => storage.writeMeta(_collectionKey, head.toJson()));
+    await storage.enqueue(
+      () => storage.writeSyncHead(_collectionKey, head.toJson()),
+    );
   }
 
   @override
@@ -211,7 +230,10 @@ class HiveSyncLocalStore implements SyncLocalStore {
     await documents.clearAll();
     await assets.clearAll();
     await storage.enqueue(() async {
-      await storage.writeMeta(_headsKey, <String, dynamic>{});
+      await storage.clearCheckpoints();
+      await storage.clearQuarantine();
+      await storage.clearSyncHeads();
+      await storage.writeMeta(_headsKey, null);
       await storage.writeMeta(_collectionKey, null);
       await storage.writeMeta(_accountIdKey, null);
       await storage.writeMeta(_lastSyncedAtKey, null);
@@ -221,28 +243,34 @@ class HiveSyncLocalStore implements SyncLocalStore {
   }
 
   Map<String, SyncedDocumentHead> _readHeads() {
-    final raw = storage.readMeta(_headsKey);
-    if (raw is! Map) return <String, SyncedDocumentHead>{};
     final result = <String, SyncedDocumentHead>{};
-    for (final entry in raw.entries) {
-      if (entry.key is! String || entry.value is! Map) continue;
-      try {
-        result[entry.key as String] = SyncedDocumentHead.fromJson(
-          Map<String, dynamic>.from(entry.value as Map),
+    for (final key in storage.syncHeadKeys.whereType<String>()) {
+      if (key == _collectionKey) continue;
+      final raw = storage.readSyncHead(key);
+      if (raw == null) continue;
+      if (raw is! Map) {
+        unawaited(
+          storage.quarantine(
+            'sync-head',
+            key,
+            raw,
+            const FormatException('Sync head is not an object'),
+          ),
         );
-      } catch (_) {}
+        continue;
+      }
+      try {
+        final head = SyncedDocumentHead.fromJson(
+          Map<String, dynamic>.from(raw),
+        );
+        result[head.documentId] = head;
+      } catch (error) {
+        unawaited(storage.quarantine('sync-head', key, raw, error));
+      }
     }
     return result;
   }
 
-  Future<void> _persistHeads() => storage.enqueue(
-        () => storage.writeMeta(
-          _headsKey,
-          <String, dynamic>{
-            for (final entry in _heads.entries) entry.key: entry.value.toJson(),
-          },
-        ),
-      );
 }
 
 /// Small in-memory store used by repository-backed widget tests and by the

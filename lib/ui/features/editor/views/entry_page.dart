@@ -951,9 +951,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         onSnapToGridChanged: (value) => _editor.updateBoard(
           _editor.board.copyWith(snapToGrid: value),
         ),
-        onGridVisibilityChanged: (value) => _editor.updateBoard(
-          _editor.board.copyWith(gridVisible: value),
-        ),
+        onGridVisibilityChanged: (value) =>
+            unawaited(_editor.updateGridVisibility(value)),
       ),
     );
   }
