@@ -1,9 +1,10 @@
-import 'dart:ui' as ui;
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../../../../models/canvas.dart';
 import '../view_models/editor_tool_state.dart';
+import 'ink_stroke_renderer.dart';
 
 /// Bottom-sheet content for the vector ink tool.
 ///
@@ -158,33 +159,21 @@ class _InkStrokePreviewPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final path = ui.Path()
-      ..moveTo(3, size.height * .62)
-      ..cubicTo(
-        size.width * .24,
-        size.height * .05,
-        size.width * .42,
-        size.height * .95,
-        size.width * .62,
-        size.height * .45,
-      )
-      ..cubicTo(
-        size.width * .76,
-        size.height * .1,
-        size.width * .88,
-        size.height * .8,
-        size.width - 3,
-        size.height * .35,
-      );
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = strokeType.strokeCap
-      ..strokeJoin = StrokeJoin.round
-      ..strokeWidth = (2.6 * strokeType.widthMultiplier).clamp(1.2, 7.0)
-      ..color = color.withValues(
-        alpha: strokeType.opacityMultiplier.clamp(0.0, 1.0),
-      );
-    canvas.drawPath(path, paint);
+    final points = <Offset>[];
+    for (var index = 0; index <= 48; index++) {
+      final t = index / 48;
+      final x = 3 + (size.width - 6) * t;
+      final y = size.height * (.52 + .22 * math.sin(t * math.pi * 2.2));
+      points.add(Offset(x, y));
+    }
+    InkStrokeRenderer.paint(
+      canvas,
+      points: points,
+      color: color,
+      width: 2.6,
+      opacity: 1,
+      strokeType: strokeType,
+    );
   }
 
   @override

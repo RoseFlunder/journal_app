@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../models/document.dart';
+import 'ink_stroke_renderer.dart';
 
 class BlockWidget extends StatefulWidget {
   const BlockWidget({
@@ -612,34 +613,20 @@ class _InkPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final points = block.inkPoints ?? const <Map<String, dynamic>>[];
     if (points.length < 2 || block.w <= 0 || block.h <= 0) return;
-    final path = Path();
-    for (var index = 0; index < points.length; index++) {
-      final point = points[index];
-      final offset = Offset(
-        ((point['x'] as num?)?.toDouble() ?? 0) * size.width / block.w,
-        ((point['y'] as num?)?.toDouble() ?? 0) * size.height / block.h,
-      );
-      if (index == 0) {
-        path.moveTo(offset.dx, offset.dy);
-      } else {
-        path.lineTo(offset.dx, offset.dy);
-      }
-    }
-    canvas.drawPath(
-      path,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeCap = strokeType.strokeCap
-        ..strokeJoin = StrokeJoin.round
-        ..strokeWidth =
-            block.strokeWidth.clamp(0.5, 20).toDouble() *
-            strokeType.widthMultiplier *
-            10
-        ..color = Color(
-          block.strokeColorValue ?? 0xFF3B3226,
-        ).withValues(
-          alpha: (block.opacity * strokeType.opacityMultiplier).clamp(0.0, 1.0),
+    final renderPoints = [
+      for (final point in points)
+        Offset(
+          ((point['x'] as num?)?.toDouble() ?? 0) * size.width / block.w,
+          ((point['y'] as num?)?.toDouble() ?? 0) * size.height / block.h,
         ),
+    ];
+    InkStrokeRenderer.paint(
+      canvas,
+      points: renderPoints,
+      color: Color(block.strokeColorValue ?? 0xFF3B3226),
+      width: block.strokeWidth.clamp(0.5, 20).toDouble() * 10,
+      opacity: block.opacity,
+      strokeType: strokeType,
     );
   }
 

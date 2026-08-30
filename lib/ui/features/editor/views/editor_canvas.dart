@@ -10,6 +10,7 @@ import '../../../../models/document.dart';
 import '../../../../widgets/page_viewport.dart';
 import 'editor_block.dart';
 import '../../../../editor/geometry_services.dart';
+import 'ink_stroke_renderer.dart';
 
 typedef TouchSelectionRotation = void Function(
   Set<String> blockIds,
@@ -1073,27 +1074,17 @@ class _InkPreviewPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (points.length < 2) return;
-    final path = Path();
-    for (var index = 0; index < points.length; index++) {
-      final point =
-          (points[index] + worldOrigin) * PageViewport.modelToRenderScale;
-      if (index == 0) {
-        path.moveTo(point.dx, point.dy);
-      } else {
-        path.lineTo(point.dx, point.dy);
-      }
-    }
-    canvas.drawPath(
-      path,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeCap = strokeType.strokeCap
-        ..strokeJoin = StrokeJoin.round
-        ..strokeWidth =
-            width * strokeType.widthMultiplier * PageViewport.modelToRenderScale
-        ..color = color.withValues(
-          alpha: (opacity * strokeType.opacityMultiplier).clamp(0.0, 1.0),
-        ),
+    final renderPoints = [
+      for (final point in points)
+        (point + worldOrigin) * PageViewport.modelToRenderScale,
+    ];
+    InkStrokeRenderer.paint(
+      canvas,
+      points: renderPoints,
+      color: color,
+      width: width * PageViewport.modelToRenderScale,
+      opacity: opacity,
+      strokeType: strokeType,
     );
   }
 
