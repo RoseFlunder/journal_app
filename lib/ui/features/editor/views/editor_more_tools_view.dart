@@ -100,44 +100,6 @@ class _EditorMoreToolsViewState extends State<EditorMoreToolsView> {
             enabled: widget.canRedo,
             onTap: widget.canRedo ? () => _close(widget.onRedo) : null,
           ),
-          if (widget.hasImageSelection)
-            ListTile(
-              leading: const Icon(Icons.image_outlined),
-              title: const Text('Edit image'),
-              subtitle: const Text('Crop, flip, mask, and opacity'),
-              onTap: () => _close(widget.onEditImage),
-            ),
-          ListTile(
-            leading: const Icon(Icons.file_upload_outlined),
-            title: const Text('Export .cozyjournal backup'),
-            onTap: () => _close(widget.onExportArchive),
-          ),
-          ListTile(
-            leading: const Icon(Icons.file_download_outlined),
-            title: const Text('Import .cozyjournal backup'),
-            onTap: () => _close(widget.onImportArchive),
-          ),
-          ListTile(
-            leading: const Icon(Icons.group_work_outlined),
-            title: const Text('Group selection'),
-            subtitle: const Text('Keep selected objects together'),
-            enabled: widget.canGroup,
-            onTap: widget.canGroup ? () => _close(widget.onGroup) : null,
-          ),
-          ListTile(
-            leading: const Icon(Icons.group_off_outlined),
-            title: const Text('Ungroup selection'),
-            enabled: widget.canUngroup,
-            onTap: widget.canUngroup ? () => _close(widget.onUngroup) : null,
-          ),
-          ListTile(
-            leading: Icon(
-              _selectMode ? Icons.select_all : Icons.select_all_outlined,
-            ),
-            title: Text(_selectMode ? 'Exit select mode' : 'Select multiple'),
-            subtitle: const Text('Drag blank board space to lasso content'),
-            onTap: () => _close(widget.onToggleSelectMode),
-          ),
           ListTile(
             leading: Icon(_drawMode ? Icons.draw : Icons.draw_outlined),
             title: Text(_drawMode ? 'Exit draw mode' : 'Draw'),
@@ -168,9 +130,25 @@ class _EditorMoreToolsViewState extends State<EditorMoreToolsView> {
             onTap: () => _close(widget.onLayers),
           ),
           ListTile(
-            leading: const Icon(Icons.history),
-            title: const Text('History & recovery'),
-            onTap: () => _close(widget.onHistory),
+            leading: Icon(
+              _selectMode ? Icons.select_all : Icons.select_all_outlined,
+            ),
+            title: Text(_selectMode ? 'Exit select mode' : 'Select multiple'),
+            subtitle: const Text('Drag blank board space to lasso content'),
+            onTap: () => _close(widget.onToggleSelectMode),
+          ),
+          ListTile(
+            leading: const Icon(Icons.group_work_outlined),
+            title: const Text('Group selection'),
+            subtitle: const Text('Keep selected objects together'),
+            enabled: widget.canGroup,
+            onTap: widget.canGroup ? () => _close(widget.onGroup) : null,
+          ),
+          ListTile(
+            leading: const Icon(Icons.group_off_outlined),
+            title: const Text('Ungroup selection'),
+            enabled: widget.canUngroup,
+            onTap: widget.canUngroup ? () => _close(widget.onUngroup) : null,
           ),
           SwitchListTile(
             secondary: const Icon(Icons.grid_4x4_outlined),
@@ -190,6 +168,30 @@ class _EditorMoreToolsViewState extends State<EditorMoreToolsView> {
               widget.onGridVisibilityChanged(value);
             },
           ),
+          ListTile(
+            leading: const Icon(Icons.history),
+            title: const Text('History and Recovery'),
+            onTap: () => _close(widget.onHistory),
+          ),
+          ListTile(
+            leading: const Icon(Icons.file_upload_outlined),
+            title: const Text('Export'),
+            subtitle: const Text('Save a .cozyjournal backup'),
+            onTap: () => _close(widget.onExportArchive),
+          ),
+          ListTile(
+            leading: const Icon(Icons.file_download_outlined),
+            title: const Text('Import'),
+            subtitle: const Text('Open a .cozyjournal backup'),
+            onTap: () => _close(widget.onImportArchive),
+          ),
+          if (widget.hasImageSelection)
+            ListTile(
+              leading: const Icon(Icons.image_outlined),
+              title: const Text('Edit image'),
+              subtitle: const Text('Crop, flip, mask, and opacity'),
+              onTap: () => _close(widget.onEditImage),
+            ),
         ],
       ),
     ),
