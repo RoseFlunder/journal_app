@@ -6,14 +6,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:image/image.dart' as img;
 import 'package:journal_app/models/asset_kind.dart';
-import 'package:journal_app/models/entry.dart';
+import 'support/legacy_test_models.dart';
 import 'package:journal_app/models/page_music.dart';
 import 'package:journal_app/models/sticker.dart';
 import 'package:journal_app/models/document.dart';
 import 'package:journal_app/editor/image_layout.dart';
 import 'package:journal_app/services/image_processing.dart';
+import 'package:journal_app/services/storage_codec.dart';
 import 'support/hive_test_environment.dart';
-import 'package:journal_app/services/entry_document_codec.dart';
 
 void main() {
   group('Entry JSON', () {
@@ -128,7 +128,15 @@ void main() {
             italic: true,
           ),
         ],
-        music: const PageMusicTrack.legacy('asset1'),
+        music: const PageMusicTrack(
+          provider: 'jamendo',
+          trackId: 'asset1',
+          title: 'Track',
+          artist: 'Artist',
+          streamUrl: '',
+          trackPageUrl: '',
+          licenseUrl: '',
+        ),
         view: ViewState(zoom: 1.5, panX: 2, panY: -3),
         titleFontSize: 34,
         titleFontFamily: JournalFonts.caveat,
@@ -141,7 +149,7 @@ void main() {
       expect(decoded.id, 'abc');
       expect(decoded.title, 'Hello');
       expect(decoded.createdAt, DateTime.utc(2025, 8, 22, 12, 30));
-      expect(decoded.music?.legacyAssetId, 'asset1');
+      expect(decoded.music?.trackId, 'asset1');
       expect(decoded.view?.zoom, 1.5);
       expect(decoded.view?.panY, -3);
       expect(decoded.titleFontSize, 34);
@@ -292,20 +300,18 @@ void main() {
       expect(decoded.schemaVersion, Entry.currentSchemaVersion);
     });
 
-    test('decodes legacy string music references without losing the id', () {
+    test('rejects old string music references', () {
       final decoded = Entry.fromJson({
         'id': 'legacy-music',
         'createdAt': DateTime.utc(2025).toIso8601String(),
         'music': 'asset1',
       });
 
-      expect(decoded.music?.isLegacy, isTrue);
-      expect(decoded.music?.legacyAssetId, 'asset1');
-      expect(decoded.music?.isPlayable, isFalse);
+      expect(decoded.music, isNull);
     });
   });
 
-  group('Hive data source compatibility', () {
+  group('Hive data source canonical v2', () {
     late Directory temp;
 
     setUpAll(() {
@@ -357,12 +363,11 @@ void main() {
         expect(documents.documents.single.board.gridVisible, isTrue);
 
         final asset = await assets.putAsset(
-          document.id,
           AssetKind.image,
           'image/png',
           [1, 2, 3],
         );
-        expect(assets.readAsset(asset), [1, 2, 3]);
+        expect(assets.readAsset(asset.id)?.bytes, [1, 2, 3]);
 
         await documents.deleteDocument(document.id);
         expect(documents.documents, isEmpty);
@@ -411,9 +416,12 @@ void main() {
 
       // Close everything and reopen: data must come back from disk,
       // in the right order.
-      await Hive.box<dynamic>('entries').close();
-      await Hive.box<dynamic>('assets').close();
-      await Hive.box<dynamic>('meta').close();
+      await Hive.box<dynamic>('cozyBloom.documents.v2').close();
+      await Hive.box<dynamic>('cozyBloom.assets.v2').close();
+      await Hive.box<dynamic>('cozyBloom.meta.v2').close();
+      await Hive.box<dynamic>('cozyBloom.checkpoints.v2').close();
+      await Hive.box<dynamic>('cozyBloom.syncHeads.v2').close();
+      await Hive.box<dynamic>('cozyBloom.quarantine.v2').close();
       store = TestHiveEnvironment();
       await store.init();
 
@@ -426,9 +434,12 @@ void main() {
       final entry = await store.addEntry();
       await store.updateEntry(entry.id, (entry) => entry.title = 'Persisted');
 
-      await Hive.box<dynamic>('entries').close();
-      await Hive.box<dynamic>('assets').close();
-      await Hive.box<dynamic>('meta').close();
+      await Hive.box<dynamic>('cozyBloom.documents.v2').close();
+      await Hive.box<dynamic>('cozyBloom.assets.v2').close();
+      await Hive.box<dynamic>('cozyBloom.meta.v2').close();
+      await Hive.box<dynamic>('cozyBloom.checkpoints.v2').close();
+      await Hive.box<dynamic>('cozyBloom.syncHeads.v2').close();
+      await Hive.box<dynamic>('cozyBloom.quarantine.v2').close();
 
       store = TestHiveEnvironment();
       await store.init();
@@ -439,40 +450,62 @@ void main() {
 
     test('loads entries when order metadata is missing', () async {
       await freshStore();
-      final entry = Entry(
+      final document = EntryDocument(
         id: 'recovered-entry',
         createdAt: DateTime.utc(2025),
         title: 'Recovered',
+        modifiedAt: DateTime.utc(2025),
       );
-      await Hive.box<dynamic>('entries').put(entry.id, entry.toJson());
+      await Hive.box<dynamic>('cozyBloom.documents.v2').put(
+        document.id,
+        JournalDocumentCodec.encodeRecord(document, revision: 0),
+      );
 
       final store = TestHiveEnvironment();
       await store.init();
 
-      expect(store.entries.map((entry) => entry.id), [entry.id]);
+      expect(store.entries.map((entry) => entry.id), [document.id]);
       expect(store.entries.single.title, 'Recovered');
     });
 
     test('loads nested Hive maps with dynamic keys', () async {
       final store = await freshStore();
-      final entry = Entry(
+      final document = EntryDocument(
         id: 'dynamic-map-entry',
+        title: '',
         createdAt: DateTime.utc(2025),
-        blocks: [
-          ContentBlock(id: 'block', type: BlockType.text, text: 'Loaded'),
+        modifiedAt: DateTime.utc(2025),
+        nodes: [
+          CanvasNode(
+            id: 'block',
+            type: BlockType.text,
+            transform: const Transform2D(width: 20, height: 10),
+            payload: const {'text': 'Loaded'},
+          ),
         ],
         view: ViewState(zoom: 2, panX: 4, panY: 5),
       );
-      await Hive.box<dynamic>('entries').put(entry.id, <String, dynamic>{
-        ...entry.toJson(),
-        'blocks': [
-          <dynamic, dynamic>{...entry.blocks.single.toJson()},
-        ],
-        'view': <dynamic, dynamic>{...entry.view!.toJson()},
-      });
-      await Hive.box<dynamic>('meta').put('entryOrder', [entry.id]);
-      await Hive.box<dynamic>('entries').flush();
-      await Hive.box<dynamic>('meta').flush();
+      final canonical = JournalDocumentCodec.encodeRecord(document, revision: 0);
+      await Hive.box<dynamic>('cozyBloom.documents.v2').put(
+        document.id,
+        <dynamic, dynamic>{
+          ...canonical,
+          'document': <dynamic, dynamic>{
+            ...(canonical['document'] as Map),
+            'nodes': [
+              <dynamic, dynamic>{
+                ...(canonical['document'] as Map)['nodes'][0] as Map,
+              },
+            ],
+          },
+        },
+      );
+      await Hive.box<dynamic>('cozyBloom.meta.v2').put(
+        'viewPreferences:${document.id}',
+        StoredViewPreferences(view: document.view, gridVisible: false).toJson(),
+      );
+      await Hive.box<dynamic>('cozyBloom.documents.v2').flush();
+      await Hive.box<dynamic>('cozyBloom.meta.v2').flush();
 
       final reloaded = TestHiveEnvironment();
       await reloaded.init();

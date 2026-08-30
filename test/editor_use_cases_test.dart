@@ -21,14 +21,12 @@ void main() {
     );
 
     final result = await useCase.processAndStore(
-      ownerId: 'entry',
       picked: PickedImage(bytes: bytes, mime: 'image/png'),
     );
 
     expect(result.assetId, 'asset-1');
     expect(result.image.width, 2);
     expect(result.image.height, 1);
-    expect(assets.ownerId, 'entry');
     expect(assets.bytes, isNotEmpty);
   });
 
@@ -57,26 +55,39 @@ void main() {
 }
 
 class _FakeAssets implements AssetRepository {
-  String? ownerId;
   Uint8List? bytes;
 
   @override
-  Future<String> putAsset(
-    String ownerId,
+  Future<AssetDescriptor> putAsset(
     AssetKind kind,
     String mime,
     List<int> bytes,
   ) async {
-    this.ownerId = ownerId;
     this.bytes = Uint8List.fromList(bytes);
-    return 'asset-1';
+    return AssetDescriptor(
+      id: 'asset-1',
+      kind: kind,
+      mime: mime,
+      byteLength: bytes.length,
+      sha256: 'asset-1',
+    );
   }
 
   @override
-  Uint8List? readAsset(String id) => bytes;
-
-  @override
-  String? assetMime(String id) => 'image/jpeg';
+  AssetBlob? readAsset(String id) {
+    final data = bytes;
+    if (data == null) return null;
+    return AssetBlob(
+      descriptor: const AssetDescriptor(
+        id: 'asset-1',
+        kind: AssetKind.image,
+        mime: 'image/jpeg',
+        byteLength: 0,
+        sha256: 'asset-1',
+      ),
+      bytes: data,
+    );
+  }
 
   @override
   Future<void> collectUnreferencedAssets({

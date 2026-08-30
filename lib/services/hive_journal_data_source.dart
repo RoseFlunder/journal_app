@@ -9,12 +9,7 @@ import 'storage_codec.dart';
 /// This service owns box names, box handles, and serialized values. Domain
 /// conversion and in-memory notifications stay in repositories/store code.
 class HiveJournalDataSource {
-  HiveJournalDataSource({this.resetLegacyNamespace = false});
-
-  /// The application composition root enables the one-time clean transition.
-  /// Test and import harnesses can opt into legacy reads while exercising
-  /// compatibility behavior without accidentally deleting their fixtures.
-  final bool resetLegacyNamespace;
+  HiveJournalDataSource();
 
   static const _legacyEntriesBoxName = 'entries';
   static const _legacyAssetsBoxName = 'assets';
@@ -53,7 +48,7 @@ class HiveJournalDataSource {
       _checkpoints = await Hive.openBox<dynamic>(_checkpointsName);
       _syncHeads = await Hive.openBox<dynamic>(_syncHeadsName);
       _quarantine = await Hive.openBox<dynamic>(_quarantineName);
-      await _resetLegacyNamespaceIfNeeded();
+      await _initializeNamespace();
     }();
     _openOperation = operation;
     return operation;
@@ -167,12 +162,8 @@ class HiveJournalDataSource {
   /// contract intentionally starts clean; the marker is written only after
   /// the old records have been removed so a failed initialization cannot leave
   /// a partially adopted namespace.
-  Future<void> _resetLegacyNamespaceIfNeeded() async {
+  Future<void> _initializeNamespace() async {
     if (_meta.get(_schemaKey) == _schemaNamespace) return;
-    if (!resetLegacyNamespace) {
-      await _meta.put(_schemaKey, _schemaNamespace);
-      return;
-    }
     await _entries.clear();
     await _assets.clear();
     await _checkpoints.clear();
@@ -197,16 +188,10 @@ class HiveJournalDataSource {
     }
   }
 
-  String get _entriesName =>
-      resetLegacyNamespace ? _entriesBoxName : _legacyEntriesBoxName;
-  String get _assetsName =>
-      resetLegacyNamespace ? _assetsBoxName : _legacyAssetsBoxName;
-  String get _metaName =>
-      resetLegacyNamespace ? _metaBoxName : _legacyMetaBoxName;
-  String get _checkpointsName =>
-      resetLegacyNamespace ? _checkpointsBoxName : _legacyCheckpointsBoxName;
-  String get _syncHeadsName =>
-      resetLegacyNamespace ? _syncHeadsBoxName : _legacySyncHeadsBoxName;
-  String get _quarantineName =>
-      resetLegacyNamespace ? _quarantineBoxName : _legacyQuarantineBoxName;
+  String get _entriesName => _entriesBoxName;
+  String get _assetsName => _assetsBoxName;
+  String get _metaName => _metaBoxName;
+  String get _checkpointsName => _checkpointsBoxName;
+  String get _syncHeadsName => _syncHeadsBoxName;
+  String get _quarantineName => _quarantineBoxName;
 }

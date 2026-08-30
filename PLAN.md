@@ -10,9 +10,8 @@ editor controller, history,
 clipboard, and canvas are document/node native; metadata and workflow
 persistence route through feature view models; editor factories, platform
 services, use cases, and persistence wiring are owned by the composition root; media
-referenced by undo/redo and clipboard snapshots is retained. Legacy
-`Entry`/`ContentBlock` conversion is isolated in `EntryDocumentCodec` at the
-storage boundary. Production Hive repositories and storage tests use focused
+referenced by undo/redo and clipboard snapshots is retained. Production Hive
+repositories and storage tests use focused
 capability data sources; the mutable `JournalStore` aggregate and its adapters
 are removed. Journal contents receives asset reads through its view model
 rather than a repository. The journal shell caches one configured editor view
@@ -24,11 +23,10 @@ Platform services do not render presentation UI, and `JournalApp` receives one
 configured `AppDependencies` object in production and tests.
 Storage shutdown is awaitable, and architecture tests cover both feature views
 and the editor core. Fresh production data uses the versioned v2 persistence
-namespace; compatibility adapters remain isolated for legacy fixtures and
-explicit import edges.
+namespace; pre-freeze records are not decoded or imported.
 Focused editor, repository, boundary, and widget suites pass; the full Flutter
-test suite and Android app-bundle, Web release, and Windows release builds pass
-on this commit.
+test suite passes after the no-legacy cleanup. Release builds remain the final
+environment gate before shipping this follow-up.
 
 Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
@@ -40,8 +38,7 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
   `EditorDocumentSnapshot` boundaries are the controller's working state and
   the active renderer consumes immutable world-space node projections.
   `EntryCanvas` now accepts only immutable nodes and emits typed transform and
-  ink intents; legacy `Entry`/`ContentBlock` remains at the storage edge, with
-  all conversion confined to `EntryDocumentCodec`.
+  ink intents; no mutable entry/block storage adapter remains in production.
 - [x] Fresh-data startup; legacy migration is out of scope.
 - [x] `EditorController` owns selection, transactions, clipboard, 100-step
   undo/redo, text coalescing, and save state.
@@ -212,12 +209,10 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
    - Treat `cozy-bloom-storage-v2`, archive v2, and sync v2 as permanent
      formats. Any incompatible change requires a new decoder and explicit
      migration with golden fixtures; never reset the namespace again.
-   - Keep `Entry`/`ContentBlock` conversion confined to the compatibility
-     storage codec until all legacy fixtures and import edges are retired.
+   - Do not decode or import pre-freeze `Entry`/`ContentBlock` records. Any
+     future incompatible format requires an explicit versioned migration.
 
 2. **Complete the document-model and composition migration**
-   - Keep `Entry`/`ContentBlock` conversion confined to the storage codec and
-     keep storage compatibility tests on the direct Hive capability sources.
    - [x] Editor-page cross-repository workflows are delegated to focused
      use cases through the configured view model; the page retains only
      platform picking, dialogs, lifecycle, and layout concerns.

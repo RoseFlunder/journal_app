@@ -461,7 +461,6 @@ class CloudSyncCoordinator extends ChangeNotifier
         await local.putAssetExact(
           LocalAssetSnapshot(
             id: descriptor.id,
-            ownerId: descriptor.ownerId,
             kind: descriptor.kind,
             mime: descriptor.mime,
             bytes: bytes,
@@ -821,7 +820,6 @@ class CloudSyncCoordinator extends ChangeNotifier
         final asset = local.asset(id);
         return SyncedAssetDescriptor(
           id: id,
-          ownerId: asset?.ownerId ?? document.id,
           kind: asset?.kind ?? AssetKind.image,
           mime: asset?.mime ?? 'application/octet-stream',
           sha256: asset == null ? '' : sha256.convert(asset.bytes).toString(),

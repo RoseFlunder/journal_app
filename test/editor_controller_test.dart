@@ -3,9 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/editor/editor_controller.dart';
 import 'package:journal_app/editor/editor_state.dart';
-import 'package:journal_app/models/entry.dart';
 import 'package:journal_app/models/document.dart';
-import 'package:journal_app/services/entry_document_codec.dart';
+import 'support/legacy_test_models.dart';
 
 ContentBlock _text({String id = 'text', double x = 0, double y = 0}) =>
     ContentBlock(

@@ -86,24 +86,6 @@ void main() {
     controller.dispose();
   });
 
-  test('legacy references remain attached but cannot play', () async {
-    final playback = _FakePlayback();
-    final controller = PageMusicController(
-      catalog: const _FakeCatalog(track),
-      playback: playback,
-      persistResolvedTrack: (_, _) async {},
-    );
-    await controller.setActivePage(
-      'page',
-      const PageMusicTrack.legacy('old-asset'),
-    );
-
-    await controller.toggle();
-
-    expect(controller.error, contains('legacy'));
-    expect(playback.playCalls, 0);
-    controller.dispose();
-  });
 }
 
 class _FakeCatalog implements MusicCatalogRepository {

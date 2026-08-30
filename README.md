@@ -138,9 +138,11 @@ Web uses IndexedDB in the browser profile. The Web database is normally
 limited by the browser, commonly around 50-500 MB, and is tied to that
 browser profile rather than being synced to a server.
 
-The `entries` box stores serialized entries and the `assets` box stores image
-and audio records. Feature code should use the narrow repository interfaces;
-focused Hive capability sources keep the same path compatible with Web.
+Versioned `cozyBloom.*.v2` Hive boxes store canonical documents, manifests,
+content-addressed assets, checkpoints, view preferences, and sync heads.
+Feature code should use the narrow repository interfaces; focused Hive
+capability sources keep the same path compatible with Web. Pre-freeze records
+and version-1 archives are intentionally not imported.
 
 ## Platform notes
 
@@ -155,7 +157,6 @@ focused Hive capability sources keep the same path compatible with Web.
 
 ## Architecture
 
-- `lib/models/entry.dart`: legacy storage record adapters
 - `lib/models/document.dart`: immutable document and canvas-node boundaries
 - `lib/models/sticker.dart`: bundled sticker catalog and metadata
 - `lib/services/hive_journal_data_source.dart`: raw Hive box access

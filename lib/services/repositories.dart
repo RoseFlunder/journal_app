@@ -1,7 +1,3 @@
-import 'dart:typed_data';
-
-import 'package:crypto/crypto.dart';
-
 import '../models/document.dart';
 import '../models/asset_kind.dart';
 import '../models/checkpoint.dart';
@@ -50,62 +46,20 @@ class AssetBlob {
 }
 
 abstract interface class AssetRepository {
-  /// Compatibility bridge for callers that still pass an owner document.
-  /// New code should use [putImmutableAsset], because assets are shared blobs.
-  @Deprecated('Use putImmutableAsset; asset ownership is no longer persisted.')
-  Future<String> putAsset(
-    String ownerId,
+  /// Stores an immutable, content-addressed blob. The returned descriptor is
+  /// the only durable identity for the asset; ownership lives in references
+  /// from documents rather than on the blob.
+  Future<AssetDescriptor> putAsset(
     AssetKind kind,
     String mime,
     List<int> bytes,
   );
 
-  Uint8List? readAsset(String id);
-
-  String? assetMime(String id);
+  AssetBlob? readAsset(String id);
 
   Future<void> collectUnreferencedAssets({
     Iterable<String> retainedAssetIds,
   });
-}
-
-/// Additive immutable-asset facade. Keeping this as an extension allows
-/// third-party and test implementations of the legacy capability to migrate
-/// without a flag-day interface break, while the Hive adapter supplies the
-/// stronger implementation directly.
-extension ImmutableAssetRepository on AssetRepository {
-  Future<AssetDescriptor> putImmutableAsset(
-    AssetKind kind,
-    String mime,
-    List<int> bytes,
-  ) async {
-    final id = await putAsset('', kind, mime, bytes);
-    return AssetDescriptor(
-      id: id,
-      kind: kind,
-      mime: mime,
-      byteLength: bytes.length,
-      sha256: id,
-    );
-  }
-
-  AssetBlob? readAssetBlob(String id) {
-    final bytes = readAsset(id);
-    if (bytes == null) return null;
-    final digest = sha256.convert(bytes).toString();
-    if (digest != id) return null;
-    final mime = assetMime(id) ?? 'application/octet-stream';
-    return AssetBlob(
-      descriptor: AssetDescriptor(
-        id: id,
-        kind: mime.startsWith('audio/') ? AssetKind.audio : AssetKind.image,
-        mime: mime,
-        byteLength: bytes.length,
-        sha256: digest,
-      ),
-      bytes: bytes,
-    );
-  }
 }
 
 abstract interface class CheckpointRepository {

@@ -140,9 +140,6 @@ class BoardSettings {
 }
 
 /// Read-only content contract used by renderers and geometry services.
-///
-/// The immutable document node and the legacy storage adapter both implement
-/// this contract. Mutable setters stay below the storage compatibility edge.
 abstract interface class CanvasRenderable {
   String get id;
   bool get isOpaque;

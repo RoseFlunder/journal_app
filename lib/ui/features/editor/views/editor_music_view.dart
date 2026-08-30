@@ -48,9 +48,7 @@ class EditorMusicView extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: Text(track.title),
         content: Text(
-          track.isLegacy
-              ? 'This page contains a legacy local music reference. Replace or remove it from More tools.'
-              : '${track.artist}\n\nStreamed from Jamendo under the linked Creative Commons license.',
+          '${track.artist}\n\nStreamed from Jamendo under the linked Creative Commons license.',
         ),
         actions: [
           if (track.licenseUrl.isNotEmpty)

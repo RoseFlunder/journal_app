@@ -2,8 +2,7 @@ import 'dart:typed_data';
 
 import 'package:hive/hive.dart';
 import 'package:journal_app/models/document.dart';
-import 'package:journal_app/models/entry.dart';
-import 'package:journal_app/services/entry_document_codec.dart';
+import 'legacy_test_models.dart';
 import 'package:journal_app/services/hive_journal_data_source.dart';
 import 'package:journal_app/services/hive_repositories.dart';
 import 'package:journal_app/services/journal_archive.dart';
@@ -12,8 +11,8 @@ import 'package:journal_app/services/repositories.dart';
 
 /// Test-only Hive environment built from the production capability sources.
 ///
-/// The mutable [Entry] projection is kept here solely for legacy storage
-/// assertions. The application and all repository wiring use immutable
+/// The mutable [Entry] projection is kept here solely for existing fixture
+/// ergonomics. The application and all repository wiring use immutable
 /// [EntryDocument] values from [repositories].
 class TestHiveEnvironment {
   TestHiveEnvironment() {
@@ -36,13 +35,14 @@ class TestHiveEnvironment {
     final environment = TestHiveEnvironment();
     await environment._storage.open();
     await Future.wait([
-      Hive.box<dynamic>('entries').clear(),
-      Hive.box<dynamic>('assets').clear(),
-      Hive.box<dynamic>('meta').clear(),
-      Hive.box<dynamic>('entryCheckpoints').clear(),
-      Hive.box<dynamic>('syncHeads').clear(),
-      Hive.box<dynamic>('storageQuarantine').clear(),
+      Hive.box<dynamic>('cozyBloom.documents.v2').clear(),
+      Hive.box<dynamic>('cozyBloom.assets.v2').clear(),
+      Hive.box<dynamic>('cozyBloom.meta.v2').clear(),
+      Hive.box<dynamic>('cozyBloom.checkpoints.v2').clear(),
+      Hive.box<dynamic>('cozyBloom.syncHeads.v2').clear(),
+      Hive.box<dynamic>('cozyBloom.quarantine.v2').clear(),
     ]);
+    await environment._storage.writeSchemaMarker();
     await environment.init();
     return environment;
   }
@@ -96,11 +96,15 @@ class TestHiveEnvironment {
     String mime,
     List<int> bytes,
   ) =>
-      repositories.assetRepository.putAsset(ownerId, kind, mime, bytes);
+      repositories.assetRepository.putAsset(kind, mime, bytes).then((asset) => asset.id);
 
-  Uint8List? getAsset(String id) => repositories.assetRepository.readAsset(id);
+  Uint8List? getAsset(String id) {
+    final blob = repositories.assetRepository.readAsset(id);
+    return blob == null ? null : Uint8List.fromList(blob.bytes);
+  }
 
-  String? getAssetMime(String id) => repositories.assetRepository.assetMime(id);
+  String? getAssetMime(String id) =>
+      repositories.assetRepository.readAsset(id)?.descriptor.mime;
 
   List<CheckpointInfo> checkpointsFor(String documentId) =>
       repositories.checkpointRepository.checkpointsFor(documentId);

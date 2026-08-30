@@ -3,6 +3,16 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('pre-freeze model and codec files are not shipped', () {
+    for (final path in <String>[
+      'lib/models/entry.dart',
+      'lib/models/storage_records.dart',
+      'lib/services/entry_document_codec.dart',
+    ]) {
+      expect(File(path).existsSync(), isFalse, reason: '$path is retired');
+    }
+  });
+
   test('feature code imports only capability contracts from services', () {
     final forbidden = <String>[
       'journal_store.dart',

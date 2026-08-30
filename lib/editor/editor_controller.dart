@@ -853,7 +853,7 @@ class EditorController extends ChangeNotifier {
   }
 
   /// Expands a selection to the drawable siblings controlled by a selected
-  /// group, without converting immutable nodes through legacy blocks.
+  /// group, without converting immutable nodes through mutable projections.
   List<CanvasNode> get _expandedSelectedNodes {
     final ids = <String>{..._selection};
     final parents = _parentById;

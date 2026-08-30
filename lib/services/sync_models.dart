@@ -141,7 +141,6 @@ class SyncMutationStamp implements Comparable<SyncMutationStamp> {
 class SyncedAssetDescriptor {
   const SyncedAssetDescriptor({
     required this.id,
-    this.ownerId = '',
     required this.kind,
     required this.mime,
     required this.sha256,
@@ -149,7 +148,6 @@ class SyncedAssetDescriptor {
   });
 
   final String id;
-  final String ownerId;
   final AssetKind kind;
   final String mime;
   final String sha256;
@@ -179,7 +177,6 @@ class SyncedAssetDescriptor {
     }
     return SyncedAssetDescriptor(
       id: id,
-      ownerId: json['ownerId'] as String? ?? '',
       kind: kind,
       mime: mime,
       sha256: hash,

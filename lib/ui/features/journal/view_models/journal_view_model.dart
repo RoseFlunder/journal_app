@@ -25,7 +25,10 @@ class JournalViewModel extends ChangeNotifier {
 
   /// Reads an immutable asset for a contents preview without exposing the
   /// repository to the view.
-  Uint8List? readAsset(String id) => _assetRepository?.readAsset(id);
+  Uint8List? readAsset(String id) {
+    final blob = _assetRepository?.readAsset(id);
+    return blob == null ? null : Uint8List.fromList(blob.bytes);
+  }
 
   EntryDocument? documentById(String id) {
     for (final document in _documents) {

@@ -96,7 +96,7 @@ class AppDependencies {
        _hiveRepositorySet = hiveRepositorySet;
 
   factory AppDependencies.hive() {
-    final source = HiveJournalDataSource(resetLegacyNamespace: true);
+    final source = HiveJournalDataSource();
     final repositorySet = HiveRepositorySet.fromDataSource(source);
     final baseRepositories = repositorySet.repositories;
     final musicCatalog = JamendoMusicCatalogRepository(

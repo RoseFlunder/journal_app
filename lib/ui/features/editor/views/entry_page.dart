@@ -23,8 +23,6 @@ import 'editor_image_editor_view.dart';
 import 'editor_history_view.dart';
 import 'editor_toolbar_view.dart';
 import 'editor_more_tools_view.dart';
-import 'editor_alignment_view.dart';
-import 'editor_transform_inspector_view.dart';
 import 'editor_ink_settings_view.dart';
 import 'editor_music_view.dart';
 import '../../music/view_models/page_music_controller.dart';
@@ -129,8 +127,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   );
   late final FocusNode _titleFocusNode = FocusNode()
     ..addListener(_handleTitleFocusChanged);
-  late final ImageSourceService _imageSource =
-      widget.imageSource;
+  late final ImageSourceService _imageSource = widget.imageSource;
   bool _pickingImage = false;
   final Map<String, ImageProvider<Object>> _imageProviders = {};
   final Map<String, ImageProvider<Object>> _stickerProviders = {};
@@ -141,7 +138,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   EntryDocument get _document => _editor.document;
 
   // Presentation/tool state is owned by the feature view model. These
-  // forwarding accessors keep this legacy surface readable while the view is
+  // forwarding accessors keep this surface readable while the view is
   // split into feature-native widgets.
   bool get _editing => _editor.editing;
   set _editing(bool value) => _editor.editing = value;
@@ -366,7 +363,8 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   bool get _textFormattingAvailable =>
       _titleFocused || _activeTextBlock != null;
 
-  void _handleViewChanged(ViewState view) => unawaited(_editor.updateView(view));
+  void _handleViewChanged(ViewState view) =>
+      unawaited(_editor.updateView(view));
 
   int? get _activeTextColor {
     final block = _activeTextBlock;
@@ -377,9 +375,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void _changeFontFamily(String? fontFamily) {
     final block = _activeTextBlock;
     if (block != null) {
-      unawaited(
-        _editor.updateTextFormatting(block.id, fontFamily: fontFamily),
-      );
+      unawaited(_editor.updateTextFormatting(block.id, fontFamily: fontFamily));
     } else if (_titleFocused) {
       unawaited(_editor.updateTitleFormatting(fontFamily: fontFamily));
     }
@@ -432,9 +428,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void _changeTextColor(int? value) {
     final block = _activeTextBlock;
     if (block != null) {
-      unawaited(
-        _editor.updateTextFormatting(block.id, textColorValue: value),
-      );
+      unawaited(_editor.updateTextFormatting(block.id, textColorValue: value));
     } else if (_titleFocused) {
       unawaited(_editor.updateTitleFormatting(textColorValue: value));
     }
@@ -647,10 +641,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       if (!mounted || origin == null) return;
       final picked = await _imageSource.pickImage(origin);
       if (!mounted || picked == null) return;
-      final stored = await _editor.insertImageAsset(
-        ownerId: _document.id,
-        picked: picked,
-      );
+      final stored = await _editor.insertImageAsset(picked: picked);
       final image = stored.image;
       final assetId = stored.assetId;
       if (!mounted) return;
@@ -811,9 +802,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
 
   Future<void> _openImage(CanvasRenderable block) async {
     final assetId = block.assetId;
-    final bytes = assetId == null
-        ? null
-        : _editor.readAsset(assetId);
+    final bytes = assetId == null ? null : _editor.readAsset(assetId);
     if (bytes == null || !mounted) return;
     await showDialog<void>(
       context: context,
@@ -919,14 +908,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       isScrollControlled: true,
       builder: (context) => EditorMoreToolsView(
         board: _editor.board,
-        hasSelection: _editor.hasSelection,
-        selectionCount: _editor.selection.length,
         canUndo: _editor.canUndo,
         canRedo: _editor.canRedo,
         canGroup: _editor.canGroup,
         canUngroup: _editor.canUngroup,
         hasImageSelection: _imageSelection() != null,
-        hasPrimarySelection: _editor.primaryNode != null,
         hasMusic: _document.music != null,
         selectMode: _selectMode,
         drawMode: _drawMode,
@@ -937,7 +923,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         onImportArchive: _importArchive,
         onGroup: _editor.groupSelection,
         onUngroup: _editor.ungroupSelection,
-        onAlign: _showAlignment,
         onToggleSelectMode: () => _selectMode = !_selectMode,
         onToggleDrawMode: () {
           _drawMode = !_drawMode;
@@ -946,11 +931,9 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         onInkSettings: _showInkSettings,
         onMusic: () => unawaited(_showMusicPicker()),
         onLayers: _showLayers,
-        onTransform: _showTransformInspector,
         onHistory: _showHistory,
-        onSnapToGridChanged: (value) => _editor.updateBoard(
-          _editor.board.copyWith(snapToGrid: value),
-        ),
+        onSnapToGridChanged: (value) =>
+            _editor.updateBoard(_editor.board.copyWith(snapToGrid: value)),
         onGridVisibilityChanged: (value) =>
             unawaited(_editor.updateGridVisibility(value)),
       ),
@@ -974,17 +957,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       widget.active ? track : null,
     );
     if (mounted) setState(() {});
-  }
-
-  void _showAlignment() {
-    showModalBottomSheet<Alignment>(
-      context: context,
-      backgroundColor: PaperPage.paper,
-      showDragHandle: true,
-      builder: (context) => const EditorAlignmentView(),
-    ).then((alignment) {
-      if (alignment != null) _editor.align(alignment);
-    });
   }
 
   void _deleteSelected() {
@@ -1011,37 +983,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void _toggleSelectedLock() {
     final block = _editor.primaryNode;
     if (block != null) _editor.setLocked(!block.locked);
-  }
-
-  void _showTransformInspector() {
-    final node = _editor.primaryNode;
-    if (node == null) return;
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: PaperPage.paper,
-      showDragHandle: true,
-      builder: (context) => EditorTransformInspectorView(
-        node: node,
-        onApply: (transform, opacity) async {
-          _editor.beginTransformTransaction('Precise transform');
-          _editor.replaceNodeWorldTransform(
-            node.id,
-            transform,
-            label: 'Precise transform',
-          );
-          final current = _editor.document.nodeById(node.id);
-          if (current != null) {
-            _editor.replaceNode(
-              current.copyWith(opacity: opacity),
-              label: 'Precise transform',
-            );
-          }
-          await _editor.commitTransaction();
-        },
-        onNudge: _editor.nudge,
-      ),
-    );
   }
 
   void _showHistory() {
@@ -1294,8 +1235,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                             _editor.addNode(node);
                             setState(() => _selectedId = node.id);
                           },
-                          imageBytes:
-                              _editor.readAsset,
+                          imageBytes: _editor.readAsset,
                           imageProvider: _imageProvider,
                           onOpenImage: _openImage,
                           onOpenImageId: (id) {

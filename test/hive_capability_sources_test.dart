@@ -57,15 +57,14 @@ void main() {
       2,
     );
     final assetId = await repositories.assetRepository.putAsset(
-      created.id,
       AssetKind.image,
       'image/png',
       [1, 2, 3],
     );
-    expect(repositories.assetRepository.readAsset(assetId), [1, 2, 3]);
+    expect(repositories.assetRepository.readAsset(assetId.id)?.bytes, [1, 2, 3]);
 
     await repositories.documentRepository.deleteDocument(created.id);
     expect(repositories.documentRepository.documents, isEmpty);
-    expect(repositories.assetRepository.readAsset(assetId), isNull);
+    expect(repositories.assetRepository.readAsset(assetId.id), isNull);
   });
 }

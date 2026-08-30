@@ -2,9 +2,8 @@ import 'dart:collection';
 
 import 'canvas.dart';
 
-/// Typed immutable payloads used by the permanent document model. The
-/// compatibility constructor on [CanvasNode] still accepts legacy maps while
-/// callers migrate to these values; persistence never relies on those maps.
+/// Typed immutable payloads used by the permanent document model. Persistence
+/// encodes these values through the service-layer canonical codec.
 sealed class CanvasNodeContent {
   const CanvasNodeContent();
 

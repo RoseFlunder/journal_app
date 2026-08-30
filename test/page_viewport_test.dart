@@ -4,7 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/models/document.dart';
-import 'package:journal_app/models/entry.dart';
+import 'support/legacy_test_models.dart';
 import 'package:journal_app/ui/features/editor/views/editor_canvas.dart';
 import 'package:journal_app/widgets/page_viewport.dart';
 

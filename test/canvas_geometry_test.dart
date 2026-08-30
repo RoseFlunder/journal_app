@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/editor/canvas_geometry.dart';
 import 'package:journal_app/editor/geometry_services.dart';
-import 'package:journal_app/models/entry.dart';
+import 'support/legacy_test_models.dart';
 
 void main() {
   test('rotates points without depending on widget state', () {

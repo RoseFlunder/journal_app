@@ -87,7 +87,10 @@ class EntryEditorViewModel extends EditorController {
   String? get workflowError => _workflowError;
   /// Repository capabilities stay private to this feature model; callers see
   /// only feature operations and immutable values.
-  Uint8List? readAsset(String id) => _assets.readAsset(id);
+  Uint8List? readAsset(String id) {
+    final blob = _assets.readAsset(id);
+    return blob == null ? null : Uint8List.fromList(blob.bytes);
+  }
 
   /// Creates the configured music picker model without exposing the catalog
   /// or playback factory to a feature view.
@@ -325,9 +328,8 @@ class EntryEditorViewModel extends EditorController {
       );
 
   Future<({ProcessedImage image, String assetId})> insertImageAsset({
-    required String ownerId,
     required PickedImage picked,
-  }) => _imageInsertion.processAndStore(ownerId: ownerId, picked: picked);
+  }) => _imageInsertion.processAndStore(picked: picked);
 
   List<CheckpointInfo> checkpointsFor(String id) =>
       _checkpointRecovery.forDocument(id);

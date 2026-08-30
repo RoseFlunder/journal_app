@@ -79,10 +79,6 @@ class PageMusicController extends ChangeNotifier {
     final pageId = _pageId;
     if (track == null || pageId == null || isLoading) return;
     final generation = _selectionGeneration;
-    if (track.isLegacy) {
-      _setError('This legacy track is unavailable. Replace or remove it.');
-      return;
-    }
     _error = null;
     _status = AudioPlaybackStatus.loading;
     _notify();

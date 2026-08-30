@@ -18,7 +18,7 @@ typedef TouchSelectionRotation = void Function(
 );
 
 /// Immutable gesture intents emitted by the canvas. The canvas never writes
-/// into the detached block used by the legacy renderer; the editor decides
+/// into a detached immutable node projection; the editor decides
 /// how to apply this world-space transform to its document tree.
 typedef CanvasTransformChanged = void Function(
   String nodeId,

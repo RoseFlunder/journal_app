@@ -122,8 +122,8 @@ class CanvasNode implements CanvasRenderable {
   @override
   final BlockType type;
   final Transform2D transform;
-  /// Compatibility view of the typed content. New domain code should use
-  /// [content]; this map is retained only for editor and legacy adapters.
+  /// Read-only compatibility projection used by the renderer while typed
+  /// content is consumed throughout the editor.
   final Map<String, dynamic> payload;
   @override
   final double opacity;
@@ -427,8 +427,8 @@ Object? _thawValue(Object? value) => switch (value) {
     };
 
 /// Immutable document boundary for repository, editor, archive, and sync
-/// code. The legacy Entry adapter is intentionally retained only as a
-/// temporary UI/storage bridge while fresh data adopts this shape.
+/// code. It is the only durable document shape exposed to repositories,
+/// editor state, archives, and synchronization.
 class EntryDocument {
   static const _copyWithUnset = Object();
 

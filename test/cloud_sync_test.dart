@@ -59,7 +59,6 @@ void main() {
     await localA.putAssetExact(
       LocalAssetSnapshot(
         id: 'asset-a',
-        ownerId: 'page-a',
         kind: AssetKind.image,
         mime: 'image/png',
         bytes: const [1, 2, 3],
@@ -113,7 +112,6 @@ void main() {
     final document = _document('remote-page', 'Remote', assetId: 'remote-asset');
     final descriptor = SyncedAssetDescriptor(
       id: 'remote-asset',
-      ownerId: document.id,
       kind: AssetKind.image,
       mime: 'image/png',
       sha256: 'expected-content-hash',

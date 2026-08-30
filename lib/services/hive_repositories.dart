@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import '../models/document.dart';
 import 'hive_capability_sources.dart';
 import 'hive_journal_data_source.dart';
@@ -53,28 +51,15 @@ class HiveAssetRepository implements AssetRepository {
   final HiveAssetDataSource _source;
 
   @override
-  Future<String> putAsset(
-    String ownerId,
+  Future<AssetDescriptor> putAsset(
     AssetKind kind,
     String mime,
     List<int> bytes,
   ) =>
-      _source.putAsset(ownerId, kind, mime, bytes);
+      _source.putAsset(kind, mime, bytes);
 
   @override
-  Uint8List? readAsset(String id) => _source.readAsset(id);
-
-  @override
-  String? assetMime(String id) => _source.assetMime(id);
-
-  Future<AssetDescriptor> putImmutableAsset(
-    AssetKind kind,
-    String mime,
-    List<int> bytes,
-  ) =>
-      _source.putImmutableAsset(kind, mime, bytes);
-
-  AssetBlob? readAssetBlob(String id) => _source.readAssetBlob(id);
+  AssetBlob? readAsset(String id) => _source.readAsset(id);
 
   @override
   Future<void> collectUnreferencedAssets({

@@ -11,14 +11,11 @@ class EditorMoreToolsView extends StatefulWidget {
   const EditorMoreToolsView({
     super.key,
     required this.board,
-    required this.hasSelection,
-    required this.selectionCount,
     required this.canUndo,
     required this.canRedo,
     required this.canGroup,
     required this.canUngroup,
     required this.hasImageSelection,
-    required this.hasPrimarySelection,
     required this.hasMusic,
     required this.selectMode,
     required this.drawMode,
@@ -29,27 +26,22 @@ class EditorMoreToolsView extends StatefulWidget {
     required this.onImportArchive,
     required this.onGroup,
     required this.onUngroup,
-    required this.onAlign,
     required this.onToggleSelectMode,
     required this.onToggleDrawMode,
     required this.onInkSettings,
     required this.onMusic,
     required this.onLayers,
-    required this.onTransform,
     required this.onHistory,
     required this.onSnapToGridChanged,
     required this.onGridVisibilityChanged,
   });
 
   final BoardSettings board;
-  final bool hasSelection;
-  final int selectionCount;
   final bool canUndo;
   final bool canRedo;
   final bool canGroup;
   final bool canUngroup;
   final bool hasImageSelection;
-  final bool hasPrimarySelection;
   final bool hasMusic;
   final bool selectMode;
   final bool drawMode;
@@ -61,13 +53,11 @@ class EditorMoreToolsView extends StatefulWidget {
   final VoidCallback onImportArchive;
   final VoidCallback onGroup;
   final VoidCallback onUngroup;
-  final VoidCallback onAlign;
   final VoidCallback onToggleSelectMode;
   final VoidCallback onToggleDrawMode;
   final VoidCallback onInkSettings;
   final VoidCallback onMusic;
   final VoidCallback onLayers;
-  final VoidCallback onTransform;
   final VoidCallback onHistory;
   final ValueChanged<bool> onSnapToGridChanged;
   final ValueChanged<bool> onGridVisibilityChanged;
@@ -141,15 +131,6 @@ class _EditorMoreToolsViewState extends State<EditorMoreToolsView> {
             onTap: widget.canUngroup ? () => _close(widget.onUngroup) : null,
           ),
           ListTile(
-            leading: const Icon(Icons.align_horizontal_center_outlined),
-            title: const Text('Align selection'),
-            subtitle: const Text('Align selected objects to their shared bounds'),
-            enabled: widget.selectionCount > 1,
-            onTap: widget.selectionCount > 1
-                ? () => _close(widget.onAlign)
-                : null,
-          ),
-          ListTile(
             leading: Icon(
               _selectMode ? Icons.select_all : Icons.select_all_outlined,
             ),
@@ -174,7 +155,9 @@ class _EditorMoreToolsViewState extends State<EditorMoreToolsView> {
           ListTile(
             key: const ValueKey('page-music-tool'),
             leading: const Icon(Icons.library_music_outlined),
-            title: Text(widget.hasMusic ? 'Change page music' : 'Add page music'),
+            title: Text(
+              widget.hasMusic ? 'Change page music' : 'Add page music',
+            ),
             subtitle: const Text('Stream Creative Commons music from Jamendo'),
             onTap: () => _close(widget.onMusic),
           ),
@@ -183,15 +166,6 @@ class _EditorMoreToolsViewState extends State<EditorMoreToolsView> {
             title: const Text('Layers'),
             subtitle: const Text('Reorder, show, hide, and lock content'),
             onTap: () => _close(widget.onLayers),
-          ),
-          ListTile(
-            leading: const Icon(Icons.tune),
-            title: const Text('Precise transform'),
-            subtitle: const Text('Move, resize, rotate, and nudge without dragging'),
-            enabled: widget.hasPrimarySelection,
-            onTap: widget.hasPrimarySelection
-                ? () => _close(widget.onTransform)
-                : null,
           ),
           ListTile(
             leading: const Icon(Icons.history),

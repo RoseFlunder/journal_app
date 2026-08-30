@@ -14,16 +14,14 @@ class ImageInsertionUseCase {
   final ImageProcessingService processor;
 
   Future<({ProcessedImage image, String assetId})> processAndStore({
-    required String ownerId,
     required PickedImage picked,
   }) async {
     final image = processor.process(picked.bytes);
-    final assetId = await assets.putAsset(
-      ownerId,
+    final descriptor = await assets.putAsset(
       AssetKind.image,
       image.mime,
       image.bytes,
     );
-    return (image: image, assetId: assetId);
+    return (image: image, assetId: descriptor.id);
   }
 }

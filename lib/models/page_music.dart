@@ -13,7 +13,6 @@ class MusicReference {
     required this.licenseUrl,
     this.artworkUrl = '',
     this.duration = Duration.zero,
-    this.legacyAssetId,
   });
 
   final String provider;
@@ -24,9 +23,6 @@ class MusicReference {
   final String licenseUrl;
   final String artworkUrl;
   final Duration duration;
-  final String? legacyAssetId;
-
-  bool get isLegacy => legacyAssetId != null;
 }
 
 /// Runtime catalog result for a durable [MusicReference]. The stream URL is
@@ -43,22 +39,7 @@ class PageMusicTrack extends MusicReference {
     required super.licenseUrl,
     super.artworkUrl = '',
     super.duration = Duration.zero,
-    super.legacyAssetId,
   });
-
-  const PageMusicTrack.legacy(String assetId)
-      : streamUrl = '',
-        super(
-          provider: 'legacyAsset',
-          trackId: assetId,
-          title: 'Legacy page music',
-          artist: '',
-          artworkUrl: '',
-          trackPageUrl: '',
-          licenseUrl: '',
-          duration: Duration.zero,
-          legacyAssetId: assetId,
-        );
 
   final String streamUrl;
 
@@ -74,7 +55,6 @@ class PageMusicTrack extends MusicReference {
     trackPageUrl: trackPageUrl,
     licenseUrl: licenseUrl,
     duration: duration,
-    legacyAssetId: legacyAssetId,
   );
 
   Map<String, dynamic> toJson() => {
@@ -87,7 +67,6 @@ class PageMusicTrack extends MusicReference {
     'trackPageUrl': trackPageUrl,
     'licenseUrl': licenseUrl,
     'durationSeconds': duration.inSeconds,
-    if (legacyAssetId != null) 'legacyAssetId': legacyAssetId,
   };
 
   factory PageMusicTrack.fromJson(Map<String, dynamic> json) => PageMusicTrack(
@@ -104,13 +83,9 @@ class PageMusicTrack extends MusicReference {
         : Duration(
             seconds: (json['durationSeconds'] as num?)?.toInt() ?? 0,
           ),
-    legacyAssetId: json['legacyAssetId'] as String?,
   );
 
   static PageMusicTrack? decode(Object? value) {
-    if (value is String && value.isNotEmpty) {
-      return PageMusicTrack.legacy(value);
-    }
     if (value is Map) {
       return PageMusicTrack.fromJson(Map<String, dynamic>.from(value));
     }

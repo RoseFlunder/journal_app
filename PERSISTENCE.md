@@ -75,11 +75,10 @@ templates, and other device-local data are not synchronized.
 
 The application performs a one-time clean transition from the development
 boxes. Existing local development data may be discarded; old cloud records
-remain untouched but are outside the new namespace. Production writes never
-use the legacy `Entry`/`ContentBlock` shape. A narrowly isolated compatibility
-decoder remains for existing fixture/import edges and may only be removed
-after those callers are explicitly migrated; it is not an automatic migration
-of user data.
+remain untouched but are outside the new namespace. The application does not
+decode or import the former `Entry`/`ContentBlock` records or version-1
+archives. Old local boxes are removed only after the v2 namespace initializes
+successfully.
 
 Future incompatible changes must add a new schema version and an explicit
 decoder/migration. Existing decoders, discriminators, field meanings, and

@@ -12,14 +12,12 @@ import 'sync_models.dart';
 class LocalAssetSnapshot {
   LocalAssetSnapshot({
     required this.id,
-    required this.ownerId,
     required this.kind,
     required this.mime,
     required List<int> bytes,
   }) : bytes = List<int>.unmodifiable(bytes);
 
   final String id;
-  final String ownerId;
   final AssetKind kind;
   final String mime;
   final List<int> bytes;
@@ -106,8 +104,7 @@ class HiveSyncLocalStore implements SyncLocalStore {
     _heads
       ..clear()
       ..addAll(_readHeads());
-    final rawCollection = storage.readSyncHead(_collectionKey) ??
-        storage.readMeta(_collectionKey);
+    final rawCollection = storage.readSyncHead(_collectionKey);
     if (rawCollection is Map) {
       try {
         _collection = SyncedCollectionHead.fromJson(
@@ -203,21 +200,19 @@ class HiveSyncLocalStore implements SyncLocalStore {
 
   @override
   LocalAssetSnapshot? asset(String id) {
-    final record = assets.snapshot(id);
-    if (record == null) return null;
+    final blob = assets.readAsset(id);
+    if (blob == null) return null;
     return LocalAssetSnapshot(
       id: id,
-      ownerId: record.entryId,
-      kind: record.kind,
-      mime: record.mime,
-      bytes: record.data,
+      kind: blob.descriptor.kind,
+      mime: blob.descriptor.mime,
+      bytes: blob.bytes,
     );
   }
 
   @override
   Future<void> putAssetExact(LocalAssetSnapshot asset) => assets.putExact(
         asset.id,
-        asset.ownerId,
         asset.kind,
         asset.mime,
         asset.bytes,

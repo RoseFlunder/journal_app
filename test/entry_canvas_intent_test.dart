@@ -3,8 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/ui/features/editor/views/editor_block.dart';
 import 'package:journal_app/ui/features/editor/views/editor_canvas.dart';
 import 'package:journal_app/models/document.dart';
-import 'package:journal_app/models/entry.dart';
-import 'package:journal_app/services/entry_document_codec.dart';
+import 'support/legacy_test_models.dart';
 
 void main() {
   testWidgets('canvas emits immutable transform intents', (tester) async {

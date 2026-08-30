@@ -1,13 +1,9 @@
 import 'dart:async';
-import 'dart:typed_data';
-
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/document.dart';
-import '../models/entry.dart';
-import '../models/storage_records.dart';
-import 'entry_document_codec.dart';
+import '../models/view_state.dart';
 import 'hive_journal_data_source.dart';
 import 'journal_archive.dart';
 import 'storage_codec.dart';
@@ -16,8 +12,7 @@ import 'repositories.dart';
 /// Internal document data source backed by the shared raw Hive boxes.
 ///
 /// This source owns the in-memory document projection and order metadata. It
-/// deliberately exposes only immutable [EntryDocument] values to repository
-/// adapters; mutable [Entry] records are confined to the codec boundary.
+/// exposes only immutable [EntryDocument] values to repository adapters.
 class HiveDocumentDataSource {
   HiveDocumentDataSource(this.storage) {
     if (storage.isOpen) _load();
@@ -265,8 +260,6 @@ class HiveDocumentDataSource {
         unawaited(storage.quarantine('manifest', 'journal.manifest', rawManifest, error));
         rawOrder = const <String>[];
       }
-    } else {
-      rawOrder = storage.readMeta('entryOrder');
     }
     final order = rawOrder is List
         ? rawOrder.whereType<String>().toList(growable: false)
@@ -330,14 +323,6 @@ class HiveDocumentDataSource {
           );
         }
         return document;
-      }
-      if (!storage.resetLegacyNamespace &&
-          json['nodes'] is List &&
-          json['blocks'] == null) {
-        return EntryDocument.fromJson(json);
-      }
-      if (!storage.resetLegacyNamespace) {
-        return EntryDocumentCodec.fromEntry(Entry.fromJson(json));
       }
       throw const StorageFormatException('Unsupported document record format');
     } catch (error) {
@@ -424,8 +409,7 @@ class HiveAssetDataSource {
   final HiveJournalDataSource storage;
   final Iterable<EntryDocument> Function() documents;
 
-  Future<String> putAsset(
-    String ownerId,
+  Future<AssetDescriptor> putAsset(
     AssetKind kind,
     String mime,
     List<int> bytes,
@@ -451,36 +435,29 @@ class HiveAssetDataSource {
           'Content-addressed asset metadata cannot be changed',
         );
       }
-      return digest;
+      return AssetDescriptor(
+        id: digest,
+        kind: kind,
+        mime: mime,
+        byteLength: stored.bytes.length,
+        sha256: digest,
+        width: stored.width,
+        height: stored.height,
+      );
     }
     await storage.enqueue(() => storage.writeAsset(digest, record.toJson()));
-    return digest;
-  }
-
-  Future<AssetDescriptor> putImmutableAsset(
-    AssetKind kind,
-    String mime,
-    List<int> bytes,
-  ) async {
-    final id = await putAsset('', kind, mime, bytes);
-    final record = StoredAssetRecord(
-      id: id,
-      kind: assetKindDiscriminator(kind),
-      mime: mime,
-      bytes: bytes,
-    );
     return AssetDescriptor(
-      id: id,
+      id: digest,
       kind: kind,
       mime: mime,
       byteLength: record.bytes.length,
-      sha256: id,
+      sha256: digest,
       width: record.width,
       height: record.height,
     );
   }
 
-  Uint8List? readAsset(String id) {
+  AssetBlob? readAsset(String id) {
     final raw = storage.readAsset(id);
     if (raw == null) return null;
     if (raw is! Map) {
@@ -495,113 +472,27 @@ class HiveAssetDataSource {
       return null;
     }
     try {
-      if (raw['format'] == JournalStorageFormat.asset) {
-        return Uint8List.fromList(StoredAssetRecord.fromJson(raw).bytes);
-      }
-      return Uint8List.fromList(
-        AssetRecord.fromJson(Map<String, dynamic>.from(raw)).data,
-      );
-    } catch (error) {
-      unawaited(storage.quarantine('asset', id, raw, error));
-      return null;
-    }
-  }
-
-  String? assetMime(String id) {
-    final raw = storage.readAsset(id);
-    if (raw == null) return null;
-    if (raw is! Map) {
-      unawaited(
-        storage.quarantine(
-          'asset',
-          id,
-          raw,
-          const StorageFormatException('Asset record is not an object'),
-        ),
-      );
-      return null;
-    }
-    try {
-      if (raw['format'] == JournalStorageFormat.asset) {
-        return StoredAssetRecord.fromJson(raw).mime;
-      }
-      return AssetRecord.fromJson(Map<String, dynamic>.from(raw)).mime;
-    } catch (error) {
-      unawaited(storage.quarantine('asset', id, raw, error));
-      return null;
-    }
-  }
-
-  AssetBlob? readAssetBlob(String id) {
-    final raw = storage.readAsset(id);
-    if (raw == null) return null;
-    if (raw is! Map) {
-      unawaited(
-        storage.quarantine(
-          'asset',
-          id,
-          raw,
-          const StorageFormatException('Asset record is not an object'),
-        ),
-      );
-      return null;
-    }
-    try {
-      if (raw['format'] == JournalStorageFormat.asset) {
-        final stored = StoredAssetRecord.fromJson(raw);
-        return AssetBlob(
-          descriptor: AssetDescriptor(
-            id: stored.id,
-            kind: assetKindFromDiscriminator(stored.kind),
-            mime: stored.mime,
-            byteLength: stored.bytes.length,
-            sha256: stored.id,
-            width: stored.width,
-            height: stored.height,
-          ),
-          bytes: stored.bytes,
-        );
-      }
-      final legacy = AssetRecord.fromJson(Map<String, dynamic>.from(raw));
-      final digest = sha256.convert(legacy.data).toString();
+      final stored = StoredAssetRecord.fromJson(raw);
       return AssetBlob(
         descriptor: AssetDescriptor(
-          id: digest,
-          kind: legacy.kind,
-          mime: legacy.mime,
-          byteLength: legacy.data.length,
-          sha256: digest,
+          id: stored.id,
+          kind: assetKindFromDiscriminator(stored.kind),
+          mime: stored.mime,
+          byteLength: stored.bytes.length,
+          sha256: stored.id,
+          width: stored.width,
+          height: stored.height,
         ),
-        bytes: legacy.data,
+        bytes: stored.bytes,
       );
     } catch (error) {
       unawaited(storage.quarantine('asset', id, raw, error));
-      return null;
-    }
-  }
-
-  AssetRecord? snapshot(String id) {
-    final raw = storage.readAsset(id);
-    if (raw is! Map) return null;
-    try {
-      if (raw['format'] == JournalStorageFormat.asset) {
-        final stored = StoredAssetRecord.fromJson(raw);
-        return AssetRecord(
-          entryId: '',
-          kind: assetKindFromDiscriminator(stored.kind),
-          mime: stored.mime,
-          data: stored.bytes,
-        );
-      }
-      return AssetRecord.fromJson(Map<String, dynamic>.from(raw));
-    } catch (_) {
       return null;
     }
   }
 
   Future<void> putExact(
     String id,
-    String ownerId,
     AssetKind kind,
     String mime,
     List<int> bytes,
@@ -646,11 +537,7 @@ class HiveAssetDataSource {
       final raw = storage.readCheckpoint(key.toString());
       if (raw is! Map) continue;
       try {
-        final document = raw['format'] == JournalStorageFormat.checkpoint
-            ? StoredCheckpointRecord.fromJson(raw).document
-            : EntryDocumentCodec.fromEntry(
-                Entry.fromJson(Map<String, dynamic>.from(raw['entry'] as Map)),
-              );
+        final document = StoredCheckpointRecord.fromJson(raw).document;
         collectNodes(document.nodes);
       } catch (error) {
         unawaited(storage.quarantine('checkpoint', key.toString(), raw, error));
@@ -679,12 +566,9 @@ class HiveCheckpointDataSource {
       if (raw is! Map) continue;
       try {
         final json = Map<String, dynamic>.from(raw);
-        final entryId = json['format'] == JournalStorageFormat.checkpoint
-            ? StoredCheckpointRecord.fromJson(json).documentId
-            : EntryCheckpoint.fromJson(key, json).entryId;
-        final createdAt = json['format'] == JournalStorageFormat.checkpoint
-            ? StoredCheckpointRecord.fromJson(json).createdAt
-            : EntryCheckpoint.fromJson(key, json).createdAt;
+        final checkpoint = StoredCheckpointRecord.fromJson(json);
+        final entryId = checkpoint.documentId;
+        final createdAt = checkpoint.createdAt;
         if (entryId == documentId) {
           result.add(
             CheckpointInfo(
@@ -731,13 +615,9 @@ class HiveCheckpointDataSource {
     final json = Map<String, dynamic>.from(raw);
     late final EntryDocument restored;
     try {
-      restored = json['format'] == JournalStorageFormat.checkpoint
-          ? StoredCheckpointRecord.fromJson(json)
-              .document
-              .copyWith(modifiedAt: DateTime.now().toUtc())
-          : EntryDocumentCodec.fromEntry(
-              EntryCheckpoint.fromJson(checkpointId, json).entry,
-            ).copyWith(modifiedAt: DateTime.now().toUtc());
+      restored = StoredCheckpointRecord.fromJson(json)
+          .document
+          .copyWith(modifiedAt: DateTime.now().toUtc());
     } catch (error) {
       await storage.quarantine('checkpoint', checkpointId, raw, error);
       rethrow;
@@ -759,12 +639,9 @@ class HiveCheckpointDataSource {
       if (raw is! Map) continue;
       try {
         final json = Map<String, dynamic>.from(raw);
-        final entryId = json['format'] == JournalStorageFormat.checkpoint
-            ? StoredCheckpointRecord.fromJson(json).documentId
-            : EntryCheckpoint.fromJson(key, json).entryId;
-        final createdAt = json['format'] == JournalStorageFormat.checkpoint
-            ? StoredCheckpointRecord.fromJson(json).createdAt
-            : EntryCheckpoint.fromJson(key, json).createdAt;
+        final checkpoint = StoredCheckpointRecord.fromJson(json);
+        final entryId = checkpoint.documentId;
+        final createdAt = checkpoint.createdAt;
         if (entryId == documentId) {
           checkpoints.add((id: key, createdAt: createdAt.toUtc()));
         }
@@ -847,10 +724,15 @@ class HiveArchiveDataSource {
     collect(document.nodes);
     final archiveAssets = <ArchiveAsset>[];
     for (final id in ids) {
-      final bytes = assets.readAsset(id);
-      final mime = assets.assetMime(id);
-      if (bytes != null && mime != null) {
-        archiveAssets.add(ArchiveAsset(id: id, mime: mime, bytes: bytes));
+      final blob = assets.readAsset(id);
+      if (blob != null) {
+        archiveAssets.add(
+          ArchiveAsset(
+            id: id,
+            mime: blob.descriptor.mime,
+            bytes: blob.bytes,
+          ),
+        );
       }
     }
     return JournalArchive(
@@ -864,12 +746,12 @@ class HiveArchiveDataSource {
     final target = await documents.createDocument(title: archive.document.title);
     final assetIds = <String, String>{};
     for (final asset in archive.assets) {
-      assetIds[asset.id] = await assets.putAsset(
-        target.id,
+      final descriptor = await assets.putAsset(
         asset.mime.startsWith('audio/') ? AssetKind.audio : AssetKind.image,
         asset.mime,
         asset.bytes,
       );
+      assetIds[asset.id] = descriptor.id;
     }
     final imported = _remapAssets(archive.document, assetIds, target.id);
     await documents.replaceRestoredDocument(imported);

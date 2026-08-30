@@ -459,7 +459,6 @@ abstract final class JournalDocumentCodec {
                 'trackPageUrl': document.music!.trackPageUrl,
                 'licenseUrl': document.music!.licenseUrl,
                 'durationMs': document.music!.duration.inMilliseconds,
-                'legacyAssetId': document.music!.legacyAssetId,
               },
         'titleFontSize': document.titleFontSize,
         'titleFontFamily': document.titleFontFamily,
