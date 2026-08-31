@@ -189,7 +189,7 @@ class _EditorMoreToolsViewState extends State<EditorMoreToolsView> {
             ListTile(
               leading: const Icon(Icons.image_outlined),
               title: const Text('Edit image'),
-              subtitle: const Text('Crop, flip, mask, and opacity'),
+              subtitle: const Text('Crop, flip, mask, filters, and frame'),
               onTap: () => _close(widget.onEditImage),
             ),
         ],

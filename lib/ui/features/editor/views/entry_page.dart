@@ -541,6 +541,24 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
   }
 
+  Future<int?> _openImageFrameColor(
+    BuildContext sheetContext,
+    int? current,
+  ) async {
+    final result = await showVisualColorPicker(
+      sheetContext,
+      initialValue: current ?? PaperPage.ink.toARGB32(),
+      dialogTitle: 'Frame color',
+      recentColorValues: _editor.recentColorValues,
+      favoriteColorValues: _editor.favoriteColorValues,
+      onFavoriteColorsChanged: _editor.updateFavoriteColors,
+    );
+    if (!mounted || result == null) return null;
+    final value = result.value ?? PaperPage.ink.toARGB32();
+    _editor.addRecentColor(value);
+    return value;
+  }
+
   Future<Color?> _requestColorSample() {
     final current = _colorSampleCompleter;
     if (current != null) return current.future;
@@ -830,22 +848,29 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   Future<void> _showImageEditor() async {
     final node = _imageSelection();
     if (node == null) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: PaperPage.paper,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => EditorImageEditorView(
-        node: node,
-        onCommit: (node, label) {
-          _editor.replaceNode(node, label: label);
-          unawaited(_editor.commitTransaction());
-        },
-        onPreview: (node, label) => _editor.replaceNode(node, label: label),
-        onBeginTransaction: _editor.beginStyleTransaction,
-        onEndTransaction: () => unawaited(_editor.commitTransaction()),
-      ),
-    );
+    await _editor.commitTransaction();
+    if (!mounted) return;
+    _editor.beginStyleTransaction('Image appearance');
+    bool? result;
+    try {
+      result = await showModalBottomSheet<bool>(
+        context: context,
+        backgroundColor: PaperPage.paper,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (context) => EditorImageEditorView(
+          node: node,
+          onPreview: (next) => _editor.replaceNode(next),
+          onPickFrameColor: _openImageFrameColor,
+        ),
+      );
+    } finally {
+      if (result == true) {
+        await _editor.commitTransaction();
+      } else {
+        _editor.cancelTransaction();
+      }
+    }
   }
 
   Future<void> _exportArchive() async {
