@@ -129,6 +129,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     ..addListener(_handleTitleFocusChanged);
   late final ImageSourceService _imageSource = widget.imageSource;
   bool _pickingImage = false;
+  bool _musicPickerOpen = false;
   final Map<String, ImageProvider<Object>> _imageProviders = {};
   final Map<String, ImageProvider<Object>> _stickerProviders = {};
   late EntryEditorViewModel _editor;
@@ -941,22 +942,35 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   }
 
   Future<void> _showMusicPicker() async {
-    await widget.musicController.stopAndReset();
-    if (!mounted) return;
-    final result = await EditorMusicView.showPicker(
-      context,
-      editor: _editor,
-      current: _document.music,
-    );
-    if (!mounted || result == null) return;
-    final track = result.remove ? null : result.track;
-    await _editor.updateMusic(track);
-    if (!mounted) return;
-    await widget.musicController.setActivePage(
-      widget.active ? _document.id : null,
-      widget.active ? track : null,
-    );
-    if (mounted) setState(() {});
+    if (_musicPickerOpen) return;
+    _musicPickerOpen = true;
+    try {
+      await widget.musicController.stopAndReset();
+      if (!mounted) return;
+      final result = await EditorMusicView.showPicker(
+        context,
+        editor: _editor,
+        current: _document.music,
+      );
+      if (!mounted || result == null) return;
+      final track = result.remove ? null : result.track;
+      await _editor.updateMusic(track);
+      if (!mounted) return;
+      await widget.musicController.setActivePage(
+        widget.active ? _document.id : null,
+        widget.active ? track : null,
+        restart: true,
+      );
+      if (mounted) setState(() {});
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not switch page music: $error')),
+        );
+      }
+    } finally {
+      _musicPickerOpen = false;
+    }
   }
 
   void _deleteSelected() {

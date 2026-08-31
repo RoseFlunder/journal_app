@@ -45,7 +45,6 @@ class _MusicPickerSheetState extends State<MusicPickerSheet> {
   void dispose() {
     widget.viewModel.removeListener(_handleModelChanged);
     _searchController.dispose();
-    widget.viewModel.dispose();
     super.dispose();
   }
 

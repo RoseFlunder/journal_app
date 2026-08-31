@@ -59,6 +59,24 @@ void main() {
     controller.dispose();
   });
 
+  test('restart reloads and autoplays the selected track from the beginning',
+      () async {
+    final playback = _FakePlayback();
+    final controller = PageMusicController(
+      catalog: const _FakeCatalog(track),
+      playback: playback,
+      persistResolvedTrack: (_, _) async {},
+    );
+
+    await controller.setActivePage('page', track);
+    await controller.setActivePage('page', track, restart: true);
+
+    expect(playback.loadedUrls, [track.streamUrl, track.streamUrl]);
+    expect(playback.playCalls, 2);
+    expect(playback.stopCalls, greaterThanOrEqualTo(2));
+    controller.dispose();
+  });
+
   test('refreshes a failed stream URL and persists the replacement', () async {
     final playback = _FakePlayback(failFirstLoad: true);
     const refreshed = PageMusicTrack(

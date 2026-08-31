@@ -28,15 +28,27 @@ class EditorMusicView extends StatelessWidget {
     BuildContext context, {
     required EntryEditorViewModel editor,
     PageMusicTrack? current,
-  }) => showModalBottomSheet<MusicPickerResult>(
-    context: context,
-    backgroundColor: PaperPage.paper,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (context) => MusicPickerSheet(
-      viewModel: editor.createMusicPickerViewModel(current: current),
-    ),
-  );
+  }) async {
+    // Keep the model outside the route builder. The builder may be invoked
+    // again when inherited layout state changes, but a picker opening must
+    // retain one search generation, listener, and preview player.
+    final viewModel = editor.createMusicPickerViewModel(current: current);
+    try {
+      return await showModalBottomSheet<MusicPickerResult>(
+        context: context,
+        backgroundColor: PaperPage.paper,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (context) => MusicPickerSheet(viewModel: viewModel),
+      );
+    } finally {
+      try {
+        await viewModel.close();
+      } finally {
+        viewModel.dispose();
+      }
+    }
+  }
 
   /// Presents license and source details for a selected track.
   static Future<void> showDetails(

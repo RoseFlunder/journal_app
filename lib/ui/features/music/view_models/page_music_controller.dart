@@ -44,13 +44,18 @@ class PageMusicController extends ChangeNotifier {
   bool get isPlaying => _status == AudioPlaybackStatus.playing;
   bool get isLoading => _status == AudioPlaybackStatus.loading;
 
-  Future<void> setActivePage(String? pageId, PageMusicTrack? track) async {
+  Future<void> setActivePage(
+    String? pageId,
+    PageMusicTrack? track, {
+    bool restart = false,
+  }) async {
     final pageChanged = _pageId != pageId;
     final trackChanged =
         _track?.trackId != track?.trackId ||
         _track?.streamUrl != track?.streamUrl;
     final selectionChanged = pageChanged || trackChanged;
-    if (selectionChanged) {
+    final shouldPlay = pageId != null && track != null;
+    if (selectionChanged || restart) {
       _selectionGeneration++;
       await _stopSilently();
     }
@@ -58,7 +63,7 @@ class PageMusicController extends ChangeNotifier {
     _track = track;
     _error = null;
     _notify();
-    if (selectionChanged && pageId != null && track != null) {
+    if ((selectionChanged || restart) && shouldPlay) {
       await _playCurrentSelection();
     }
   }
