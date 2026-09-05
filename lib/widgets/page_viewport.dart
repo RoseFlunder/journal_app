@@ -11,6 +11,19 @@ import 'entry_chrome.dart';
 
 export 'camera_controller.dart' show CameraController, ViewportMath;
 
+/// Transient camera information used to avoid building content outside the
+/// visible portion of a finite page. This is presentation state only and is
+/// never persisted with the document.
+class PageViewportSnapshot {
+  const PageViewportSnapshot({
+    required this.scale,
+    required this.visibleCanvasRect,
+  });
+
+  final double scale;
+  final Rect visibleCanvasRect;
+}
+
 class PageViewport extends StatefulWidget {
   const PageViewport({
     super.key,
@@ -18,6 +31,7 @@ class PageViewport extends StatefulWidget {
     this.initialView,
     this.onViewChanged,
     this.onScaleChanged,
+    this.onViewportChanged,
     this.interactive = true,
     this.gesturesEnabled = true,
     this.panEnabled = true,
@@ -54,6 +68,7 @@ class PageViewport extends StatefulWidget {
 
   /// Reports the current canvas-to-screen scale for screen-space controls.
   final ValueChanged<double>? onScaleChanged;
+  final ValueChanged<PageViewportSnapshot>? onViewportChanged;
   final bool interactive;
   final bool gesturesEnabled;
 
@@ -98,6 +113,7 @@ class PageViewport extends StatefulWidget {
 class _PageViewportState extends State<PageViewport> {
   late final CameraController _camera;
   Timer? _persistTimer;
+  Timer? _viewportTimer;
   Timer? _doubleTapTimer;
   int? _tapPointer;
   Offset? _tapDownPosition;
@@ -126,6 +142,7 @@ class _PageViewportState extends State<PageViewport> {
   @override
   void dispose() {
     _persistTimer?.cancel();
+    _viewportTimer?.cancel();
     _doubleTapTimer?.cancel();
     _camera.removeListener(_handleCameraChanged);
     _camera.dispose();
@@ -139,6 +156,11 @@ class _PageViewportState extends State<PageViewport> {
     if (mounted) {
       setState(() {});
     }
+    _viewportTimer?.cancel();
+    _viewportTimer = Timer(
+      const Duration(milliseconds: 50),
+      _emitViewportSnapshot,
+    );
     _persistTimer?.cancel();
     _persistTimer = Timer(const Duration(milliseconds: 250), _persistView);
   }
@@ -146,6 +168,23 @@ class _PageViewportState extends State<PageViewport> {
   void _persistView() {
     if (!mounted || widget.onViewChanged == null) return;
     widget.onViewChanged!(_camera.viewState);
+  }
+
+  void _emitViewportSnapshot() {
+    final callback = widget.onViewportChanged;
+    final viewport = _camera.viewportSize;
+    if (!mounted || callback == null || viewport.isEmpty) return;
+    final inverse = Matrix4.copy(_camera.transformation.value);
+    if (inverse.invert() == 0) return;
+    callback(
+      PageViewportSnapshot(
+        scale: _camera.transformation.value.getMaxScaleOnAxis(),
+        visibleCanvasRect: MatrixUtils.transformRect(
+          inverse,
+          Offset.zero & viewport,
+        ),
+      ),
+    );
   }
 
   void _setInitialTransform(Size size) {
@@ -161,11 +200,16 @@ class _PageViewportState extends State<PageViewport> {
     );
     if (!widget.interactive) {
       _ready = true;
-      widget.onScaleChanged?.call(_camera.transformation.value.getMaxScaleOnAxis());
+      widget.onScaleChanged?.call(
+        _camera.transformation.value.getMaxScaleOnAxis(),
+      );
       return;
     }
     _ready = true;
-    widget.onScaleChanged?.call(_camera.transformation.value.getMaxScaleOnAxis());
+    widget.onScaleChanged?.call(
+      _camera.transformation.value.getMaxScaleOnAxis(),
+    );
+    _emitViewportSnapshot();
     if (mounted) setState(() {});
   }
 

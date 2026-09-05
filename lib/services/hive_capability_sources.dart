@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
@@ -451,6 +452,10 @@ class HiveAssetDataSource {
 
   final HiveJournalDataSource storage;
   final Iterable<EntryDocument> Function() documents;
+  static const _cacheBudgetBytes = 32 * 1024 * 1024;
+  final LinkedHashMap<String, AssetBlob> _readCache =
+      LinkedHashMap<String, AssetBlob>();
+  int _readCacheBytes = 0;
 
   Future<AssetDescriptor> putAsset(
     AssetKind kind,
@@ -503,6 +508,11 @@ class HiveAssetDataSource {
   }
 
   AssetBlob? readAsset(String id) {
+    final cached = _readCache.remove(id);
+    if (cached != null) {
+      _readCache[id] = cached;
+      return cached;
+    }
     final raw = storage.readAsset(id);
     if (raw == null) return null;
     if (raw is! Map) {
@@ -518,7 +528,7 @@ class HiveAssetDataSource {
     }
     try {
       final stored = StoredAssetRecord.fromJson(raw);
-      return AssetBlob(
+      final blob = AssetBlob(
         descriptor: AssetDescriptor(
           id: stored.id,
           kind: assetKindFromDiscriminator(stored.kind),
@@ -530,6 +540,8 @@ class HiveAssetDataSource {
         ),
         bytes: stored.bytes,
       );
+      _cache(blob);
+      return blob;
     } catch (error) {
       unawaited(storage.quarantine('asset', id, raw, error));
       return null;
@@ -554,10 +566,13 @@ class HiveAssetDataSource {
       mime: mime,
       bytes: bytes,
     );
+    _removeCached(id);
     return storage.enqueue(() => storage.writeAsset(id, record.toJson()));
   }
 
   Future<void> clearAll() async {
+    _readCache.clear();
+    _readCacheBytes = 0;
     final ids = storage.assetKeys.toList();
     await storage.enqueue(() async {
       for (final id in ids) {
@@ -592,8 +607,28 @@ class HiveAssetDataSource {
     }
     for (final key in storage.assetKeys.toList()) {
       if (!referenced.contains(key.toString())) {
-        await storage.deleteAsset(key.toString());
+        final id = key.toString();
+        _removeCached(id);
+        await storage.deleteAsset(id);
       }
+    }
+  }
+
+  void _cache(AssetBlob blob) {
+    final byteLength = blob.descriptor.byteLength;
+    if (byteLength > _cacheBudgetBytes) return;
+    _readCache[blob.descriptor.id] = blob;
+    _readCacheBytes += byteLength;
+    while (_readCacheBytes > _cacheBudgetBytes && _readCache.isNotEmpty) {
+      final oldest = _readCache.keys.first;
+      _removeCached(oldest);
+    }
+  }
+
+  void _removeCached(String id) {
+    final removed = _readCache.remove(id);
+    if (removed != null) {
+      _readCacheBytes -= removed.descriptor.byteLength;
     }
   }
 }

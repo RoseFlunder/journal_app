@@ -10,9 +10,13 @@ import 'package:hive/hive.dart';
 import 'package:image/image.dart' as img;
 import 'package:journal_app/app/app_dependencies.dart';
 import 'package:journal_app/main.dart';
+
 import 'support/legacy_test_models.dart';
+
 import 'package:journal_app/models/sticker.dart';
+
 import 'support/hive_test_environment.dart';
+
 import 'package:journal_app/ui/features/editor/views/editor_block.dart';
 import 'package:journal_app/ui/features/editor/views/editor_toolbar_view.dart';
 import 'package:journal_app/ui/features/editor/views/editor_canvas.dart';
@@ -58,10 +62,7 @@ void main() {
     var bringToFront = 0;
     var bringToBack = 0;
 
-    Widget toolbar({
-      required bool hasSelection,
-      required Size mediaSize,
-    }) {
+    Widget toolbar({required bool hasSelection, required Size mediaSize}) {
       return MaterialApp(
         home: MediaQuery(
           data: MediaQueryData(size: mediaSize),
@@ -152,13 +153,19 @@ void main() {
       store = TestHiveEnvironment();
       await store.init();
       await tester.pumpWidget(
-        JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
+        JournalApp(
+          dependencies: AppDependencies(repositories: store.repositories),
+        ),
       );
       await tester.pumpAndSettle();
 
       expect(
         tester.widget<PageView>(find.byType(PageView)).physics,
         isA<NeverScrollableScrollPhysics>(),
+      );
+      expect(
+        tester.widget<PageView>(find.byType(PageView)).childrenDelegate,
+        isA<SliverChildBuilderDelegate>(),
       );
 
       // Starts on the (empty) table of contents.
@@ -273,7 +280,9 @@ void main() {
     await store.addEntry();
     await store.addEntry();
     await tester.pumpWidget(
-      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
+      JournalApp(
+        dependencies: AppDependencies(repositories: store.repositories),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -306,7 +315,8 @@ void main() {
     );
 
     await tester.tap(find.byTooltip('Next page'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 10));
+    // A second request during the transition is retained instead of ignored.
     await tester.tap(find.byTooltip('Next page'));
     await tester.pumpAndSettle();
     expect(
@@ -333,13 +343,66 @@ void main() {
     );
   });
 
+  testWidgets('canvas omits nodes outside the visible viewport', (
+    tester,
+  ) async {
+    final near = ContentBlock(
+      id: 'near',
+      type: BlockType.text,
+      text: 'Near',
+      x: 10,
+      y: 10,
+      w: 20,
+      h: 10,
+    );
+    final far = ContentBlock(
+      id: 'far',
+      type: BlockType.text,
+      text: 'Far',
+      x: 100,
+      y: 100,
+      w: 20,
+      h: 10,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 400,
+          height: 300,
+          child: EntryCanvas(
+            workspaceSize: const Size(1000, 1000),
+            worldOrigin: Offset.zero,
+            visibleCanvasRect: const Rect.fromLTWH(0, 0, 400, 300),
+            nodes: [
+              EntryDocumentCodec.nodeFromBlock(near),
+              EntryDocumentCodec.nodeFromBlock(far),
+            ],
+            editing: false,
+            selectedId: null,
+            textEditingId: null,
+            onSelect: (_) {},
+            onEditText: (_) {},
+            imageBytes: (_) => null,
+            onOpenImage: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('canvas-node-near')), findsOneWidget);
+    expect(find.byKey(const ValueKey('canvas-node-far')), findsNothing);
+  });
+
   testWidgets('M2 paper theme renders on the contents and entry pages', (
     tester,
   ) async {
     store = TestHiveEnvironment();
     await store.init();
     await tester.pumpWidget(
-      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
+      JournalApp(
+        dependencies: AppDependencies(repositories: store.repositories),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -444,7 +507,9 @@ void main() {
       await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(
-      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
+      JournalApp(
+        dependencies: AppDependencies(repositories: store.repositories),
+      ),
     );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
@@ -495,9 +560,7 @@ void main() {
     expect(
       store.entries.single.blocks.single.richTextDelta!
           .whereType<Map<Object?, Object?>>()
-          .any(
-        (operation) => operation['insert'] == 'A first note',
-      ),
+          .any((operation) => operation['insert'] == 'A first note'),
       isTrue,
     );
     expect(store.entries.single.blocks.single.text, 'A first note');
@@ -627,7 +690,9 @@ void main() {
       await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(
-      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
+      JournalApp(
+        dependencies: AppDependencies(repositories: store.repositories),
+      ),
     );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
@@ -795,7 +860,9 @@ void main() {
       await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(
-      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
+      JournalApp(
+        dependencies: AppDependencies(repositories: store.repositories),
+      ),
     );
     await tester.pumpAndSettle();
     await createPageFromFab(tester, title: 'Sketches');
@@ -903,7 +970,9 @@ void main() {
         await store.deleteEntry(existing.id);
       }
       await tester.pumpWidget(
-        JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
+        JournalApp(
+          dependencies: AppDependencies(repositories: store.repositories),
+        ),
       );
       await tester.pumpAndSettle();
       await createPageFromFab(tester);
@@ -1119,7 +1188,9 @@ void main() {
       await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(
-      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
+      JournalApp(
+        dependencies: AppDependencies(repositories: store.repositories),
+      ),
     );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
@@ -1185,7 +1256,9 @@ void main() {
       await store.deleteEntry(existing.id);
     }
     await tester.pumpWidget(
-      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
+      JournalApp(
+        dependencies: AppDependencies(repositories: store.repositories),
+      ),
     );
     await tester.pumpAndSettle();
     await createPageFromFab(tester);
@@ -1215,7 +1288,9 @@ void main() {
     }
     await store.addEntry();
     await tester.pumpWidget(
-      JournalApp(dependencies: AppDependencies(repositories: store.repositories)),
+      JournalApp(
+        dependencies: AppDependencies(repositories: store.repositories),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Untitled page'));

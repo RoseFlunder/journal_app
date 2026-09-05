@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/editor/editor_controller.dart';
 import 'package:journal_app/editor/editor_state.dart';
 import 'package:journal_app/models/document.dart';
+
 import 'support/legacy_test_models.dart';
 
 ContentBlock _text({String id = 'text', double x = 0, double y = 0}) =>
@@ -34,6 +35,30 @@ extension _LegacyControllerInspection on EditorController {
 }
 
 void main() {
+  test('render projections are reused until the document changes', () {
+    final controller = EditorController(
+      document: _documentFromBlocks([_text()]),
+      persistDocument: (EntryDocument _) async {},
+    );
+    addTearDown(controller.dispose);
+
+    final firstRender = controller.renderNodes;
+    final firstStructure = controller.allNodes;
+    expect(identical(controller.renderNodes, firstRender), isTrue);
+    expect(identical(controller.allNodes, firstStructure), isTrue);
+
+    controller.replaceNode(
+      controller.document
+          .nodeById('text')!
+          .copyWith(
+            transform: const Transform2D(x: 5, y: 0, width: 40, height: 20),
+          ),
+    );
+
+    expect(identical(controller.renderNodes, firstRender), isFalse);
+    expect(identical(controller.allNodes, firstStructure), isFalse);
+  });
+
   test(
     'a transform transaction produces one save and supports undo/redo',
     () async {
@@ -472,95 +497,95 @@ void main() {
     );
   });
 
-  test('immutable render projection flattens visible leaves in world space', () {
-    final document = EntryDocument(
-      id: 'render-projection',
-      title: 'Render',
-      createdAt: DateTime.utc(2026),
-      modifiedAt: DateTime.utc(2026),
-      nodes: [
-        CanvasNode(
-          id: 'group',
-          type: BlockType.group,
-          transform: const Transform2D(
-            x: 20,
-            y: 30,
-            width: 100,
-            height: 80,
-          ),
-          children: [
-            CanvasNode(
-              id: 'visible-child',
-              type: BlockType.text,
-              transform: const Transform2D(
-                x: 8,
-                y: 12,
-                width: 40,
-                height: 20,
+  test(
+    'immutable render projection flattens visible leaves in world space',
+    () {
+      final document = EntryDocument(
+        id: 'render-projection',
+        title: 'Render',
+        createdAt: DateTime.utc(2026),
+        modifiedAt: DateTime.utc(2026),
+        nodes: [
+          CanvasNode(
+            id: 'group',
+            type: BlockType.group,
+            transform: const Transform2D(x: 20, y: 30, width: 100, height: 80),
+            children: [
+              CanvasNode(
+                id: 'visible-child',
+                type: BlockType.text,
+                transform: const Transform2D(
+                  x: 8,
+                  y: 12,
+                  width: 40,
+                  height: 20,
+                ),
+                payload: const {'text': 'Child'},
               ),
-              payload: const {'text': 'Child'},
-            ),
-            CanvasNode(
-              id: 'hidden-child',
-              type: BlockType.shape,
-              transform: const Transform2D(x: 4, y: 4, width: 20, height: 20),
-              visible: false,
-            ),
-          ],
+              CanvasNode(
+                id: 'hidden-child',
+                type: BlockType.shape,
+                transform: const Transform2D(x: 4, y: 4, width: 20, height: 20),
+                visible: false,
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final renderNodes = document.renderNodes;
+      expect(renderNodes, hasLength(1));
+      expect(renderNodes.single.id, 'visible-child');
+      expect(renderNodes.single.transform.x, 28);
+      expect(renderNodes.single.transform.y, 42);
+      expect(renderNodes.single.children, isEmpty);
+      expect(() => renderNodes.add(renderNodes.single), throwsUnsupportedError);
+    },
+  );
+
+  test(
+    'immutable editor APIs detach legacy adapters and persist documents',
+    () async {
+      final document = EntryDocument(
+        id: 'immutable-editor',
+        title: 'Immutable',
+        createdAt: DateTime.utc(2026),
+        modifiedAt: DateTime.utc(2026),
+        nodes: [
+          CanvasNode(
+            id: 'node',
+            type: BlockType.text,
+            transform: const Transform2D(x: 2, y: 3, width: 40, height: 20),
+            payload: const {'text': 'Hello'},
+          ),
+        ],
+      );
+      final saved = <EntryDocument>[];
+      final controller = EditorController(
+        document: document,
+        persistDocument: (EntryDocument next) async => saved.add(next),
+      );
+      addTearDown(controller.dispose);
+
+      final detached = controller.blocks.single;
+      detached.x = 999;
+      expect(controller.document.nodes.single.transform.x, 2);
+      expect(
+        () => controller.state.document.nodes.add(
+          controller.state.document.nodes.single,
         ),
-      ],
-    );
+        throwsUnsupportedError,
+      );
 
-    final renderNodes = document.renderNodes;
-    expect(renderNodes, hasLength(1));
-    expect(renderNodes.single.id, 'visible-child');
-    expect(renderNodes.single.transform.x, 28);
-    expect(renderNodes.single.transform.y, 42);
-    expect(renderNodes.single.children, isEmpty);
-    expect(
-      () => renderNodes.add(renderNodes.single),
-      throwsUnsupportedError,
-    );
-  });
+      controller.select('node');
+      controller.beginTransformTransaction('Move');
+      controller.moveSelection(const Offset(4, 0));
+      await controller.commitTransaction();
 
-  test('immutable editor APIs detach legacy adapters and persist documents', () async {
-    final document = EntryDocument(
-      id: 'immutable-editor',
-      title: 'Immutable',
-      createdAt: DateTime.utc(2026),
-      modifiedAt: DateTime.utc(2026),
-      nodes: [
-        CanvasNode(
-          id: 'node',
-          type: BlockType.text,
-          transform: const Transform2D(x: 2, y: 3, width: 40, height: 20),
-          payload: const {'text': 'Hello'},
-        ),
-      ],
-    );
-    final saved = <EntryDocument>[];
-    final controller = EditorController(
-      document: document,
-      persistDocument: (EntryDocument next) async => saved.add(next),
-    );
-    addTearDown(controller.dispose);
-
-    final detached = controller.blocks.single;
-    detached.x = 999;
-    expect(controller.document.nodes.single.transform.x, 2);
-    expect(
-      () => controller.state.document.nodes.add(controller.state.document.nodes.single),
-      throwsUnsupportedError,
-    );
-
-    controller.select('node');
-    controller.beginTransformTransaction('Move');
-    controller.moveSelection(const Offset(4, 0));
-    await controller.commitTransaction();
-
-    expect(saved, hasLength(1));
-    expect(saved.single.nodes.single.transform.x, 6);
-  });
+      expect(saved, hasLength(1));
+      expect(saved.single.nodes.single.transform.x, 6);
+    },
+  );
 
   test('undo and clipboard snapshots retain referenced media IDs', () async {
     final controller = EditorController(
@@ -593,49 +618,57 @@ void main() {
     expect(controller.retainedAssetIds, contains('asset-1'));
   });
 
-  test('document-native group movement preserves local child transforms', () async {
-    final document = EntryDocument(
-      id: 'nested-editor',
-      title: 'Nested',
-      createdAt: DateTime.utc(2026),
-      modifiedAt: DateTime.utc(2026),
-      nodes: [
-        CanvasNode(
-          id: 'group',
-          type: BlockType.group,
-          transform: const Transform2D(x: 20, y: 30, width: 100, height: 80),
-          children: [
-            CanvasNode(
-              id: 'child',
-              type: BlockType.text,
-              transform: const Transform2D(x: 8, y: 12, width: 40, height: 20),
-              payload: const {'text': 'Child'},
-            ),
-          ],
-        ),
-      ],
-    );
-    final saved = <EntryDocument>[];
-    final controller = EditorController(
-      document: document,
-      persistDocument: (next) async => saved.add(next),
-    );
-    addTearDown(controller.dispose);
+  test(
+    'document-native group movement preserves local child transforms',
+    () async {
+      final document = EntryDocument(
+        id: 'nested-editor',
+        title: 'Nested',
+        createdAt: DateTime.utc(2026),
+        modifiedAt: DateTime.utc(2026),
+        nodes: [
+          CanvasNode(
+            id: 'group',
+            type: BlockType.group,
+            transform: const Transform2D(x: 20, y: 30, width: 100, height: 80),
+            children: [
+              CanvasNode(
+                id: 'child',
+                type: BlockType.text,
+                transform: const Transform2D(
+                  x: 8,
+                  y: 12,
+                  width: 40,
+                  height: 20,
+                ),
+                payload: const {'text': 'Child'},
+              ),
+            ],
+          ),
+        ],
+      );
+      final saved = <EntryDocument>[];
+      final controller = EditorController(
+        document: document,
+        persistDocument: (next) async => saved.add(next),
+      );
+      addTearDown(controller.dispose);
 
-    controller.select('group');
-    controller.beginTransformTransaction('Move group');
-    controller.moveSelection(const Offset(5, 7));
-    await controller.commitTransaction();
+      controller.select('group');
+      controller.beginTransformTransaction('Move group');
+      controller.moveSelection(const Offset(5, 7));
+      await controller.commitTransaction();
 
-    final moved = controller.document.nodes.single;
-    expect(moved.transform.x, 25);
-    expect(moved.transform.y, 37);
-    expect(moved.children.single.transform.x, 8);
-    expect(moved.children.single.transform.y, 12);
-    expect(saved.single.nodes.single.children.single.transform.x, 8);
+      final moved = controller.document.nodes.single;
+      expect(moved.transform.x, 25);
+      expect(moved.transform.y, 37);
+      expect(moved.children.single.transform.x, 8);
+      expect(moved.children.single.transform.y, 12);
+      expect(saved.single.nodes.single.children.single.transform.x, 8);
 
-    await controller.undo();
-    expect(controller.document.nodes.single.transform.x, 20);
-    expect(controller.document.nodes.single.children.single.transform.x, 8);
-  });
+      await controller.undo();
+      expect(controller.document.nodes.single.transform.x, 20);
+      expect(controller.document.nodes.single.children.single.transform.x, 8);
+    },
+  );
 }

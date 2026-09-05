@@ -105,8 +105,10 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [!] Move selection borders, handles, lasso, guides, and ink preview into a
   true screen-space overlay.
 - [x] Exclude hidden nodes and structural group blocks from content-fit bounds.
-- [ ] Add visible-node culling, overscan, displayed-size image decoding,
-  thumbnail caching, and repaint boundaries.
+- [x] Add visible-node culling, overscan, displayed-size image decoding,
+  thumbnail caching, and repaint boundaries. Page navigation now builds
+  editors lazily, uses bounded asset/image caches, and avoids animating through
+  intermediate pages.
 - [x] Add dedicated camera, hit-testing, transform, bounds, and snapping
   services.
 

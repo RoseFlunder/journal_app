@@ -4,7 +4,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:journal_app/models/document.dart';
+
 import 'support/legacy_test_models.dart';
+
 import 'package:journal_app/ui/features/editor/views/editor_canvas.dart';
 import 'package:journal_app/widgets/page_viewport.dart';
 
@@ -205,9 +207,8 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    InteractiveViewer viewer() => tester.widget<InteractiveViewer>(
-      find.byType(InteractiveViewer),
-    );
+    InteractiveViewer viewer() =>
+        tester.widget<InteractiveViewer>(find.byType(InteractiveViewer));
 
     final initial = viewer().transformationController!.value;
     final initialScale = initial.getMaxScaleOnAxis();
@@ -286,6 +287,31 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  testWidgets('viewport reports visible canvas bounds after layout', (
+    tester,
+  ) async {
+    PageViewportSnapshot? snapshot;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 400,
+          height: 300,
+          child: PageViewport(
+            canvasSize: const Size(800, 600),
+            fitSize: const Size(800, 600),
+            onViewportChanged: (value) => snapshot = value,
+            child: const SizedBox.expand(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(snapshot, isNotNull);
+    expect(snapshot!.scale, greaterThan(0));
+    expect(snapshot!.visibleCanvasRect.isEmpty, isFalse);
+  });
+
   testWidgets(
     'disabled panning blocks drag and plain wheel but preserves Ctrl-wheel zoom',
     (tester) async {
@@ -307,9 +333,8 @@ void main() {
         await tester.pump();
         await tester.pump();
 
-        InteractiveViewer viewer() => tester.widget<InteractiveViewer>(
-          find.byType(InteractiveViewer),
-        );
+        InteractiveViewer viewer() =>
+            tester.widget<InteractiveViewer>(find.byType(InteractiveViewer));
 
         expect(viewer().panEnabled, isFalse);
         final before = viewer().transformationController!.value;

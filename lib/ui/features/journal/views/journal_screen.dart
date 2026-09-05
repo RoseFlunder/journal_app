@@ -46,6 +46,8 @@ class _JournalScreenState extends State<JournalScreen> {
   late final JournalViewModel _journal;
   late final PageMusicController _music;
   bool _animating = false;
+  int? _pendingPageIndex;
+  int? _targetPageIndex;
   String? _visiblePageId;
   List<String> _knownPageIds = [];
   bool _confirmationVisible = false;
@@ -92,16 +94,42 @@ class _JournalScreenState extends State<JournalScreen> {
 
   /// Animates to absolute [PageView] page [page] (0 = TOC, 1+ = entries).
   void goToPageIndex(int page) {
-    if (_animating || !_pageController.hasClients) return;
+    if (!_pageController.hasClients) return;
     if (page < 0 || page >= _pageCount) return;
+    _pendingPageIndex = page;
+    if (!_animating) unawaited(_drainNavigationQueue());
+  }
+
+  Future<void> _drainNavigationQueue() async {
+    if (_animating) return;
     _animating = true;
-    _pageController
-        .animateToPage(
-          page,
-          duration: const Duration(milliseconds: 350),
-          curve: Curves.easeInOut,
-        )
-        .whenComplete(() => _animating = false);
+    try {
+      while (mounted) {
+        final target = _pendingPageIndex;
+        if (target == null) break;
+        _pendingPageIndex = null;
+        if (!_pageController.hasClients || target == _currentPage) continue;
+        _targetPageIndex = target;
+        final distance = (target - _currentPage).abs();
+        if (distance == 1) {
+          await _pageController.animateToPage(
+            target,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+          );
+        } else {
+          // A pixel animation across many PageView children constructs and
+          // lays out intermediate editors. Long-distance navigation should
+          // pay only for its destination.
+          _pageController.jumpToPage(target);
+          await WidgetsBinding.instance.endOfFrame;
+        }
+        _targetPageIndex = null;
+      }
+    } finally {
+      _targetPageIndex = null;
+      _animating = false;
+    }
   }
 
   String? get _activeEntryId {
@@ -177,8 +205,11 @@ class _JournalScreenState extends State<JournalScreen> {
   void goToEntry(int entryIndex) => goToPageIndex(entryIndex + 1);
 
   void _goToToc() => goToPageIndex(0);
-  void _goPrev() => goToPageIndex(_currentPage - 1);
-  void _goNext() => goToPageIndex(_currentPage + 1);
+  int get _navigationPage =>
+      _pendingPageIndex ?? _targetPageIndex ?? _currentPage;
+
+  void _goPrev() => goToPageIndex(_navigationPage - 1);
+  void _goNext() => goToPageIndex(_navigationPage + 1);
 
   Future<void> _createPage() async {
     final title = await _promptForTitle();
@@ -241,7 +272,14 @@ class _JournalScreenState extends State<JournalScreen> {
         Iterable<int>.generate(ids.length)
             .any((i) => ids[i] != _knownPageIds[i]);
     _knownPageIds = ids;
-    if (id != null && orderChanged) _jumpToDocument(id);
+    if (id != null && orderChanged) {
+      _jumpToDocument(id);
+    } else if (mounted && (orderChanged || _currentPage == 0)) {
+      // Entry pages listen to their own editor models. Rebuilding the entire
+      // journal for every persisted edit makes navigation compete with work
+      // that only the table of contents needs.
+      setState(() {});
+    }
   }
 
   void _jumpToDocument(String id) {
@@ -253,7 +291,6 @@ class _JournalScreenState extends State<JournalScreen> {
       _currentPageIndex = page;
       _pageController.jumpToPage(page);
       setState(() {});
-      unawaited(_activateMusicForPage(page));
     });
     WidgetsBinding.instance.scheduleFrame();
   }
@@ -315,134 +352,134 @@ class _JournalScreenState extends State<JournalScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: _journal,
-      builder: (context, _) {
-        return PopScope(
-          canPop: _currentPage == 0,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) _handleBack();
+    return PopScope(
+      canPop: _currentPage == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _handleBack();
+      },
+      child: Scaffold(
+        body: CallbackShortcuts(
+          bindings: {
+            // Keyboard navigation (arrows also work when no text field is
+            // focused; PageUp/PageDown never do, so they always navigate).
+            SingleActivator(LogicalKeyboardKey.pageDown): _goNext,
+            SingleActivator(LogicalKeyboardKey.pageUp): _goPrev,
+            SingleActivator(LogicalKeyboardKey.home): _goToToc,
+            SingleActivator(LogicalKeyboardKey.arrowRight): _goNext,
+            SingleActivator(LogicalKeyboardKey.arrowLeft): _goPrev,
           },
-          child: Scaffold(
-            body: CallbackShortcuts(
-              bindings: {
-                // Keyboard navigation (arrows also work when no text field is
-                // focused; PageUp/PageDown never do, so they always navigate).
-                SingleActivator(LogicalKeyboardKey.pageDown): _goNext,
-                SingleActivator(LogicalKeyboardKey.pageUp): _goPrev,
-                SingleActivator(LogicalKeyboardKey.home): _goToToc,
-                SingleActivator(LogicalKeyboardKey.arrowRight): _goNext,
-                SingleActivator(LogicalKeyboardKey.arrowLeft): _goPrev,
-              },
-              child: Focus(
-                autofocus: true,
-                onKeyEvent: _handleKeyEvent,
-                child: Listener(
-                  behavior: HitTestBehavior.translucent,
-                  onPointerDown: _handlePointerDown,
-                  onPointerUp: _handlePointerUp,
-                  onPointerCancel: _handlePointerUp,
-                  onPointerSignal: _handlePointerSignal,
-                  child: Stack(
-                    children: [
-                      PageView(
-                        controller: _pageController,
-                        physics: const NeverScrollableScrollPhysics(),
-                        onPageChanged: (page) {
-                          _visiblePageId =
-                              page > 0 && page <= _journal.documents.length
-                              ? _journal.documents[page - 1].id
-                              : null;
-                          if (page != _currentPageIndex) {
-                            setState(() => _currentPageIndex = page);
-                            _chromeTimer?.cancel();
-                            _chromeVisible = true;
-                            if (page > 0) {
-                              _scheduleChromeHide();
-                            }
-                          }
+          child: Focus(
+            autofocus: true,
+            onKeyEvent: _handleKeyEvent,
+            child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: _handlePointerDown,
+              onPointerUp: _handlePointerUp,
+              onPointerCancel: _handlePointerUp,
+              onPointerSignal: _handlePointerSignal,
+              child: Stack(
+                children: [
+                  PageView.builder(
+                    controller: _pageController,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _pageCount,
+                    onPageChanged: (page) {
+                      _visiblePageId =
+                          page > 0 && page <= _journal.documents.length
+                          ? _journal.documents[page - 1].id
+                          : null;
+                      if (page != _currentPageIndex) {
+                        setState(() => _currentPageIndex = page);
+                        _chromeTimer?.cancel();
+                        _chromeVisible = true;
+                        if (page > 0) {
+                          _scheduleChromeHide();
+                        }
+                      }
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted && page == _currentPage) {
                           unawaited(_activateMusicForPage(page));
-                        },
-                        children: [
-                          ContentsPage(
-                            documents: _journal.documents,
-                            readAsset: _journal.readAsset,
-                            onOpenPage: goToEntry,
-                            onNewPage: _createPage,
-                            onAddSharedPage: widget.sharedPages.busy
-                                ? null
-                                : () =>
-                                      unawaited(widget.sharedPages.pickPage()),
-                            onDeletePage: _journal.deletePage,
-                            cloudSync: widget.cloudSync,
-                          ),
-                          for (final document in _journal.documents)
-                            _buildEntryPage(document),
-                        ],
-                      ),
-                      if (widget.sharedPages.busy &&
-                          widget.sharedPages.pendingPage == null)
-                        const Positioned(
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          child: LinearProgressIndicator(),
-                        ),
-                      if (_currentPage > 0)
-                        Positioned(
-                          left: 12,
-                          top: MediaQuery.paddingOf(context).top + 12,
-                          child: EntryChrome(
-                            visible: _entryChromeVisible,
-                            child: _NavigationButton(
-                              tooltip: 'Home',
-                              icon: Icons.home_outlined,
-                              onPressed: _goToToc,
-                            ),
-                          ),
-                        ),
-                      if (_currentPage > 0)
-                        Positioned(
-                          left: 8,
-                          top: 0,
-                          bottom: 0,
-                          child: EntryChrome(
-                            visible: _entryChromeVisible,
-                            child: Center(
-                              child: _NavigationButton(
-                                tooltip: 'Previous page',
-                                icon: Icons.chevron_left,
-                                onPressed: _goPrev,
-                              ),
-                            ),
-                          ),
-                        ),
-                      if (_currentPage > 0)
-                        Positioned(
-                          right: 8,
-                          top: 0,
-                          bottom: 0,
-                          child: EntryChrome(
-                            visible: _entryChromeVisible,
-                            child: Center(
-                              child: _NavigationButton(
-                                tooltip: 'Next page',
-                                icon: Icons.chevron_right,
-                                onPressed: _currentPage < _pageCount - 1
-                                    ? _goNext
-                                    : null,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
+                        }
+                      });
+                    },
+                    itemBuilder: (context, page) {
+                      if (page == 0) {
+                        return ContentsPage(
+                          documents: _journal.documents,
+                          readAsset: _journal.readAsset,
+                          onOpenPage: goToEntry,
+                          onNewPage: _createPage,
+                          onAddSharedPage: widget.sharedPages.busy
+                              ? null
+                              : () => unawaited(widget.sharedPages.pickPage()),
+                          onDeletePage: _journal.deletePage,
+                          cloudSync: widget.cloudSync,
+                        );
+                      }
+                      return _buildEntryPage(_journal.documents[page - 1]);
+                    },
                   ),
-                ),
+                  if (widget.sharedPages.busy &&
+                      widget.sharedPages.pendingPage == null)
+                    const Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: LinearProgressIndicator(),
+                    ),
+                  if (_currentPage > 0)
+                    Positioned(
+                      left: 12,
+                      top: MediaQuery.paddingOf(context).top + 12,
+                      child: EntryChrome(
+                        visible: _entryChromeVisible,
+                        child: _NavigationButton(
+                          tooltip: 'Home',
+                          icon: Icons.home_outlined,
+                          onPressed: _goToToc,
+                        ),
+                      ),
+                    ),
+                  if (_currentPage > 0)
+                    Positioned(
+                      left: 8,
+                      top: 0,
+                      bottom: 0,
+                      child: EntryChrome(
+                        visible: _entryChromeVisible,
+                        child: Center(
+                          child: _NavigationButton(
+                            tooltip: 'Previous page',
+                            icon: Icons.chevron_left,
+                            onPressed: _goPrev,
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (_currentPage > 0)
+                    Positioned(
+                      right: 8,
+                      top: 0,
+                      bottom: 0,
+                      child: EntryChrome(
+                        visible: _entryChromeVisible,
+                        child: Center(
+                          child: _NavigationButton(
+                            tooltip: 'Next page',
+                            icon: Icons.chevron_right,
+                            onPressed: _currentPage < _pageCount - 1
+                                ? _goNext
+                                : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

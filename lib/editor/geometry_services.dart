@@ -93,9 +93,9 @@ class BoundsService {
   static Rect rotated(Iterable<CanvasRenderable> blocks) {
     final items = blocks.toList(growable: false);
     if (items.isEmpty) return Rect.zero;
-    var bounds = _rotatedBlockRect(items.first);
+    var bounds = rotatedBlock(items.first);
     for (final block in items.skip(1)) {
-      bounds = bounds.expandToInclude(_rotatedBlockRect(block));
+      bounds = bounds.expandToInclude(rotatedBlock(block));
     }
     return bounds;
   }
@@ -103,17 +103,19 @@ class BoundsService {
   static Rect _blockRect(CanvasRenderable block) =>
       Rect.fromLTWH(block.x, block.y, block.w, block.h);
 
-  static Rect _rotatedBlockRect(CanvasRenderable block) {
+  static Rect rotatedBlock(CanvasRenderable block) {
     final rect = _blockRect(block);
     final center = rect.center;
-    final corners = <Offset>[
-      rect.topLeft,
-      rect.topRight,
-      rect.bottomRight,
-      rect.bottomLeft,
-    ].map(
-      (corner) => center + TransformService.rotate(corner - center, block.rotation),
-    );
+    final corners =
+        <Offset>[
+          rect.topLeft,
+          rect.topRight,
+          rect.bottomRight,
+          rect.bottomLeft,
+        ].map(
+          (corner) =>
+              center + TransformService.rotate(corner - center, block.rotation),
+        );
     var bounds = Rect.fromPoints(corners.first, corners.first);
     for (final corner in corners.skip(1)) {
       bounds = bounds.expandToInclude(Rect.fromPoints(corner, corner));

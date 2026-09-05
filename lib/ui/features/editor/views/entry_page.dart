@@ -117,6 +117,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   static const _maxFontSize = 48.0;
   bool _resizeActive = false;
   double _cameraScale = 1;
+  Rect? _visibleCanvasRect;
   bool _titleFocused = false;
   String? _colorTransactionBlockId;
   bool _strokeColorTransactionActive = false;
@@ -207,14 +208,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       if (!_titleFocused) {
         _titleController.text = _document.title;
       }
-    }
-    if (widget.active &&
-        (!oldWidget.active ||
-            oldWidget.viewModel.document.music !=
-                widget.viewModel.document.music)) {
-      unawaited(
-        widget.musicController.setActivePage(_document.id, _document.music),
-      );
     }
   }
 
@@ -802,9 +795,18 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         () => AssetImage(sticker.assetPath),
       );
     }
+    final cached = _imageProviders[assetId];
+    if (cached != null) return cached;
     final bytes = _editor.readAsset(assetId);
     if (bytes == null) return null;
-    return _imageProviders.putIfAbsent(assetId, () => MemoryImage(bytes));
+    // Imported photos can be substantially larger than an Android display.
+    // A capped decode avoids allocating the full source bitmap while keeping
+    // enough detail for the editor's supported zoom range.
+    return _imageProviders[assetId] = ResizeImage.resizeIfNeeded(
+      2048,
+      2048,
+      MemoryImage(bytes),
+    );
   }
 
   void _showImageError(String message) {
@@ -1154,6 +1156,16 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                   }
                   setState(() => _cameraScale = scale);
                 },
+                onViewportChanged: (snapshot) {
+                  if (!mounted ||
+                      snapshot.visibleCanvasRect == _visibleCanvasRect) {
+                    return;
+                  }
+                  setState(() {
+                    _cameraScale = snapshot.scale;
+                    _visibleCanvasRect = snapshot.visibleCanvasRect;
+                  });
+                },
                 canvasSize: _workspaceSize,
                 pageRect: Rect.fromLTWH(
                   _pageFramePosition.dx,
@@ -1190,6 +1202,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                           nodes: _editor.renderNodes,
                           board: _editor.board,
                           cameraScale: _cameraScale,
+                          visibleCanvasRect: _visibleCanvasRect,
                           editing: _editing,
                           selectedId: _selectedId,
                           selectedIds: _editor.selection,

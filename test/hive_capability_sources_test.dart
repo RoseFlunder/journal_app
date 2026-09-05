@@ -42,7 +42,9 @@ void main() {
       repositories.documentRepository.documents.single.nodes.single.text,
       'Immutable',
     );
-    final beforeView = Map<String, dynamic>.from(source.readEntry(created.id) as Map);
+    final beforeView = Map<String, dynamic>.from(
+      source.readEntry(created.id) as Map,
+    );
     final beforeRevision = beforeView['revision'];
     await repositories.documentRepository.saveDocument(
       repositories.documentRepository.documents.single.copyWith(
@@ -50,10 +52,15 @@ void main() {
         board: const BoardSettings(gridVisible: true),
       ),
     );
-    final afterView = Map<String, dynamic>.from(source.readEntry(created.id) as Map);
+    final afterView = Map<String, dynamic>.from(
+      source.readEntry(created.id) as Map,
+    );
     expect(afterView['revision'], beforeRevision);
     expect(
-      repositories.viewPreferencesRepository?.preferencesFor(created.id).view?.zoom,
+      repositories.viewPreferencesRepository
+          ?.preferencesFor(created.id)
+          .view
+          ?.zoom,
       2,
     );
     final assetId = await repositories.assetRepository.putAsset(
@@ -61,7 +68,10 @@ void main() {
       'image/png',
       [1, 2, 3],
     );
-    expect(repositories.assetRepository.readAsset(assetId.id)?.bytes, [1, 2, 3]);
+    final firstAssetRead = repositories.assetRepository.readAsset(assetId.id);
+    final secondAssetRead = repositories.assetRepository.readAsset(assetId.id);
+    expect(firstAssetRead?.bytes, [1, 2, 3]);
+    expect(identical(firstAssetRead, secondAssetRead), isTrue);
 
     await repositories.documentRepository.deleteDocument(created.id);
     expect(repositories.documentRepository.documents, isEmpty);

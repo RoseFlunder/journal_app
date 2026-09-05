@@ -34,10 +34,22 @@ class EditorController extends ChangeNotifier {
   Set<String> _clipboardSelection = <String>{};
   Timer? _textTimer;
   EditorSaveState _saveState = EditorSaveState.saved;
+  EntryDocument? _renderProjectionDocument;
+  List<CanvasNode> _renderProjection = const <CanvasNode>[];
+  EntryDocument? _structuralProjectionDocument;
+  List<CanvasNode> _structuralProjection = const <CanvasNode>[];
 
   /// Immutable leaf projection consumed by the modern canvas renderer.
-  List<CanvasNode> get renderNodes => _document.renderNodes;
+  List<CanvasNode> get renderNodes {
+    if (!identical(_renderProjectionDocument, _document)) {
+      _renderProjectionDocument = _document;
+      _renderProjection = _document.renderNodes;
+    }
+    return _renderProjection;
+  }
+
   List<CanvasNode> get nodes => document.nodes;
+
   /// Immutable structural projection used by layers and inspectors.
   List<CanvasNode> get allNodes => _allDocumentNodes;
   EntryDocument get document => _document;
@@ -48,6 +60,7 @@ class EditorController extends ChangeNotifier {
   bool get canRedo => _history.canRedo;
   bool get inTransaction => _history.inTransaction;
   bool get canPaste => _clipboard.isNotEmpty;
+
   /// Asset IDs kept alive by clipboard and undo/redo snapshots.
   Set<String> get retainedAssetIds => Set.unmodifiable({
     ..._history.retainedAssetIds,
@@ -216,8 +229,7 @@ class EditorController extends ChangeNotifier {
   }) {
     final ids = _expandedSelectedNodes
         .where(
-          (node) =>
-              node.type == BlockType.ink || node.type == BlockType.shape,
+          (node) => node.type == BlockType.ink || node.type == BlockType.shape,
         )
         .map((node) => node.id)
         .toSet();
@@ -401,21 +413,14 @@ class EditorController extends ChangeNotifier {
       collect(node);
     }
     final inserted = sourceList
-        .map(
-          (node) => _remapClipboardNode(
-            node,
-            idMap,
-            offset: offset,
-          ),
-        )
+        .map((node) => _remapClipboardNode(node, idMap, offset: offset))
         .toList(growable: false);
     _document = _document.insertNodes(inserted);
     _selection
       ..clear()
       ..addAll(
-        _flattenNodeIds(inserted).where(
-          (id) => _document.nodeById(id)?.type != BlockType.group,
-        ),
+        _flattenNodeIds(inserted)
+            .where((id) => _document.nodeById(id)?.type != BlockType.group),
       );
     notifyListeners();
     unawaited(commitTransaction());
@@ -429,7 +434,9 @@ class EditorController extends ChangeNotifier {
         .where((node) => !node.locked)
         .map((node) => node.id)
         .toSet();
-    final remaining = _allDocumentNodes.where((node) => !selected.contains(node.id));
+    final remaining = _allDocumentNodes.where(
+      (node) => !selected.contains(node.id),
+    );
     final liveGroupIds = remaining
         .where((node) => node.groupId != null)
         .map((node) => node.groupId!)
@@ -511,13 +518,7 @@ class EditorController extends ChangeNotifier {
       collect(source);
     }
     final pasted = _clipboard
-        .map(
-          (source) => _remapClipboardNode(
-            source,
-            idMap,
-            offset: offset,
-          ),
-        )
+        .map((source) => _remapClipboardNode(source, idMap, offset: offset))
         .toList(growable: false);
     _document = _document.insertNodes(pasted);
     _selection
@@ -681,8 +682,12 @@ class EditorController extends ChangeNotifier {
   void ungroupSelection() {
     final parents = _parentById;
     final groupIds = _expandedSelectedNodes
-        .where((node) => node.type == BlockType.group || parents[node.id] != null)
-        .map((node) => node.type == BlockType.group ? node.id : parents[node.id])
+        .where(
+          (node) => node.type == BlockType.group || parents[node.id] != null,
+        )
+        .map(
+          (node) => node.type == BlockType.group ? node.id : parents[node.id],
+        )
         .whereType<String>()
         .toSet();
     if (groupIds.isEmpty) return;
@@ -708,10 +713,7 @@ class EditorController extends ChangeNotifier {
               {'insert': '\n'},
             ]
           : List<dynamic>.from(delta);
-    replaceNode(
-      node.copyWith(payload: payload),
-      label: 'Edit text',
-    );
+    replaceNode(node.copyWith(payload: payload), label: 'Edit text');
     _textTimer?.cancel();
     _textTimer = Timer(const Duration(milliseconds: 500), () {
       unawaited(commitTransaction());
@@ -742,8 +744,7 @@ class EditorController extends ChangeNotifier {
 
   /// Returns the selected structural graph as immutable nodes for feature
   /// workflows such as clipboard persistence and insertion.
-  List<CanvasNode> selectedNodeGraphSnapshot() =>
-      _selectedGraphNodes;
+  List<CanvasNode> selectedNodeGraphSnapshot() => _selectedGraphNodes;
 
   /// Replaces the working document after a checkpoint restore or archive
   /// import. History intentionally starts fresh at the restored version.
@@ -810,6 +811,9 @@ class EditorController extends ChangeNotifier {
   }
 
   List<CanvasNode> get _allDocumentNodes {
+    if (identical(_structuralProjectionDocument, _document)) {
+      return _structuralProjection;
+    }
     final result = <CanvasNode>[];
     void visit(Iterable<CanvasNode> candidates) {
       for (final node in candidates) {
@@ -819,7 +823,8 @@ class EditorController extends ChangeNotifier {
     }
 
     visit(_document.nodes);
-    return List<CanvasNode>.unmodifiable(result);
+    _structuralProjectionDocument = _document;
+    return _structuralProjection = List<CanvasNode>.unmodifiable(result);
   }
 
   List<CanvasNode> get _selectedNodes => List<CanvasNode>.unmodifiable(
@@ -886,13 +891,11 @@ class EditorController extends ChangeNotifier {
     }
 
     List<CanvasNode> copyRoots(Iterable<CanvasNode> candidates) => candidates
-        .map(
-          (node) {
-            if (!ids.contains(node.id)) return null;
-            final children = copyRoots(node.children);
-            return node.copyWith(children: children);
-          },
-        )
+        .map((node) {
+          if (!ids.contains(node.id)) return null;
+          final children = copyRoots(node.children);
+          return node.copyWith(children: children);
+        })
         .whereType<CanvasNode>()
         .toList(growable: false);
 

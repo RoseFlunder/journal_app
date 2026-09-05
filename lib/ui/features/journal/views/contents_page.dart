@@ -10,7 +10,7 @@ import '../../../../platform/cloud_sign_in_button.dart';
 
 /// Botanical home/contents page. It intentionally stays focused on the
 /// journal list; calendar and search are deferred.
-class ContentsPage extends StatelessWidget {
+class ContentsPage extends StatefulWidget {
   const ContentsPage({
     super.key,
     required this.documents,
@@ -29,6 +29,22 @@ class ContentsPage extends StatelessWidget {
   final VoidCallback? onAddSharedPage;
   final Future<void> Function(String id) onDeletePage;
   final CloudSyncViewModel cloudSync;
+
+  @override
+  State<ContentsPage> createState() => _ContentsPageState();
+}
+
+class _ContentsPageState extends State<ContentsPage> {
+  final Map<String, ImageProvider<Object>> _previewProviders =
+      <String, ImageProvider<Object>>{};
+
+  List<EntryDocument> get documents => widget.documents;
+  Uint8List? Function(String id) get readAsset => widget.readAsset;
+  ValueChanged<int> get onOpenPage => widget.onOpenPage;
+  VoidCallback get onNewPage => widget.onNewPage;
+  VoidCallback? get onAddSharedPage => widget.onAddSharedPage;
+  Future<void> Function(String id) get onDeletePage => widget.onDeletePage;
+  CloudSyncViewModel get cloudSync => widget.cloudSync;
 
   Future<void> _confirmDelete(
     BuildContext context,
@@ -187,8 +203,16 @@ class ContentsPage extends StatelessWidget {
         if (node.type.name == 'image') {
           final assetId = node.payload['assetId'];
           if (assetId is String) {
+            final cached = _previewProviders[assetId];
+            if (cached != null) return cached;
             final bytes = readAsset(assetId);
-            if (bytes != null) return MemoryImage(bytes);
+            if (bytes != null) {
+              return _previewProviders[assetId] = ResizeImage.resizeIfNeeded(
+                160,
+                160,
+                MemoryImage(bytes),
+              );
+            }
           }
         }
         final nested = visit(node.children);

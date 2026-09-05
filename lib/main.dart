@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -11,6 +12,11 @@ export 'app/journal_app.dart' show JournalApp;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    // Display-sized decodes make this a useful warm-page cache without
+    // allowing image-heavy journals to consume the platform default budget.
+    PaintingBinding.instance.imageCache.maximumSizeBytes = 64 * 1024 * 1024;
+  }
   runApp(const CozyBloomBootstrap());
 }
 
@@ -167,7 +173,10 @@ class _JournalLifecycleState extends State<_JournalLifecycle>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(
-      widget.dependencies.dispose().catchError((Object error, StackTrace stackTrace) {
+      widget.dependencies.dispose().catchError((
+        Object error,
+        StackTrace stackTrace,
+      ) {
         debugPrint('Could not close journal storage: $error');
       }),
     );
@@ -196,7 +205,6 @@ class _JournalLifecycleState extends State<_JournalLifecycle>
   }
 
   @override
-  Widget build(BuildContext context) => JournalApp(
-    dependencies: widget.dependencies,
-  );
+  Widget build(BuildContext context) =>
+      JournalApp(dependencies: widget.dependencies);
 }

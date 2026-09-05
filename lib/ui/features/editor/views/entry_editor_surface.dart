@@ -13,6 +13,7 @@ class EntryEditorSurface extends StatelessWidget {
     super.key,
     required this.child,
     required this.onScaleChanged,
+    required this.onViewportChanged,
     required this.canvasSize,
     required this.pageRect,
     required this.controlsBottomInset,
@@ -25,6 +26,7 @@ class EntryEditorSurface extends StatelessWidget {
 
   final Widget child;
   final ValueChanged<double> onScaleChanged;
+  final ValueChanged<PageViewportSnapshot> onViewportChanged;
   final Size canvasSize;
   final Rect pageRect;
   final double controlsBottomInset;
@@ -37,6 +39,7 @@ class EntryEditorSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) => PageViewport(
     onScaleChanged: onScaleChanged,
+    onViewportChanged: onViewportChanged,
     canvasSize: canvasSize,
     pageRect: pageRect,
     controlsBottomInset: controlsBottomInset,

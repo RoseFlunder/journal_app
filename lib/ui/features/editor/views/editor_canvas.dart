@@ -64,6 +64,7 @@ class EntryCanvas extends StatefulWidget {
     this.workspaceSize = PageViewport.pageSize,
     this.worldOrigin = Offset.zero,
     this.cameraScale = 1,
+    this.visibleCanvasRect,
   });
 
   /// Render-ready immutable nodes used by the configured feature canvas.
@@ -101,6 +102,7 @@ class EntryCanvas extends StatefulWidget {
   final Size workspaceSize;
   final Offset worldOrigin;
   final double cameraScale;
+  final Rect? visibleCanvasRect;
 
   static const minWidth = 16.0;
   static const minHeight = 10.0;
@@ -196,9 +198,10 @@ class _EntryCanvasState extends State<EntryCanvas> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final scale = PageViewport.modelToRenderScale;
+        final visibleNodes = _visibleNodes(scale);
         CanvasRenderable? selectedBlock;
         if (widget.editing && widget.selectedId != null) {
-          for (final block in widget.nodes) {
+          for (final block in visibleNodes) {
             if (block.id == widget.selectedId) {
               selectedBlock = block;
               break;
@@ -244,7 +247,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
                               )) {
                             return;
                           }
-                          final hitsBlock = widget.nodes.any(
+                          final hitsBlock = visibleNodes.any(
                             (block) =>
                                 !block.hidden &&
                                 _containsBlock(point, block, scale),
@@ -300,7 +303,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
                       : null,
                   child: Stack(
                     children: [
-                      for (final block in widget.nodes.where(
+                      for (final block in visibleNodes.where(
                         (block) => !block.hidden,
                       ))
                         Positioned(
@@ -310,70 +313,77 @@ class _EntryCanvasState extends State<EntryCanvas> {
                               math.max(EntryCanvas.minWidth, block.w) * scale,
                           height:
                               math.max(EntryCanvas.minHeight, block.h) * scale,
-                          child: IgnorePointer(
-                            ignoring: widget.drawMode,
-                            child: Transform.rotate(
-                              angle: block.rotation,
-                              child: Opacity(
-                                opacity: block.opacity,
-                                child: BlockWidget(
-                                  block: block,
-                                  selected: widget.selectedIds.isEmpty
-                                      ? widget.selectedId == block.id
-                                      : widget.selectedIds.contains(block.id),
-                                  editing: widget.editing,
-                                  locked: block.locked,
-                                  controlScale: widget.cameraScale,
-                                  textEditing: widget.textEditingId == block.id,
-                                  onTap: () => widget.onSelect(block.id),
-                                  onEditText: () => widget.onEditText(block.id),
-                                  onMoveStart: (globalPosition) => _startMove(
-                                    context,
-                                    block,
-                                    globalPosition,
-                                  ),
-                                  onMoveUpdate: (globalPosition) => _updateMove(
-                                    context,
-                                    block,
-                                    globalPosition,
-                                  ),
-                                  onMoveEnd: _endMove,
-                                  onRotate: (delta) =>
-                                      _rotateBlockOrSelection(block, delta),
-                                  onTransformStart: _beginInteraction,
-                                  onTransformEnd: _endInteraction,
-                                  showRotateHandle: _showRotateHandle,
-                                  imageBytes:
-                                      _visualId(block) == null ||
-                                          widget.imageProvider != null
-                                      ? null
-                                      : widget.imageBytes(_visualId(block)!),
-                                  imageProvider: _visualId(block) == null
-                                      ? null
-                                      : widget.imageProvider?.call(
-                                          _visualId(block)!,
+                          child: RepaintBoundary(
+                            key: ValueKey('canvas-node-${block.id}'),
+                            child: IgnorePointer(
+                              ignoring: widget.drawMode,
+                              child: Transform.rotate(
+                                angle: block.rotation,
+                                child: Opacity(
+                                  opacity: block.opacity,
+                                  child: BlockWidget(
+                                    block: block,
+                                    selected: widget.selectedIds.isEmpty
+                                        ? widget.selectedId == block.id
+                                        : widget.selectedIds.contains(block.id),
+                                    editing: widget.editing,
+                                    locked: block.locked,
+                                    controlScale: widget.cameraScale,
+                                    textEditing:
+                                        widget.textEditingId == block.id,
+                                    onTap: () => widget.onSelect(block.id),
+                                    onEditText: () =>
+                                        widget.onEditText(block.id),
+                                    onMoveStart: (globalPosition) => _startMove(
+                                      context,
+                                      block,
+                                      globalPosition,
+                                    ),
+                                    onMoveUpdate: (globalPosition) =>
+                                        _updateMove(
+                                          context,
+                                          block,
+                                          globalPosition,
                                         ),
-                                  onOpenImage: block.type == BlockType.image
-                                      ? () => _openImage(block)
-                                      : null,
-                                  onEditImage:
-                                      block.type == BlockType.image ||
-                                          block.type == BlockType.sticker
-                                      ? () => _editImage(block)
-                                      : null,
-                                  onTextChanged: (text) {
-                                    if (block.locked) return;
-                                    final onTextChanged = widget.onTextChanged;
-                                    if (onTextChanged != null) {
-                                      onTextChanged(block.id, text);
-                                    }
-                                  },
-                                  onRichTextChanged: (text, delta) => widget
-                                      .onTextChanged
-                                      ?.call(block.id, text, delta: delta),
-                                  preserveAspectRatio:
-                                      block.type == BlockType.image ||
-                                      block.type == BlockType.sticker,
+                                    onMoveEnd: _endMove,
+                                    onRotate: (delta) =>
+                                        _rotateBlockOrSelection(block, delta),
+                                    onTransformStart: _beginInteraction,
+                                    onTransformEnd: _endInteraction,
+                                    showRotateHandle: _showRotateHandle,
+                                    imageBytes:
+                                        _visualId(block) == null ||
+                                            widget.imageProvider != null
+                                        ? null
+                                        : widget.imageBytes(_visualId(block)!),
+                                    imageProvider: _visualId(block) == null
+                                        ? null
+                                        : widget.imageProvider?.call(
+                                            _visualId(block)!,
+                                          ),
+                                    onOpenImage: block.type == BlockType.image
+                                        ? () => _openImage(block)
+                                        : null,
+                                    onEditImage:
+                                        block.type == BlockType.image ||
+                                            block.type == BlockType.sticker
+                                        ? () => _editImage(block)
+                                        : null,
+                                    onTextChanged: (text) {
+                                      if (block.locked) return;
+                                      final onTextChanged =
+                                          widget.onTextChanged;
+                                      if (onTextChanged != null) {
+                                        onTextChanged(block.id, text);
+                                      }
+                                    },
+                                    onRichTextChanged: (text, delta) => widget
+                                        .onTextChanged
+                                        ?.call(block.id, text, delta: delta),
+                                    preserveAspectRatio:
+                                        block.type == BlockType.image ||
+                                        block.type == BlockType.sticker,
+                                  ),
                                 ),
                               ),
                             ),
@@ -420,6 +430,29 @@ class _EntryCanvasState extends State<EntryCanvas> {
         );
       },
     );
+  }
+
+  List<CanvasNode> _visibleNodes(double scale) {
+    final viewport = widget.visibleCanvasRect;
+    if (viewport == null) return widget.nodes.toList(growable: false);
+    final overscan = 96 / math.max(widget.cameraScale, 0.01);
+    final expanded = viewport.inflate(overscan);
+    return widget.nodes
+        .where((node) {
+          if (widget.selectedIds.contains(node.id) ||
+              widget.selectedId == node.id) {
+            return true;
+          }
+          final bounds = BoundsService.rotatedBlock(node);
+          final rendered = Rect.fromLTRB(
+            (bounds.left + widget.worldOrigin.dx) * scale,
+            (bounds.top + widget.worldOrigin.dy) * scale,
+            (bounds.right + widget.worldOrigin.dx) * scale,
+            (bounds.bottom + widget.worldOrigin.dy) * scale,
+          );
+          return rendered.overlaps(expanded);
+        })
+        .toList(growable: false);
   }
 
   bool get _showRotateHandle =>
