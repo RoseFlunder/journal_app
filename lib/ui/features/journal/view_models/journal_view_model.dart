@@ -1,7 +1,9 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../../../models/document.dart';
+import '../../../../models/document_order.dart';
 import '../../../../models/page_music.dart';
 import '../../../../services/repositories.dart';
 
@@ -10,9 +12,8 @@ class JournalViewModel extends ChangeNotifier {
   JournalViewModel({
     required DocumentRepository repository,
     this._assetRepository,
-  })
-    : _repository = repository,
-      _documents = List.unmodifiable(repository.documents) {
+  }) : _repository = repository,
+       _documents = chronologicalDocuments(repository.documents) {
     _changesSubscription = repository.changes.listen((_) => _refresh());
   }
 
@@ -53,10 +54,7 @@ class JournalViewModel extends ChangeNotifier {
 
   /// Persists a catalog-resolved track without exposing the document
   /// repository to the music controller or its views.
-  Future<void> persistResolvedTrack(
-    String pageId,
-    PageMusicTrack track,
-  ) async {
+  Future<void> persistResolvedTrack(String pageId, PageMusicTrack track) async {
     final document = documentById(pageId);
     if (document == null) return;
     await saveDocument(
@@ -74,7 +72,7 @@ class JournalViewModel extends ChangeNotifier {
   }
 
   void _refresh() {
-    _documents = List.unmodifiable(_repository.documents);
+    _documents = chronologicalDocuments(_repository.documents);
     if (hasListeners) notifyListeners();
   }
 

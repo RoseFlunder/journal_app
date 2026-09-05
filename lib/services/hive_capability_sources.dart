@@ -1,8 +1,10 @@
 import 'dart:async';
+
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/document.dart';
+import '../models/document_order.dart';
 import '../models/view_state.dart';
 import 'hive_journal_data_source.dart';
 import 'journal_archive.dart';
@@ -19,8 +21,7 @@ class HiveDocumentDataSource {
   }
 
   final HiveJournalDataSource storage;
-  final StreamController<void> _changes =
-      StreamController<void>.broadcast();
+  final StreamController<void> _changes = StreamController<void>.broadcast();
   List<EntryDocument> _documents = <EntryDocument>[];
   final Map<String, int> _revisions = <String, int>{};
   bool _loaded = false;
@@ -51,7 +52,7 @@ class HiveDocumentDataSource {
       createdAt: now,
       modifiedAt: now,
     );
-    _documents = List<EntryDocument>.unmodifiable([..._documents, document]);
+    _documents = chronologicalDocuments([..._documents, document]);
     final order = _documents.map((item) => item.id).toList(growable: false);
     await storage.enqueue(() async {
       await storage.writeEntry(
@@ -64,12 +65,38 @@ class HiveDocumentDataSource {
     return document;
   }
 
+  Future<void> addSharedDocument(EntryDocument document) async {
+    await _ensureLoaded();
+    await storage.enqueue(() async {
+      if (storage.readEntry(document.id) != null) {
+        throw StateError('Shared page already exists');
+      }
+      final next = chronologicalDocuments([..._documents, document]);
+      try {
+        await storage.writeEntry(
+          document.id,
+          JournalDocumentCodec.encodeRecord(document, revision: 0),
+        );
+        await _writeManifest(next.map((item) => item.id).toList());
+      } catch (_) {
+        await storage.deleteEntry(document.id);
+        rethrow;
+      }
+      _revisions[document.id] = 0;
+      _documents = next;
+      _publish();
+    });
+  }
+
   Future<void> saveDocument(EntryDocument document) async {
     await _ensureLoaded();
     final index = _documents.indexWhere((item) => item.id == document.id);
     if (index < 0) return;
     final existing = _documents[index];
-    final contentChanged = !JournalDocumentCodec.sameContent(existing, document);
+    final contentChanged = !JournalDocumentCodec.sameContent(
+      existing,
+      document,
+    );
     final next = document.copyWith(
       modifiedAt: contentChanged ? DateTime.now().toUtc() : existing.modifiedAt,
     );
@@ -78,7 +105,7 @@ class HiveDocumentDataSource {
     // canonical content record.
     if (!contentChanged) {
       final updated = List<EntryDocument>.from(_documents)..[index] = next;
-      _documents = List<EntryDocument>.unmodifiable(updated);
+      _documents = chronologicalDocuments(updated);
       await storage.enqueue(() async {
         await storage.writeMeta(
           _viewKey(next.id),
@@ -94,7 +121,7 @@ class HiveDocumentDataSource {
     final revision = (_revisions[document.id] ?? 0) + 1;
     _revisions[document.id] = revision;
     final updated = List<EntryDocument>.from(_documents)..[index] = next;
-    _documents = List<EntryDocument>.unmodifiable(updated);
+    _documents = chronologicalDocuments(updated);
     await storage.enqueue(() async {
       await storage.writeEntry(
         next.id,
@@ -116,7 +143,7 @@ class HiveDocumentDataSource {
     final index = _documents.indexWhere((item) => item.id == document.id);
     if (index < 0) return;
     final updated = List<EntryDocument>.from(_documents)..[index] = document;
-    _documents = List<EntryDocument>.unmodifiable(updated);
+    _documents = chronologicalDocuments(updated);
   }
 
   Future<void> deleteDocument(String id) async {
@@ -143,7 +170,7 @@ class HiveDocumentDataSource {
       board: document.board.copyWith(gridVisible: current.board.gridVisible),
     );
     final updated = List<EntryDocument>.from(_documents)..[index] = restored;
-    _documents = List<EntryDocument>.unmodifiable(updated);
+    _documents = chronologicalDocuments(updated);
     await storage.enqueue(() async {
       await storage.writeEntry(
         restored.id,
@@ -152,6 +179,7 @@ class HiveDocumentDataSource {
           revision: _revisions[document.id] ?? 0,
         ),
       );
+      await _writeManifest(_documents.map((item) => item.id).toList());
       _publish();
     });
   }
@@ -167,7 +195,9 @@ class HiveDocumentDataSource {
         ? document
         : document.copyWith(
             view: current.view,
-            board: document.board.copyWith(gridVisible: current.board.gridVisible),
+            board: document.board.copyWith(
+              gridVisible: current.board.gridVisible,
+            ),
           );
     final updated = List<EntryDocument>.from(_documents);
     if (index < 0) {
@@ -175,7 +205,7 @@ class HiveDocumentDataSource {
     } else {
       updated[index] = imported;
     }
-    _documents = List<EntryDocument>.unmodifiable(updated);
+    _documents = chronologicalDocuments(updated);
     final order = _documents.map((item) => item.id).toList(growable: false);
     await storage.enqueue(() async {
       await storage.writeEntry(
@@ -230,13 +260,12 @@ class HiveDocumentDataSource {
         if (byId[document.id] != null) byId[document.id]!,
     ];
     if (next.length != _documents.length) return;
-    _documents = List<EntryDocument>.unmodifiable(next);
+    next.sort(compareDocumentCreation);
+    _documents = chronologicalDocuments(next);
     await storage.enqueue(() async {
       await storage.writeMeta(
         'journal.manifest',
-        StoredJournalManifest(
-          next.map((document) => document.id),
-        ).toJson(),
+        StoredJournalManifest(next.map((document) => document.id)).toJson(),
       );
       _publish();
     });
@@ -257,7 +286,14 @@ class HiveDocumentDataSource {
       try {
         rawOrder = StoredJournalManifest.fromJson(rawManifest).documentIds;
       } catch (error) {
-        unawaited(storage.quarantine('manifest', 'journal.manifest', rawManifest, error));
+        unawaited(
+          storage.quarantine(
+            'manifest',
+            'journal.manifest',
+            rawManifest,
+            error,
+          ),
+        );
         rawOrder = const <String>[];
       }
     }
@@ -273,20 +309,27 @@ class HiveDocumentDataSource {
         loadedIds.add(id);
       }
     }
-    final unordered = storage.entryKeys
-        .whereType<String>()
-        .where((id) => !loadedIds.contains(id))
-        .toList()
-      ..sort();
+    final unordered =
+        storage.entryKeys
+            .whereType<String>()
+            .where((id) => !loadedIds.contains(id))
+            .toList()
+          ..sort();
     for (final id in unordered) {
       final document = _readDocument(id);
       if (document != null) loaded.add(document);
     }
+    loaded.sort(compareDocumentCreation);
     _documents = List<EntryDocument>.unmodifiable(loaded);
     _loaded = true;
-    final repairedOrder = loaded.map((document) => document.id).toList(growable: false);
+    final repairedOrder = loaded
+        .map((document) => document.id)
+        .toList(growable: false);
     if (rawManifest is! Map ||
-        !_sameIds(rawOrder is List ? rawOrder.whereType<String>() : const [], repairedOrder)) {
+        !_sameIds(
+          rawOrder is List ? rawOrder.whereType<String>() : const [],
+          repairedOrder,
+        )) {
       unawaited(storage.enqueue(() => _writeManifest(repairedOrder)));
     }
     _publish();
@@ -380,9 +423,9 @@ class HiveDocumentDataSource {
   }
 
   Future<void> _writeManifest(Iterable<String> ids) => storage.writeMeta(
-        'journal.manifest',
-        StoredJournalManifest(ids).toJson(),
-      );
+    'journal.manifest',
+    StoredJournalManifest(ids).toJson(),
+  );
 
   static String _viewKey(String id) => 'viewPreferences:$id';
 
@@ -414,7 +457,9 @@ class HiveAssetDataSource {
     String mime,
     List<int> bytes,
   ) async {
-    if (mime.trim().isEmpty || !mime.contains('/') || mime.contains(RegExp(r'\s'))) {
+    if (mime.trim().isEmpty ||
+        !mime.contains('/') ||
+        mime.contains(RegExp(r'\s'))) {
       throw const StorageFormatException('Asset MIME type is invalid');
     }
     if (bytes.any((byte) => byte < 0 || byte > 255)) {
@@ -499,7 +544,9 @@ class HiveAssetDataSource {
   ) {
     final digest = sha256.convert(bytes).toString();
     if (id != digest) {
-      throw StorageFormatException('Asset ID $id does not match its content hash');
+      throw StorageFormatException(
+        'Asset ID $id does not match its content hash',
+      );
     }
     final record = StoredAssetRecord(
       id: id,
@@ -615,8 +662,7 @@ class HiveCheckpointDataSource {
     final json = Map<String, dynamic>.from(raw);
     late final EntryDocument restored;
     try {
-      restored = StoredCheckpointRecord.fromJson(json)
-          .document
+      restored = StoredCheckpointRecord.fromJson(json).document
           .copyWith(modifiedAt: DateTime.now().toUtc());
     } catch (error) {
       await storage.quarantine('checkpoint', checkpointId, raw, error);
@@ -668,7 +714,8 @@ class HivePreferencesDataSource {
 
   List<int> get recentColorValues => _readList('colorPickerRecent', 8);
 
-  Set<int> get favoriteColorValues => _readList('colorPickerFavorites', 12).toSet();
+  Set<int> get favoriteColorValues =>
+      _readList('colorPickerFavorites', 12).toSet();
 
   Future<void> updateColorPreferences({
     List<int>? recent,
@@ -727,24 +774,19 @@ class HiveArchiveDataSource {
       final blob = assets.readAsset(id);
       if (blob != null) {
         archiveAssets.add(
-          ArchiveAsset(
-            id: id,
-            mime: blob.descriptor.mime,
-            bytes: blob.bytes,
-          ),
+          ArchiveAsset(id: id, mime: blob.descriptor.mime, bytes: blob.bytes),
         );
       }
     }
-    return JournalArchive(
-      document: document,
-      assets: archiveAssets,
-    );
+    return JournalArchive(document: document, assets: archiveAssets);
   }
 
   Future<EntryDocument> importArchive(JournalArchive archive) async {
     archive.validate();
-    final target = await documents.createDocument(title: archive.document.title);
+    final targetId = const Uuid().v4();
     final assetIds = <String, String>{};
+    // Content-addressed assets can be reused by other pages. Never delete them
+    // on failure; normal orphan pruning can reclaim any unused staged assets.
     for (final asset in archive.assets) {
       final descriptor = await assets.putAsset(
         asset.mime.startsWith('audio/') ? AssetKind.audio : AssetKind.image,
@@ -753,9 +795,9 @@ class HiveArchiveDataSource {
       );
       assetIds[asset.id] = descriptor.id;
     }
-    final imported = _remapAssets(archive.document, assetIds, target.id);
-    await documents.replaceRestoredDocument(imported);
-    return documents.documentById(target.id) ?? imported;
+    final imported = _remapAssets(archive.document, assetIds, targetId);
+    await documents.addSharedDocument(imported);
+    return imported;
   }
 
   EntryDocument _remapAssets(
@@ -764,25 +806,25 @@ class HiveArchiveDataSource {
     String targetId,
   ) {
     List<CanvasNode> visit(Iterable<CanvasNode> nodes) => nodes
-        .map(
-          (node) {
-            final payload = Map<String, dynamic>.from(node.payload);
-            final original = node.assetId;
-            if (original != null && assetIds.containsKey(original)) {
-              payload['assetId'] = assetIds[original];
-            }
-            return node.copyWith(
-              payload: payload,
-              children: node.children.isEmpty ? node.children : visit(node.children),
-            );
-          },
-        )
+        .map((node) {
+          final payload = Map<String, dynamic>.from(node.payload);
+          final original = node.assetId;
+          if (original != null && assetIds.containsKey(original)) {
+            payload['assetId'] = assetIds[original];
+          }
+          return node.copyWith(
+            payload: payload,
+            children: node.children.isEmpty
+                ? node.children
+                : visit(node.children),
+          );
+        })
         .toList(growable: false);
     return EntryDocument(
       id: targetId,
       title: source.title,
-      createdAt: DateTime.now(),
-      modifiedAt: DateTime.now(),
+      createdAt: source.createdAt,
+      modifiedAt: DateTime.now().toUtc(),
       nodes: visit(source.nodes),
       pageSpec: source.pageSpec,
       board: source.board,
@@ -793,7 +835,7 @@ class HiveArchiveDataSource {
       titleTextColorValue: source.titleTextColorValue,
       titleBold: source.titleBold,
       titleItalic: source.titleItalic,
-      revision: source.revision,
+      revision: 0,
       schemaVersion: source.schemaVersion,
     );
   }

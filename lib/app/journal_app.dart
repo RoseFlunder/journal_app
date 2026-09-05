@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../ui/features/journal/view_models/journal_view_model.dart';
+import '../ui/features/journal/view_models/shared_page_view_model.dart';
 import '../ui/features/journal/views/journal_screen.dart';
 import '../ui/features/music/view_models/page_music_controller.dart';
 import '../ui/features/journal/view_models/cloud_sync_view_model.dart';
@@ -62,9 +63,7 @@ class JournalApp extends StatelessWidget {
           ),
         ),
       ),
-      home: _ConfiguredJournalScreen(
-        dependencies: dependencies,
-      ),
+      home: _ConfiguredJournalScreen(dependencies: dependencies),
     );
   }
 }
@@ -73,9 +72,7 @@ class JournalApp extends StatelessWidget {
 /// configured models and services rather than constructing repository clients
 /// inside its view tree.
 class _ConfiguredJournalScreen extends StatefulWidget {
-  const _ConfiguredJournalScreen({
-    required this.dependencies,
-  });
+  const _ConfiguredJournalScreen({required this.dependencies});
 
   final AppDependencies dependencies;
 
@@ -89,6 +86,10 @@ class _ConfiguredJournalScreenState extends State<_ConfiguredJournalScreen> {
     repository: widget.dependencies.repositories.documentRepository,
     assetRepository: widget.dependencies.repositories.assetRepository,
   );
+  late final SharedPageViewModel _sharedPages = SharedPageViewModel(
+    archives: widget.dependencies.repositories.archiveRepository,
+    transfer: widget.dependencies.archiveTransfer,
+  );
   late final PageMusicController _music = PageMusicController(
     catalog: widget.dependencies.musicCatalog,
     playback: widget.dependencies.audioPlaybackFactory(),
@@ -101,6 +102,7 @@ class _ConfiguredJournalScreenState extends State<_ConfiguredJournalScreen> {
   @override
   Widget build(BuildContext context) => JournalScreen(
     journal: _journal,
+    sharedPages: _sharedPages,
     music: _music,
     cloudSync: _cloudSync,
     editorViewModelFactory: widget.dependencies.editorViewModelFactory,
@@ -110,6 +112,7 @@ class _ConfiguredJournalScreenState extends State<_ConfiguredJournalScreen> {
   @override
   void dispose() {
     _cloudSync.dispose();
+    _sharedPages.dispose();
     super.dispose();
   }
 }

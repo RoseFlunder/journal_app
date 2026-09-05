@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/asset_kind.dart';
 import '../models/document.dart';
+import '../models/document_order.dart';
 import 'hive_capability_sources.dart';
 import 'hive_journal_data_source.dart';
 import 'sync_models.dart';
@@ -129,7 +130,8 @@ class HiveSyncLocalStore implements SyncLocalStore {
   }
 
   @override
-  String get deviceId => _device ?? (throw StateError('Sync store not initialized'));
+  String get deviceId =>
+      _device ?? (throw StateError('Sync store not initialized'));
 
   @override
   String? get boundAccountId => _account;
@@ -211,12 +213,8 @@ class HiveSyncLocalStore implements SyncLocalStore {
   }
 
   @override
-  Future<void> putAssetExact(LocalAssetSnapshot asset) => assets.putExact(
-        asset.id,
-        asset.kind,
-        asset.mime,
-        asset.bytes,
-      );
+  Future<void> putAssetExact(LocalAssetSnapshot asset) =>
+      assets.putExact(asset.id, asset.kind, asset.mime, asset.bytes);
 
   @override
   Future<void> clearAllLocalData() async {
@@ -265,7 +263,6 @@ class HiveSyncLocalStore implements SyncLocalStore {
     }
     return result;
   }
-
 }
 
 /// Small in-memory store used by repository-backed widget tests and by the
@@ -279,7 +276,8 @@ class MemorySyncLocalStore implements SyncLocalStore {
   SyncedCollectionHead? _collection;
   String? _account;
   DateTime? _lastSynced;
-  final Map<String, LocalAssetSnapshot> _assets = <String, LocalAssetSnapshot>{};
+  final Map<String, LocalAssetSnapshot> _assets =
+      <String, LocalAssetSnapshot>{};
   final List<EntryDocument> _documents = <EntryDocument>[];
 
   /// Exact-document projection is exposed only for in-memory test shells.
@@ -338,6 +336,7 @@ class MemorySyncLocalStore implements SyncLocalStore {
     } else {
       _documents[index] = document;
     }
+    _documents.sort(compareDocumentCreation);
   }
 
   @override
@@ -357,7 +356,8 @@ class MemorySyncLocalStore implements SyncLocalStore {
     if (next.length == _documents.length) {
       _documents
         ..clear()
-        ..addAll(next);
+        ..addAll(next)
+        ..sort(compareDocumentCreation);
     }
   }
 

@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
 import '../models/document.dart';
+import '../models/document_order.dart';
 import 'cloud_gateway.dart';
 import 'cloud_sync_repository.dart';
 import 'repositories.dart';
@@ -28,8 +29,8 @@ class CloudSyncCoordinator extends ChangeNotifier
     required this.drive,
     required this.persistence,
     bool enabled = true,
-  })  : enabled = enabled,
-        _state = enabled
+  }) : enabled = enabled,
+       _state = enabled
            ? const CloudSyncState.signedOut()
            : const CloudSyncState.disabled() {
     _changesSubscription = documents.changes.listen(_onLocalChange);
@@ -96,12 +97,14 @@ class CloudSyncCoordinator extends ChangeNotifier
       final signedIn = await account.authenticate();
       await _handleAuthenticatedAccount(signedIn);
     } on CloudAuthorizationException catch (error) {
-      _setState(_state.copyWith(
-        phase: error.code == CloudAuthErrorCode.canceled
-            ? CloudSyncPhase.signedOut
-            : CloudSyncPhase.authorizationRequired,
-        error: error.code == CloudAuthErrorCode.canceled ? null : error,
-      ));
+      _setState(
+        _state.copyWith(
+          phase: error.code == CloudAuthErrorCode.canceled
+              ? CloudSyncPhase.signedOut
+              : CloudSyncPhase.authorizationRequired,
+          error: error.code == CloudAuthErrorCode.canceled ? null : error,
+        ),
+      );
     } catch (error) {
       _setState(_state.copyWith(phase: CloudSyncPhase.failed, error: error));
     }
@@ -311,7 +314,9 @@ class CloudSyncCoordinator extends ChangeNotifier
       for (final document in documents.documents) document.id: document,
     };
     var counter = _maxLocalCounter();
-    final knownIds = <String>{...local.documentHeads.map((head) => head.documentId)};
+    final knownIds = <String>{
+      ...local.documentHeads.map((head) => head.documentId),
+    };
     for (final document in current.values) {
       final existing = local.documentHead(document.id);
       if (existing != null && _sameDocument(existing.document, document)) {
@@ -319,8 +324,9 @@ class CloudSyncCoordinator extends ChangeNotifier
         continue;
       }
       counter++;
-      final vector = (existing?.vector ?? SyncVersionVector())
-          .increment(local.deviceId);
+      final vector = (existing?.vector ?? SyncVersionVector()).increment(
+        local.deviceId,
+      );
       await local.saveDocumentHead(
         SyncedDocumentHead(
           documentId: document.id,
@@ -366,14 +372,16 @@ class CloudSyncCoordinator extends ChangeNotifier
     // empty head here would race the remote collection head and could win by
     // timestamp before the first pull. Let the remote order merge first.
     if (existingCollection == null && ids.isEmpty) return;
-    if (existingCollection == null || !_sameIds(existingCollection.documentIds, ids)) {
+    if (existingCollection == null ||
+        !_sameIds(existingCollection.documentIds, ids)) {
       _localCollectionEditThisSync = true;
       counter++;
       await local.saveCollectionHead(
         SyncedCollectionHead(
           deviceId: local.deviceId,
-          vector: (existingCollection?.vector ?? SyncVersionVector())
-              .increment(local.deviceId),
+          vector: (existingCollection?.vector ?? SyncVersionVector()).increment(
+            local.deviceId,
+          ),
           stamp: SyncMutationStamp(
             modifiedAt: DateTime.now().toUtc(),
             deviceId: local.deviceId,
@@ -404,16 +412,15 @@ class CloudSyncCoordinator extends ChangeNotifier
         final json = Map<String, dynamic>.from(raw);
         if (record.properties['type'] == _collectionType) {
           _remoteCollections!.add(
-            SyncedCollectionHead.fromJson(json).copyWith(
-              driveFileId: record.fileId,
-            ),
+            SyncedCollectionHead.fromJson(json)
+                .copyWith(driveFileId: record.fileId),
           );
           continue;
         }
         final head = SyncedDocumentHead.fromJson(json);
-        grouped.putIfAbsent(head.documentId, () => <SyncedDocumentHead>[]).add(
-              head.copyWith(driveFileId: record.fileId),
-            );
+        grouped
+            .putIfAbsent(head.documentId, () => <SyncedDocumentHead>[])
+            .add(head.copyWith(driveFileId: record.fileId));
       } catch (_) {
         // Ignore malformed remote records; a later sync can retry them after
         // the owning device republishes a valid head.
@@ -493,7 +500,8 @@ class CloudSyncCoordinator extends ChangeNotifier
             ? null
             : winner.vector.relationTo(localHead.vector);
         final localWon = identical(winner, localHead);
-        final shouldApply = localHead == null ||
+        final shouldApply =
+            localHead == null ||
             winnerRelation == SyncRelation.after ||
             (winnerRelation == SyncRelation.concurrent && !localWon);
         if (shouldApply) {
@@ -575,16 +583,15 @@ class CloudSyncCoordinator extends ChangeNotifier
         // and applies the normal deterministic conflict ordering.
         winner = localHead;
       }
-      final mergedIds = <String>[
-        ...winner.documentIds,
-        ...currentIds.where((id) => !winner.documentIds.contains(id)),
-      ];
+      final mergedIds = chronologicalDocuments(documents.documents)
+          .map((document) => document.id)
+          .toList(growable: false);
       final relation = localCollection?.vector.relationTo(winner.vector);
-      final localNeedsPublish = localCollection != null &&
+      final localNeedsPublish =
+          localCollection != null &&
           (relation == SyncRelation.concurrent ||
-              !_sameIdSet(winner.documentIds, currentIds));
-      if (!_sameIds(currentIds, mergedIds) ||
-          relation != SyncRelation.equal) {
+              !_sameIds(winner.documentIds, mergedIds));
+      if (!_sameIds(currentIds, mergedIds) || relation != SyncRelation.equal) {
         if (!_sameIds(
           documents.documents.map((document) => document.id),
           mergedIds,
@@ -630,16 +637,15 @@ class CloudSyncCoordinator extends ChangeNotifier
     }
   }
 
-  Future<void> _pushLocalHeads(
-    List<DriveSyncRecord> records,
-  ) async {
+  Future<void> _pushLocalHeads(List<DriveSyncRecord> records) async {
     final existingByKey = <String, DriveSyncRecord>{
       for (final record in records)
         if (record.properties['type'] == _documentType &&
             _isCurrentNamespace(record) &&
             record.properties['deviceId'] != null &&
             record.properties['documentId'] != null)
-          '${record.properties['documentId']}:${record.properties['deviceId']}': record,
+          '${record.properties['documentId']}:${record.properties['deviceId']}':
+              record,
     };
     for (final head in local.documentHeads) {
       if (head.deviceId != local.deviceId) continue;
@@ -737,7 +743,10 @@ class CloudSyncCoordinator extends ChangeNotifier
     }
   }
 
-  Future<void> _createConflictCopy(EntryDocument document, String deviceId) async {
+  Future<void> _createConflictCopy(
+    EntryDocument document,
+    String deviceId,
+  ) async {
     final now = DateTime.now().toUtc();
     final suffix = now.toIso8601String().split('.').first;
     final copy = document.copyWith(
@@ -798,7 +807,8 @@ class CloudSyncCoordinator extends ChangeNotifier
     for (final candidate in candidates.skip(1)) {
       final relation = candidate.vector.relationTo(winner.vector);
       if (relation == SyncRelation.after ||
-          ((relation == SyncRelation.concurrent || relation == SyncRelation.equal) &&
+          ((relation == SyncRelation.concurrent ||
+                  relation == SyncRelation.equal) &&
               _compareCollectionHeads(candidate, winner) > 0)) {
         winner = candidate;
       }
@@ -814,6 +824,7 @@ class CloudSyncCoordinator extends ChangeNotifier
         visit(node.children);
       }
     }
+
     visit(document.nodes);
     return List<SyncedAssetDescriptor>.unmodifiable(
       ids.map((id) {
@@ -833,12 +844,14 @@ class CloudSyncCoordinator extends ChangeNotifier
       .expand((head) => head.vector.values.values)
       .fold<int>(0, math.max);
 
-  bool _assetsAvailable(SyncedDocumentHead head) => head.assets.every(
-        (descriptor) => local.asset(descriptor.id) != null,
-      );
+  bool _assetsAvailable(SyncedDocumentHead head) =>
+      head.assets.every((descriptor) => local.asset(descriptor.id) != null);
 
   void _onLocalChange(void _) {
-    if (_closeFuture != null || _notifierDisposed || _applyingRemote || _state.account == null) {
+    if (_closeFuture != null ||
+        _notifierDisposed ||
+        _applyingRemote ||
+        _state.account == null) {
       return;
     }
     _uploadTimer?.cancel();
@@ -883,10 +896,12 @@ class CloudSyncCoordinator extends ChangeNotifier
     try {
       await _acceptAccount(accountInfo);
       if (!await account.hasDriveAuthorization()) {
-        _setState(_state.copyWith(
-          phase: CloudSyncPhase.authorizationRequired,
-          error: null,
-        ));
+        _setState(
+          _state.copyWith(
+            phase: CloudSyncPhase.authorizationRequired,
+            error: null,
+          ),
+        );
         return;
       }
       await syncNow(initial: true);
@@ -961,10 +976,10 @@ class CloudAccountMismatchException implements Exception {
 }
 
 String _extension(String mime) => switch (mime) {
-      'image/png' => 'png',
-      'image/jpeg' => 'jpg',
-      'image/webp' => 'webp',
-      _ => 'bin',
+  'image/png' => 'png',
+  'image/jpeg' => 'jpg',
+  'image/webp' => 'webp',
+  _ => 'bin',
 };
 
 bool _isCurrentNamespace(DriveSyncRecord record) =>
@@ -985,12 +1000,6 @@ bool _sameIds(Iterable<String> left, Iterable<String> right) {
     if (leftList[index] != rightList[index]) return false;
   }
   return true;
-}
-
-bool _sameIdSet(Iterable<String> left, Iterable<String> right) {
-  final leftSet = left.toSet();
-  final rightSet = right.toSet();
-  return leftSet.length == rightSet.length && leftSet.containsAll(rightSet);
 }
 
 T? _firstWhereOrNull<T>(Iterable<T> values, bool Function(T value) test) {

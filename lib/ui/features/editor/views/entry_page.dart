@@ -14,6 +14,7 @@ import '../../../../models/document.dart';
 import '../../../../models/sticker.dart';
 import '../../../../models/view_state.dart';
 import '../../../../services/image_source.dart';
+import '../../../../models/journal_share_result.dart';
 import '../view_models/entry_editor_view_model.dart';
 import '../view_models/editor_tool_state.dart';
 import 'entry_editor_surface.dart';
@@ -828,38 +829,73 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _exportArchive() async {
-    if (!mounted) return;
-    final exported = await _editor.exportArchive(
-      documentId: _document.id,
-      fileName:
-          '${_document.title.trim().isEmpty ? 'journal' : _document.title.trim()}.cozyjournal',
-    );
-    if (mounted && exported) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Journal backup exported')));
-    }
-  }
+  bool _sharing = false;
 
-  Future<void> _importArchive() async {
-    if (!mounted) return;
+  Future<void> _sharePage() async {
+    if (!mounted || _sharing) return;
+    _sharing = true;
+    FocusScope.of(context).unfocus();
+    final messenger = ScaffoldMessenger.of(context);
+    final progress = messenger.showSnackBar(
+      const SnackBar(
+        duration: Duration(minutes: 2),
+        content: Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 12),
+            Text('Preparing page to share...'),
+          ],
+        ),
+      ),
+    );
     try {
-      final imported = await _editor.importArchive();
-      if (!mounted || imported == null) return;
+      final result = await _editor.sharePage();
+      progress.close();
+      if (!mounted) return;
+      if (result == JournalShareResult.unavailable) {
+        final save = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Save this page instead?'),
+            content: const Text(
+              'Sharing is unavailable. You can save the file and send it later.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Save file'),
+              ),
+            ],
+          ),
+        );
+        if (save == true && mounted) {
+          final saved = await _editor.saveSharedPage();
+          if (saved && mounted) {
+            messenger.showSnackBar(
+              const SnackBar(content: Text('Shared page saved')),
+            );
+          }
+        }
+      }
+    } catch (_) {
+      progress.close();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           const SnackBar(
-            content: Text('Journal backup imported as a new page'),
+            content: Text('Could not share this page. Please try again.'),
           ),
         );
       }
-    } on FormatException catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not import backup: ${error.message}')),
-        );
-      }
+    } finally {
+      _sharing = false;
     }
   }
 
@@ -898,8 +934,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         drawMode: _drawMode,
         onUndo: _undo,
         onRedo: _redo,
-        onExportArchive: _exportArchive,
-        onImportArchive: _importArchive,
+        onShare: _sharePage,
         onGroup: _editor.groupSelection,
         onUngroup: _editor.ungroupSelection,
         onToggleSelectMode: () => _selectMode = !_selectMode,

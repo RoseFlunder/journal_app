@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import '../../../../editor/editor_controller.dart';
+import '../../../../editor/editor_state.dart';
 import '../../../../models/document.dart';
 import '../../../../models/page_music.dart';
 import '../../../../models/view_state.dart';
@@ -13,6 +14,8 @@ import '../../music/view_models/page_music_controller.dart';
 import '../../../../services/image_source.dart';
 import '../../../../services/image_processing.dart';
 import '../../../../services/repositories.dart';
+import '../../../../services/journal_archive.dart';
+import '../../../../services/journal_transfer_service.dart';
 import '../use_cases/archive_transfer_use_case.dart';
 import '../use_cases/checkpoint_recovery_use_case.dart';
 import '../use_cases/image_insertion_use_case.dart';
@@ -343,15 +346,25 @@ class EntryEditorViewModel extends EditorController {
     documentId: documentId,
   );
 
-  Future<bool> exportArchive({
-    required String documentId,
-    required String fileName,
-  }) => _archiveTransfer.exportDocument(
-    documentId: documentId,
-    fileName: fileName,
-  );
+  JournalArchive? _preparedShare;
 
-  Future<EntryDocument?> importArchive() => _archiveTransfer.importDocument();
+  Future<JournalShareResult> sharePage() async {
+    await flushText();
+    await commitTransaction();
+    await flushPersistence();
+    if (saveState != EditorSaveState.saved || _pendingMetadata != null) {
+      throw StateError('Save the latest changes before sharing.');
+    }
+    final archive = _archiveTransfer.prepare(documentId);
+    _preparedShare = archive;
+    return _archiveTransfer.share(archive);
+  }
+
+  Future<bool> saveSharedPage() async {
+    final archive = _preparedShare;
+    if (archive == null) return false;
+    return _archiveTransfer.save(archive);
+  }
 }
 
 Future<void> _persistCurrentDocument(

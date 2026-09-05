@@ -20,9 +20,8 @@ void main() {
     expect(vector['device-a'], 1);
     expect(vector.increment('device-b').relationTo(vector), SyncRelation.after);
     expect(
-      SyncVersionVector({'device-a': 2}).relationTo(
-        SyncVersionVector({'device-a': 1, 'device-b': 1}),
-      ),
+      SyncVersionVector({'device-a': 2})
+          .relationTo(SyncVersionVector({'device-a': 1, 'device-b': 1})),
       SyncRelation.concurrent,
     );
     expect(
@@ -39,77 +38,83 @@ void main() {
     );
     properties['type'] = 'mutated';
     expect(record.properties['type'], 'document-head');
-    expect(
-      () => record.properties['type'] = 'mutated',
-      throwsUnsupportedError,
-    );
+    expect(() => record.properties['type'] = 'mutated', throwsUnsupportedError);
     expect(() => vector.values['device-c'] = 1, throwsUnsupportedError);
   });
 
-  test('sync imports remote pages and uploads assets before page heads', () async {
-    final drive = InMemoryDriveSyncGateway();
-    final persistenceA = _FakePersistence();
-    final persistenceB = _FakePersistence();
-    final documentsA = _FakeDocuments([_document('page-a', 'A', assetId: 'asset-a')]);
-    final documentsB = _FakeDocuments();
-    final accountA = _FakeAccount('account-1');
-    final accountB = _FakeAccount('account-1');
-    final localA = _BoundStore(documentsA, deviceId: 'device-a');
-    final localB = _BoundStore(documentsB, deviceId: 'device-b');
-    await localA.putAssetExact(
-      LocalAssetSnapshot(
-        id: 'asset-a',
-        kind: AssetKind.image,
-        mime: 'image/png',
-        bytes: const [1, 2, 3],
-      ),
-    );
-    final coordinatorA = CloudSyncCoordinator(
-      documents: documentsA,
-      local: localA,
-      account: accountA,
-      drive: drive,
-      persistence: persistenceA,
-    );
-    final coordinatorB = CloudSyncCoordinator(
-      documents: documentsB,
-      local: localB,
-      account: accountB,
-      drive: drive,
-      persistence: persistenceB,
-    );
-    await coordinatorA.init();
-    await coordinatorB.init();
+  test(
+    'sync imports remote pages and uploads assets before page heads',
+    () async {
+      final drive = InMemoryDriveSyncGateway();
+      final persistenceA = _FakePersistence();
+      final persistenceB = _FakePersistence();
+      final documentsA = _FakeDocuments([
+        _document('page-a', 'A', assetId: 'asset-a'),
+      ]);
+      final documentsB = _FakeDocuments();
+      final accountA = _FakeAccount('account-1');
+      final accountB = _FakeAccount('account-1');
+      final localA = _BoundStore(documentsA, deviceId: 'device-a');
+      final localB = _BoundStore(documentsB, deviceId: 'device-b');
+      await localA.putAssetExact(
+        LocalAssetSnapshot(
+          id: 'asset-a',
+          kind: AssetKind.image,
+          mime: 'image/png',
+          bytes: const [1, 2, 3],
+        ),
+      );
+      final coordinatorA = CloudSyncCoordinator(
+        documents: documentsA,
+        local: localA,
+        account: accountA,
+        drive: drive,
+        persistence: persistenceA,
+      );
+      final coordinatorB = CloudSyncCoordinator(
+        documents: documentsB,
+        local: localB,
+        account: accountB,
+        drive: drive,
+        persistence: persistenceB,
+      );
+      await coordinatorA.init();
+      await coordinatorB.init();
 
-    await coordinatorA.connect();
-    final recordsAfterUpload = await drive.listRecords();
-    final assetIndex = recordsAfterUpload.indexWhere(
-      (record) => record.properties['type'] == 'asset',
-    );
-    final headIndex = recordsAfterUpload.indexWhere(
-      (record) => record.properties['type'] == 'document-head',
-    );
-    expect(assetIndex, greaterThanOrEqualTo(0));
-    expect(headIndex, greaterThan(assetIndex));
+      await coordinatorA.connect();
+      final recordsAfterUpload = await drive.listRecords();
+      final assetIndex = recordsAfterUpload.indexWhere(
+        (record) => record.properties['type'] == 'asset',
+      );
+      final headIndex = recordsAfterUpload.indexWhere(
+        (record) => record.properties['type'] == 'document-head',
+      );
+      expect(assetIndex, greaterThanOrEqualTo(0));
+      expect(headIndex, greaterThan(assetIndex));
 
-    await coordinatorB.connect();
-    expect(documentsB.documents.map((document) => document.id), ['page-a']);
-    expect(localB.asset('asset-a')?.bytes, [1, 2, 3]);
-    expect(coordinatorB.state.phase, CloudSyncPhase.synced);
+      await coordinatorB.connect();
+      expect(documentsB.documents.map((document) => document.id), ['page-a']);
+      expect(localB.asset('asset-a')?.bytes, [1, 2, 3]);
+      expect(coordinatorB.state.phase, CloudSyncPhase.synced);
 
-    await documentsA.deleteDocument('page-a');
-    await coordinatorA.syncNow();
-    await coordinatorB.syncNow();
-    expect(documentsB.documents, isEmpty);
-    expect(localB.documentHead('page-a')?.isDeleted, isTrue);
+      await documentsA.deleteDocument('page-a');
+      await coordinatorA.syncNow();
+      await coordinatorB.syncNow();
+      expect(documentsB.documents, isEmpty);
+      expect(localB.documentHead('page-a')?.isDeleted, isTrue);
 
-    await coordinatorA.close();
-    await coordinatorB.close();
-  });
+      await coordinatorA.close();
+      await coordinatorB.close();
+    },
+  );
 
   test('remote pages wait for valid referenced assets', () async {
     final drive = InMemoryDriveSyncGateway();
-    final document = _document('remote-page', 'Remote', assetId: 'remote-asset');
+    final document = _document(
+      'remote-page',
+      'Remote',
+      assetId: 'remote-asset',
+    );
     final descriptor = SyncedAssetDescriptor(
       id: 'remote-asset',
       kind: AssetKind.image,
@@ -193,17 +198,16 @@ void main() {
     );
     final imported = documentsB.documents.single;
     documentsB.replaceWithoutNotify(
-      imported.copyWith(
-        title: 'B edit',
-        modifiedAt: DateTime.utc(2026, 1, 2),
-      ),
+      imported.copyWith(title: 'B edit', modifiedAt: DateTime.utc(2026, 1, 2)),
     );
     await coordinatorA.syncNow();
     await coordinatorB.syncNow();
 
     expect(documentsB.documents, hasLength(2));
     expect(
-      documentsB.documents.any((entry) => entry.title.contains('conflict from')),
+      documentsB.documents.any(
+        (entry) => entry.title.contains('conflict from'),
+      ),
       isTrue,
     );
     final countAfterConflict = documentsB.documents.length;
@@ -214,115 +218,130 @@ void main() {
     await coordinatorB.close();
   });
 
-  test('page order is synchronized as a separate collection head', () async {
-    final drive = InMemoryDriveSyncGateway();
-    final documentsA = _FakeDocuments([
-      _document('page-a', 'A'),
-      _document('page-b', 'B'),
-    ]);
-    final documentsB = _FakeDocuments();
-    final localA = _BoundStore(documentsA, deviceId: 'device-a');
-    final localB = _BoundStore(documentsB, deviceId: 'device-b');
-    final coordinatorA = _coordinator(
-      documentsA,
-      localA,
-      _FakeAccount('account-1'),
-      drive,
-    );
-    final coordinatorB = _coordinator(
-      documentsB,
-      localB,
-      _FakeAccount('account-1'),
-      drive,
-    );
-    await coordinatorA.init();
-    await coordinatorB.init();
-    await coordinatorA.connect();
-    await coordinatorB.connect();
-    await Future<void>.delayed(Duration.zero);
+  test(
+    'sync normalizes old collection order to creation date and ID',
+    () async {
+      final drive = InMemoryDriveSyncGateway();
+      final documentsA = _FakeDocuments([
+        _document('page-a', 'A'),
+        _document('page-b', 'B'),
+      ]);
+      final documentsB = _FakeDocuments();
+      final localA = _BoundStore(documentsA, deviceId: 'device-a');
+      final localB = _BoundStore(documentsB, deviceId: 'device-b');
+      final coordinatorA = _coordinator(
+        documentsA,
+        localA,
+        _FakeAccount('account-1'),
+        drive,
+      );
+      final coordinatorB = _coordinator(
+        documentsB,
+        localB,
+        _FakeAccount('account-1'),
+        drive,
+      );
+      await coordinatorA.init();
+      await coordinatorB.init();
+      await coordinatorA.connect();
+      await coordinatorB.connect();
+      await Future<void>.delayed(Duration.zero);
 
-    documentsA.reorderWithoutNotify(['page-b', 'page-a']);
-    await coordinatorA.syncNow();
-    await coordinatorB.syncNow();
-    expect(documentsB.documents.map((document) => document.id), [
-      'page-b',
-      'page-a',
-    ]);
+      documentsA.reorderWithoutNotify(['page-b', 'page-a']);
+      await coordinatorA.syncNow();
+      await coordinatorB.syncNow();
+      expect(documentsB.documents.map((document) => document.id), [
+        'page-a',
+        'page-b',
+      ]);
 
-    await coordinatorA.close();
-    await coordinatorB.close();
-  });
+      await coordinatorA.close();
+      await coordinatorB.close();
+    },
+  );
 
-  test('account switching is blocked until the device is explicitly reset', () async {
-    final documents = _FakeDocuments([_document('page-a', 'A')]);
-    final local = _BoundStore(documents, deviceId: 'device-a');
-    final account = _FakeAccount('account-2');
-    final coordinator = _coordinator(
-      documents,
-      local,
-      account,
-      InMemoryDriveSyncGateway(),
-    );
-    await coordinator.init();
-    await local.bindAccount('account-1');
+  test(
+    'account switching is blocked until the device is explicitly reset',
+    () async {
+      final documents = _FakeDocuments([_document('page-a', 'A')]);
+      final local = _BoundStore(documents, deviceId: 'device-a');
+      final account = _FakeAccount('account-2');
+      final coordinator = _coordinator(
+        documents,
+        local,
+        account,
+        InMemoryDriveSyncGateway(),
+      );
+      await coordinator.init();
+      await local.bindAccount('account-1');
 
-    await coordinator.connect();
-    expect(coordinator.state.phase, CloudSyncPhase.failed);
-    expect(local.boundAccountId, 'account-1');
+      await coordinator.connect();
+      expect(coordinator.state.phase, CloudSyncPhase.failed);
+      expect(local.boundAccountId, 'account-1');
 
-    await coordinator.resetLocalData();
-    expect(local.boundAccountId, isNull);
-    expect(documents.documents, isEmpty);
-    await coordinator.close();
-  });
+      await coordinator.resetLocalData();
+      expect(local.boundAccountId, isNull);
+      expect(documents.documents, isEmpty);
+      await coordinator.close();
+    },
+  );
 
-  test('sync view model forwards commands and publishes immutable state', () async {
-    final repository = _FakeCloudSyncRepository();
-    final viewModel = CloudSyncViewModel(coordinator: repository);
-    expect(viewModel.state.phase, CloudSyncPhase.signedOut);
+  test(
+    'sync view model forwards commands and publishes immutable state',
+    () async {
+      final repository = _FakeCloudSyncRepository();
+      final viewModel = CloudSyncViewModel(coordinator: repository);
+      expect(viewModel.state.phase, CloudSyncPhase.signedOut);
 
-    repository.publish(const CloudSyncState(
-      phase: CloudSyncPhase.synced,
-      account: CloudAccount(id: 'account-1', email: 'one@example.test'),
-    ));
-    await Future<void>.delayed(Duration.zero);
-    expect(viewModel.state.phase, CloudSyncPhase.synced);
-    await viewModel.syncNow();
-    await viewModel.connect();
-    await viewModel.reconnect();
-    await viewModel.signOut();
-    await viewModel.resetLocalData();
-    expect(repository.commands, [
-      'sync',
-      'connect',
-      'reauthorize',
-      'disconnect',
-      'reset',
-    ]);
-    viewModel.dispose();
-    await repository.dispose();
-  });
+      repository.publish(
+        const CloudSyncState(
+          phase: CloudSyncPhase.synced,
+          account: CloudAccount(id: 'account-1', email: 'one@example.test'),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(viewModel.state.phase, CloudSyncPhase.synced);
+      await viewModel.syncNow();
+      await viewModel.connect();
+      await viewModel.reconnect();
+      await viewModel.signOut();
+      await viewModel.resetLocalData();
+      expect(repository.commands, [
+        'sync',
+        'connect',
+        'reauthorize',
+        'disconnect',
+        'reset',
+      ]);
+      viewModel.dispose();
+      await repository.dispose();
+    },
+  );
 
-  test('authentication does not implicitly request Drive authorization', () async {
-    final documents = _FakeDocuments();
-    final account = _FakeAccount('account-1')..driveAuthorized = false;
-    final coordinator = _coordinator(
-      documents,
-      _BoundStore(documents, deviceId: 'device-a'),
-      account,
-      InMemoryDriveSyncGateway(),
-    );
-    await coordinator.init();
-    await coordinator.connect();
+  test(
+    'authentication does not implicitly request Drive authorization',
+    () async {
+      final documents = _FakeDocuments();
+      final account = _FakeAccount('account-1')..driveAuthorized = false;
+      final coordinator = _coordinator(
+        documents,
+        _BoundStore(documents, deviceId: 'device-a'),
+        account,
+        InMemoryDriveSyncGateway(),
+      );
+      await coordinator.init();
+      await coordinator.connect();
 
-    expect(coordinator.state.phase, CloudSyncPhase.authorizationRequired);
-    expect(account.requestAuthorizationCount, 0);
+      expect(coordinator.state.phase, CloudSyncPhase.authorizationRequired);
+      expect(account.requestAuthorizationCount, 0);
 
-    await coordinator.close();
-  });
+      await coordinator.close();
+    },
+  );
 }
 
-EntryDocument _document(String id, String title, {String? assetId}) => EntryDocument(
+EntryDocument _document(String id, String title, {String? assetId}) =>
+    EntryDocument(
       id: id,
       title: title,
       createdAt: DateTime.utc(2026, 1, 1),
@@ -343,7 +362,8 @@ EntryDocument _document(String id, String title, {String? assetId}) => EntryDocu
 Map<String, dynamic> _assetPayload(String? id) =>
     id == null ? const <String, dynamic>{} : <String, dynamic>{'assetId': id};
 
-List<int> jsonUtf8(Map<String, dynamic> value) => utf8.encode(jsonEncode(value));
+List<int> jsonUtf8(Map<String, dynamic> value) =>
+    utf8.encode(jsonEncode(value));
 
 CloudSyncCoordinator _coordinator(
   _FakeDocuments documents,
@@ -351,16 +371,16 @@ CloudSyncCoordinator _coordinator(
   _FakeAccount account,
   DriveSyncGateway drive,
 ) => CloudSyncCoordinator(
-      documents: documents,
-      local: local,
-      account: account,
-      drive: drive,
-      persistence: _FakePersistence(),
-    );
+  documents: documents,
+  local: local,
+  account: account,
+  drive: drive,
+  persistence: _FakePersistence(),
+);
 
 class _FakeDocuments implements DocumentRepository {
   _FakeDocuments([Iterable<EntryDocument> initial = const []])
-      : _documents = List<EntryDocument>.from(initial);
+    : _documents = List<EntryDocument>.from(initial);
 
   List<EntryDocument> _documents;
   final StreamController<void> _changes = StreamController<void>.broadcast();
@@ -389,7 +409,8 @@ class _FakeDocuments implements DocumentRepository {
   }
 
   @override
-  void previewDocument(EntryDocument document) => replaceWithoutNotify(document);
+  void previewDocument(EntryDocument document) =>
+      replaceWithoutNotify(document);
 
   @override
   Future<void> deleteDocument(String id) async {
@@ -461,7 +482,8 @@ class _BoundStore extends MemorySyncLocalStore {
 }
 
 class _FakeAccount implements CloudAccountGateway {
-  _FakeAccount(String id) : _account = CloudAccount(id: id, email: '$id@example.test');
+  _FakeAccount(String id)
+    : _account = CloudAccount(id: id, email: '$id@example.test');
 
   final CloudAccount _account;
   final StreamController<CloudAuthState> _states =
@@ -512,7 +534,7 @@ class _FakePersistence implements PersistenceRepository {
 
 class _FakeCloudSyncRepository implements CloudSyncRepository {
   _FakeCloudSyncRepository()
-      : _state = const CloudSyncState(phase: CloudSyncPhase.signedOut);
+    : _state = const CloudSyncState(phase: CloudSyncPhase.signedOut);
 
   final StreamController<CloudSyncState> _states =
       StreamController<CloudSyncState>.broadcast();

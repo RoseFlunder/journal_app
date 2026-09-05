@@ -192,8 +192,15 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - [~] Checkpoint history and numeric transform controls provide recovery and
   non-drag precision.
 - [ ] Add command-history labels and undo/redo cursor UI.
-- [x] Versioned `.cozyjournal` archive import/export includes documents and
-  assets.
+- [x] Share sends an editable version-2 `.cozyjournal` page and its assets
+  through the system share sheet (browser download fallback).
+- [x] Add shared page is available from contents, with confirmation before
+  adding an independent copy and preserving the original creation date.
+- [x] Android queues file-open/share deliveries through startup and presents
+  the same confirmation flow. Windows/Web use the file picker to receive pages.
+- [x] Pages use original creation date ascending, then ID, across reload and sync.
+- [ ] Verify WhatsApp/Drive attachment handoffs on physical Android devices;
+  Windows file associations and Web file-launch integration remain deferred.
 - [ ] Add pre-import checkpoints, corrupt-asset recovery, and platform
   file-picker integration tests.
 - [ ] Add PNG, JPEG, and PDF export for full board, current view, and selection.

@@ -1,5 +1,9 @@
 import 'dart:async';
 
+import 'support/fake_journal_transfer.dart';
+
+import 'package:journal_app/services/journal_archive.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:journal_app/models/document.dart';
@@ -15,6 +19,46 @@ import 'package:journal_app/ui/features/editor/view_models/entry_editor_view_mod
 import 'package:journal_app/ui/features/editor/view_models/editor_tool_state.dart';
 
 void main() {
+  test(
+    'sharing commits pending text and preserves cancelled outcome',
+    () async {
+      final document = _document();
+      final documents = _FakeDocumentRepository(document);
+      final transfer = FakeJournalTransfer();
+      final archives = _EditorArchives(documents);
+      final editor = EntryEditorViewModel(
+        document: document,
+        documentRepository: documents,
+        checkpointRepository: _FakeCheckpointRepository(),
+        assetRepository: _NoopEditorCapabilities(),
+        preferenceRepository: _NoopEditorCapabilities(),
+        persistenceRepository: _SharePersistence(),
+        archiveRepository: archives,
+        musicCatalog: const DisabledMusicCatalogRepository(),
+        imageInsertion: _noOpImageInsertion(),
+        archiveTransfer: ArchiveTransferUseCase(
+          archives: archives,
+          transfer: transfer,
+        ),
+      );
+      addTearDown(editor.dispose);
+      addTearDown(transfer.events.close);
+      editor.replaceText('text', 'Last keystroke');
+      expect(await editor.sharePage(), JournalShareResult.dismissed);
+      expect(
+        transfer.shared.single.document.nodes.single.payload['text'],
+        'Last keystroke',
+      );
+      expect(documents.savedDocuments.length, 1);
+      expect(await editor.saveSharedPage(), isTrue);
+      expect(transfer.saved.single, same(transfer.shared.single));
+      documents.failSaves = true;
+      editor.replaceText('text', 'Unsaved');
+      await expectLater(editor.sharePage(), throwsStateError);
+      expect(transfer.shared.length, 1);
+    },
+  );
+
   test('owns tool and selection presentation state', () {
     final document = _document();
     final editor = EntryEditorViewModel(
@@ -319,4 +363,24 @@ class _NoopEditorCapabilities
         ArchiveRepository {
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _EditorArchives implements ArchiveRepository {
+  _EditorArchives(this.documents);
+  final _FakeDocumentRepository documents;
+  @override
+  JournalArchive? archiveForDocument(String id) =>
+      JournalArchive(document: documents.documents.single);
+  @override
+  Future<EntryDocument> importArchive(JournalArchive archive) =>
+      throw UnimplementedError();
+}
+
+class _SharePersistence implements PersistenceRepository {
+  @override
+  void addFlushHook(Future<void> Function() hook) {}
+  @override
+  void removeFlushHook(Future<void> Function() hook) {}
+  @override
+  Future<void> flush() async {}
 }

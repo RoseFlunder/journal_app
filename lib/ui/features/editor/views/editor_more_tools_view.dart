@@ -20,8 +20,7 @@ class EditorMoreToolsView extends StatefulWidget {
     required this.drawMode,
     required this.onUndo,
     required this.onRedo,
-    required this.onExportArchive,
-    required this.onImportArchive,
+    required this.onShare,
     required this.onGroup,
     required this.onUngroup,
     required this.onToggleSelectMode,
@@ -45,8 +44,7 @@ class EditorMoreToolsView extends StatefulWidget {
 
   final VoidCallback onUndo;
   final VoidCallback onRedo;
-  final VoidCallback onExportArchive;
-  final VoidCallback onImportArchive;
+  final VoidCallback onShare;
   final VoidCallback onGroup;
   final VoidCallback onUngroup;
   final VoidCallback onToggleSelectMode;
@@ -170,16 +168,10 @@ class _EditorMoreToolsViewState extends State<EditorMoreToolsView> {
             onTap: () => _close(widget.onHistory),
           ),
           ListTile(
-            leading: const Icon(Icons.file_upload_outlined),
-            title: const Text('Export'),
-            subtitle: const Text('Save a .cozyjournal backup'),
-            onTap: () => _close(widget.onExportArchive),
-          ),
-          ListTile(
-            leading: const Icon(Icons.file_download_outlined),
-            title: const Text('Import'),
-            subtitle: const Text('Open a .cozyjournal backup'),
-            onTap: () => _close(widget.onImportArchive),
+            leading: const Icon(Icons.share_outlined),
+            title: const Text('Share'),
+            subtitle: const Text('Send or save an editable copy of this page'),
+            onTap: () => _close(widget.onShare),
           ),
         ],
       ),

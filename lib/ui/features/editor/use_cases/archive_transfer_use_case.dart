@@ -1,30 +1,23 @@
-import '../../../../models/document.dart';
+import '../../../../services/journal_archive.dart';
 import '../../../../services/journal_transfer_service.dart';
 import '../../../../services/repositories.dart';
 
-/// Keeps archive coordination out of the page widget while leaving file
-/// picking in the platform-facing transfer service.
 class ArchiveTransferUseCase {
   const ArchiveTransferUseCase({
     required this.archives,
     required this.transfer,
   });
-
   final ArchiveRepository archives;
   final JournalTransferGateway transfer;
 
-  Future<bool> exportDocument({
-    required String documentId,
-    required String fileName,
-  }) async {
+  JournalArchive prepare(String documentId) {
     final archive = archives.archiveForDocument(documentId);
-    if (archive == null) return false;
-    return transfer.exportArchive(archive, fileName: fileName);
+    if (archive == null) throw StateError('The page no longer exists.');
+    archive.validate();
+    return archive;
   }
 
-  Future<EntryDocument?> importDocument() async {
-    final archive = await transfer.importArchive();
-    if (archive == null) return null;
-    return archives.importArchive(archive);
-  }
+  Future<JournalShareResult> share(JournalArchive archive) =>
+      transfer.shareArchive(archive);
+  Future<bool> save(JournalArchive archive) => transfer.saveArchive(archive);
 }

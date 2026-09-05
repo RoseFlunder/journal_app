@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../models/document.dart';
 import '../view_models/journal_view_model.dart';
+import '../view_models/shared_page_view_model.dart';
 import '../view_models/cloud_sync_view_model.dart';
 import '../../editor/view_models/entry_editor_view_model.dart';
 import '../../music/view_models/page_music_controller.dart';
@@ -20,6 +22,7 @@ class JournalScreen extends StatefulWidget {
   const JournalScreen({
     super.key,
     required this.journal,
+    required this.sharedPages,
     required this.music,
     required this.cloudSync,
     required this.editorViewModelFactory,
@@ -27,6 +30,7 @@ class JournalScreen extends StatefulWidget {
   });
 
   final JournalViewModel journal;
+  final SharedPageViewModel sharedPages;
   final PageMusicController music;
   final CloudSyncViewModel cloudSync;
   final EntryEditorViewModelFactory editorViewModelFactory;
@@ -42,6 +46,9 @@ class _JournalScreenState extends State<JournalScreen> {
   late final JournalViewModel _journal;
   late final PageMusicController _music;
   bool _animating = false;
+  String? _visiblePageId;
+  List<String> _knownPageIds = [];
+  bool _confirmationVisible = false;
   int _currentPageIndex = 0;
   static const _chromeIdleDuration = Duration(seconds: 3);
   final Set<String> _editingEntryIds = <String>{};
@@ -53,8 +60,13 @@ class _JournalScreenState extends State<JournalScreen> {
   void initState() {
     super.initState();
     _journal = widget.journal;
+    _knownPageIds = _journal.documents.map((page) => page.id).toList();
     _music = widget.music;
     _journal.addListener(_handleJournalChanged);
+    widget.sharedPages.addListener(_handleSharedPageChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.sharedPages.start();
+    });
   }
 
   @override
@@ -62,6 +74,7 @@ class _JournalScreenState extends State<JournalScreen> {
     _chromeTimer?.cancel();
     _pageController.dispose();
     _journal.removeListener(_handleJournalChanged);
+    widget.sharedPages.removeListener(_handleSharedPageChanged);
     for (final editor in _editorViewModels.values) {
       editor.dispose();
     }
@@ -221,6 +234,70 @@ class _JournalScreenState extends State<JournalScreen> {
 
   void _handleJournalChanged() {
     _pruneEditorViewModels(_journal.documents);
+    final ids = _journal.documents.map((page) => page.id).toList();
+    final id = _visiblePageId;
+    final orderChanged =
+        ids.length != _knownPageIds.length ||
+        Iterable<int>.generate(ids.length)
+            .any((i) => ids[i] != _knownPageIds[i]);
+    _knownPageIds = ids;
+    if (id != null && orderChanged) _jumpToDocument(id);
+  }
+
+  void _jumpToDocument(String id) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pageController.hasClients) return;
+      final index = _journal.indexOf(id);
+      final page = index < 0 ? 0 : index + 1;
+      _visiblePageId = index < 0 ? null : id;
+      _currentPageIndex = page;
+      _pageController.jumpToPage(page);
+      setState(() {});
+      unawaited(_activateMusicForPage(page));
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
+  void _handleSharedPageChanged() {
+    if (!mounted) return;
+    setState(() {});
+    final error = widget.sharedPages.takeError();
+    if (error != null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error)));
+    }
+    final added = widget.sharedPages.takeAddedPageId();
+    if (added != null) _jumpToDocument(added);
+    final pending = widget.sharedPages.pendingPage;
+    if (pending != null && !_confirmationVisible) {
+      _confirmationVisible = true;
+      unawaited(_confirmSharedPage(pending.title, pending.createdAt));
+    }
+  }
+
+  Future<void> _confirmSharedPage(String title, DateTime createdAt) async {
+    final add = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Do you want to add this page to your journal?'),
+        content: Text(
+          '${title.isEmpty ? 'Untitled page' : title}\n'
+          '${DateFormat.yMMMMd().format(createdAt.toLocal())}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Add page'),
+          ),
+        ],
+      ),
+    );
+    _confirmationVisible = false;
+    if (mounted) widget.sharedPages.confirm(add == true);
   }
 
   Future<void> _activateMusicForPage(int page) async {
@@ -272,6 +349,10 @@ class _JournalScreenState extends State<JournalScreen> {
                         controller: _pageController,
                         physics: const NeverScrollableScrollPhysics(),
                         onPageChanged: (page) {
+                          _visiblePageId =
+                              page > 0 && page <= _journal.documents.length
+                              ? _journal.documents[page - 1].id
+                              : null;
                           if (page != _currentPageIndex) {
                             setState(() => _currentPageIndex = page);
                             _chromeTimer?.cancel();
@@ -288,6 +369,10 @@ class _JournalScreenState extends State<JournalScreen> {
                             readAsset: _journal.readAsset,
                             onOpenPage: goToEntry,
                             onNewPage: _createPage,
+                            onAddSharedPage: widget.sharedPages.busy
+                                ? null
+                                : () =>
+                                      unawaited(widget.sharedPages.pickPage()),
                             onDeletePage: _journal.deletePage,
                             cloudSync: widget.cloudSync,
                           ),
@@ -295,6 +380,14 @@ class _JournalScreenState extends State<JournalScreen> {
                             _buildEntryPage(document),
                         ],
                       ),
+                      if (widget.sharedPages.busy &&
+                          widget.sharedPages.pendingPage == null)
+                        const Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: LinearProgressIndicator(),
+                        ),
                       if (_currentPage > 0)
                         Positioned(
                           left: 12,
