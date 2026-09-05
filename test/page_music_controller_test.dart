@@ -31,6 +31,7 @@ void main() {
       expect(playback.loadedUrls, [track.streamUrl]);
       expect(playback.playCalls, 1);
 
+      await Future<void>.delayed(Duration.zero);
       await controller.toggle();
       expect(playback.pauseCalls, 1);
 
@@ -51,6 +52,7 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     await controller.setActivePage('page', track);
     playback.emit(AudioPlaybackStatus.playing);
+    await Future<void>.delayed(Duration.zero);
     await controller.toggle();
 
     expect(playback.loopCalls, 1);
@@ -59,23 +61,25 @@ void main() {
     controller.dispose();
   });
 
-  test('restart reloads and autoplays the selected track from the beginning',
-      () async {
-    final playback = _FakePlayback();
-    final controller = PageMusicController(
-      catalog: const _FakeCatalog(track),
-      playback: playback,
-      persistResolvedTrack: (_, _) async {},
-    );
+  test(
+    'restart reloads and autoplays the selected track from the beginning',
+    () async {
+      final playback = _FakePlayback();
+      final controller = PageMusicController(
+        catalog: const _FakeCatalog(track),
+        playback: playback,
+        persistResolvedTrack: (_, _) async {},
+      );
 
-    await controller.setActivePage('page', track);
-    await controller.setActivePage('page', track, restart: true);
+      await controller.setActivePage('page', track);
+      await controller.setActivePage('page', track, restart: true);
 
-    expect(playback.loadedUrls, [track.streamUrl, track.streamUrl]);
-    expect(playback.playCalls, 2);
-    expect(playback.stopCalls, greaterThanOrEqualTo(2));
-    controller.dispose();
-  });
+      expect(playback.loadedUrls, [track.streamUrl, track.streamUrl]);
+      expect(playback.playCalls, 2);
+      expect(playback.stopCalls, greaterThanOrEqualTo(2));
+      controller.dispose();
+    },
+  );
 
   test('refreshes a failed stream URL and persists the replacement', () async {
     final playback = _FakePlayback(failFirstLoad: true);
@@ -96,6 +100,7 @@ void main() {
     );
     await controller.setActivePage('page', track);
 
+    await Future<void>.delayed(Duration.zero);
     await controller.toggle();
 
     expect(playback.loadedUrls, [track.streamUrl, refreshed.streamUrl]);
@@ -104,6 +109,94 @@ void main() {
     controller.dispose();
   });
 
+  test(
+    'looping play never blocks switching or restarts a selected preview',
+    () async {
+      final playback = _PendingPlayback();
+      final controller = PageMusicController(
+        catalog: const _FakeCatalog(track),
+        playback: playback,
+        persistResolvedTrack: (_, _) async {},
+      );
+      await controller
+          .setActivePage('page', track)
+          .timeout(const Duration(seconds: 1));
+      final next = track.copyWith(streamUrl: 'https://audio.example/next.mp3');
+      await controller
+          .setActivePage('page', next, preview: true)
+          .timeout(const Duration(seconds: 1));
+      await Future<void>.delayed(Duration.zero);
+      expect(playback.loadedUrls, [track.streamUrl, next.streamUrl]);
+      final stops = playback.stopCalls;
+      await controller.setActivePage('page', next, resume: true);
+      expect(playback.stopCalls, stops);
+      expect(playback.playCalls, 2);
+      expect(playback.maxSimultaneous, 1);
+      controller.dispose();
+    },
+  );
+
+  test(
+    'rapid changes serialize loads and only play the latest selection',
+    () async {
+      final playback = _PendingPlayback()..loadGate = Completer<void>();
+      final controller = PageMusicController(
+        catalog: const _FakeCatalog(track),
+        playback: playback,
+        persistResolvedTrack: (_, _) async {},
+      );
+      final first = controller.setActivePage('page', track);
+      await Future<void>.delayed(Duration.zero);
+      final next = track.copyWith(streamUrl: 'https://audio.example/next.mp3');
+      final second = controller.setActivePage('page', next);
+      final last = track.copyWith(streamUrl: 'https://audio.example/last.mp3');
+      final third = controller.setActivePage('page', last);
+      playback.loadGate!.complete();
+      await Future.wait([first, second, third]);
+      expect(playback.loadedUrls, [track.streamUrl, last.streamUrl]);
+      expect(playback.playCalls, 1);
+      expect(controller.track?.streamUrl, last.streamUrl);
+      expect(playback.maxSimultaneous, 1);
+      controller.dispose();
+    },
+  );
+}
+
+class _PendingPlayback extends _FakePlayback {
+  Completer<void>? loadGate;
+  Completer<void>? playing;
+  int maxSimultaneous = 0;
+
+  @override
+  Future<void> load(String url) async {
+    await super.load(url);
+    await loadGate?.future;
+  }
+
+  @override
+  Future<void> play() {
+    if (playing != null && !playing!.isCompleted) {
+      maxSimultaneous = 2;
+    } else {
+      maxSimultaneous = maxSimultaneous == 0 ? 1 : maxSimultaneous;
+    }
+    playCalls++;
+    emit(AudioPlaybackStatus.playing);
+    playing = Completer<void>();
+    return playing!.future;
+  }
+
+  @override
+  Future<void> stopAndReset() async {
+    if (playing != null && !playing!.isCompleted) playing!.complete();
+    await super.stopAndReset();
+  }
+
+  @override
+  Future<void> dispose() async {
+    await stopAndReset();
+    await super.dispose();
+  }
 }
 
 class _FakeCatalog implements MusicCatalogRepository {

@@ -6,6 +6,7 @@ import 'package:journal_app/models/page_music.dart';
 import 'package:journal_app/services/audio_playback.dart';
 import 'package:journal_app/services/repositories.dart';
 import 'package:journal_app/ui/features/music/view_models/music_picker_view_model.dart';
+import 'package:journal_app/ui/features/music/view_models/page_music_controller.dart';
 import 'package:journal_app/ui/features/music/views/music_picker_sheet.dart';
 
 void main() {
@@ -27,7 +28,7 @@ void main() {
     final playback = _PickerPlayback();
     final viewModel = MusicPickerViewModel(
       catalog: catalog,
-      playback: playback,
+      playback: _controller(playback),
     );
     MusicPickerResult? result;
     await tester.pumpWidget(
@@ -39,9 +40,7 @@ void main() {
                 result = await showModalBottomSheet<MusicPickerResult>(
                   context: context,
                   isScrollControlled: true,
-                  builder: (_) => MusicPickerSheet(
-                    viewModel: viewModel,
-                  ),
+                  builder: (_) => MusicPickerSheet(viewModel: viewModel),
                 );
               },
               child: const Text('Open'),
@@ -72,14 +71,17 @@ void main() {
     expect(result?.track?.trackId, '42');
     await viewModel.close();
     viewModel.dispose();
-    expect(playback.stopCalls, greaterThanOrEqualTo(2));
-    expect(playback.disposed, isTrue);
+    expect(playback.stopCalls, 2);
+    expect(playback.disposed, isFalse);
   });
 
   test('discards stale search responses after the query changes', () async {
     final catalog = _SequencedCatalog();
     final playback = _PickerPlayback();
-    final viewModel = MusicPickerViewModel(catalog: catalog, playback: playback);
+    final viewModel = MusicPickerViewModel(
+      catalog: catalog,
+      playback: _controller(playback),
+    );
 
     viewModel.setQuery('first');
     final firstSearch = viewModel.search();
@@ -94,10 +96,62 @@ void main() {
     viewModel.dispose();
   });
 
+  testWidgets('first opening stays loading until the catalog responds', (
+    tester,
+  ) async {
+    final catalog = _SequencedCatalog();
+    final viewModel = MusicPickerViewModel(
+      catalog: catalog,
+      playback: _controller(_PickerPlayback()),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: MusicPickerSheet(viewModel: viewModel)),
+      ),
+    );
+    expect(find.text('Loading music…'), findsOneWidget);
+    expect(find.text('No instrumental tracks found.'), findsNothing);
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('Loading music…'), findsOneWidget);
+    catalog.responses.single.complete([track]);
+    await tester.pumpAndSettle();
+    expect(find.text('Soft Rain'), findsOneWidget);
+    await viewModel.close();
+    viewModel.dispose();
+  });
+
+  testWidgets('failed initial search can retry without reopening', (
+    tester,
+  ) async {
+    final catalog = _SequencedCatalog();
+    final viewModel = MusicPickerViewModel(
+      catalog: catalog,
+      playback: _controller(_PickerPlayback()),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: MusicPickerSheet(viewModel: viewModel)),
+      ),
+    );
+    catalog.responses.single.completeError(Exception('Offline'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    expect(find.text('Loading music…'), findsOneWidget);
+    catalog.responses.last.complete([track]);
+    await tester.pumpAndSettle();
+    expect(find.text('Soft Rain'), findsOneWidget);
+    await viewModel.close();
+    viewModel.dispose();
+  });
+
   testWidgets('retains picker state when an ancestor rebuilds', (tester) async {
     final catalog = _PickerCatalog(track);
     final playback = _PickerPlayback();
-    final viewModel = MusicPickerViewModel(catalog: catalog, playback: playback);
+    final viewModel = MusicPickerViewModel(
+      catalog: catalog,
+      playback: _controller(playback),
+    );
     VoidCallback? rebuild;
 
     await tester.pumpWidget(
@@ -128,7 +182,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 450));
     await tester.pumpAndSettle();
 
-    expect(catalog.queries, containsAll(<String>['first keyword', 'second keyword']));
+    expect(
+      catalog.queries,
+      containsAll(<String>['first keyword', 'second keyword']),
+    );
     expect(find.text('Soft Rain'), findsOneWidget);
     await viewModel.close();
     viewModel.dispose();
@@ -141,7 +198,7 @@ void main() {
           body: MusicPickerSheet(
             viewModel: MusicPickerViewModel(
               catalog: DisabledMusicCatalogRepository(),
-              playback: _disabledFactory(),
+              playback: _controller(_disabledFactory()),
             ),
           ),
         ),
@@ -232,4 +289,15 @@ class _PickerPlayback implements AudioPlaybackService {
     disposed = true;
     await _states.close();
   }
+}
+
+PageMusicController _controller(AudioPlaybackService playback) {
+  final controller = PageMusicController(
+    catalog: const DisabledMusicCatalogRepository(),
+    playback: playback,
+    persistResolvedTrack: (_, _) async {},
+  );
+  unawaited(controller.setActivePage('page', null));
+  addTearDown(controller.dispose);
+  return controller;
 }

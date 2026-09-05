@@ -9,7 +9,7 @@ import '../../../../editor/editor_controller.dart';
 import '../../../../models/document.dart';
 import '../../../../models/page_music.dart';
 import '../../../../models/view_state.dart';
-import '../../../../services/audio_playback.dart';
+import '../../music/view_models/page_music_controller.dart';
 import '../../../../services/image_source.dart';
 import '../../../../services/image_processing.dart';
 import '../../../../services/repositories.dart';
@@ -36,7 +36,6 @@ class EntryEditorViewModel extends EditorController {
     required PersistenceRepository persistenceRepository,
     required ArchiveRepository archiveRepository,
     required MusicCatalogRepository musicCatalog,
-    required AudioPlaybackFactory audioPlaybackFactory,
     required ImageInsertionUseCase imageInsertion,
     required ArchiveTransferUseCase archiveTransfer,
     DocumentViewPreferencesRepository? viewPreferencesRepository,
@@ -48,19 +47,17 @@ class EntryEditorViewModel extends EditorController {
        _preferences = preferenceRepository,
        _persistence = persistenceRepository,
        _musicCatalog = musicCatalog,
-       _audioPlaybackFactory = audioPlaybackFactory,
        _imageInsertion = imageInsertion,
        _archiveTransfer = archiveTransfer,
        _viewPreferences = viewPreferencesRepository,
        super(
          document: document,
-         persistDocument: (EntryDocument next) =>
-             _persistCurrentDocument(
-               documentRepository,
-               checkpointRepository,
-               document,
-               next,
-             ),
+         persistDocument: (EntryDocument next) => _persistCurrentDocument(
+           documentRepository,
+           checkpointRepository,
+           document,
+           next,
+         ),
        );
 
   final String _documentId;
@@ -70,7 +67,6 @@ class EntryEditorViewModel extends EditorController {
   final PreferencesRepository _preferences;
   final PersistenceRepository _persistence;
   final MusicCatalogRepository _musicCatalog;
-  final AudioPlaybackFactory _audioPlaybackFactory;
   final ImageInsertionUseCase _imageInsertion;
   final ArchiveTransferUseCase _archiveTransfer;
   final DocumentViewPreferencesRepository? _viewPreferences;
@@ -85,6 +81,7 @@ class EntryEditorViewModel extends EditorController {
 
   String get documentId => _documentId;
   String? get workflowError => _workflowError;
+
   /// Repository capabilities stay private to this feature model; callers see
   /// only feature operations and immutable values.
   Uint8List? readAsset(String id) {
@@ -92,14 +89,15 @@ class EntryEditorViewModel extends EditorController {
     return blob == null ? null : Uint8List.fromList(blob.bytes);
   }
 
-  /// Creates the configured music picker model without exposing the catalog
-  /// or playback factory to a feature view.
-  MusicPickerViewModel createMusicPickerViewModel({PageMusicTrack? current}) =>
-      MusicPickerViewModel(
-        catalog: _musicCatalog,
-        playback: _audioPlaybackFactory(),
-        current: current,
-      );
+  /// Creates a catalog picker that borrows the page's single player.
+  MusicPickerViewModel createMusicPickerViewModel({
+    PageMusicTrack? current,
+    required PageMusicController playback,
+  }) => MusicPickerViewModel(
+    catalog: _musicCatalog,
+    playback: playback,
+    current: current,
+  );
 
   /// Coordinates editor flushes with the application persistence owner.
   void addFlushHook(Future<void> Function() hook) =>
@@ -140,9 +138,7 @@ class EntryEditorViewModel extends EditorController {
   /// Runs media cleanup without deleting assets still reachable from this
   /// editor's immutable undo/redo or clipboard snapshots.
   Future<void> collectUnreferencedAssets() =>
-      _assets.collectUnreferencedAssets(
-        retainedAssetIds: retainedAssetIds,
-      );
+      _assets.collectUnreferencedAssets(retainedAssetIds: retainedAssetIds);
 
   /// Presentation/tool state that must stay consistent with the document
   /// selection. Flutter-only focus, dialogs, and animations remain in views.
@@ -327,6 +323,9 @@ class EntryEditorViewModel extends EditorController {
         documents: _documentRepository,
       );
 
+  Future<ProcessedImage> prepareImage(PickedImage picked) =>
+      _imageInsertion.prepare(picked);
+
   Future<({ProcessedImage image, String assetId})> insertImageAsset({
     required PickedImage picked,
   }) => _imageInsertion.processAndStore(picked: picked);
@@ -339,19 +338,20 @@ class EntryEditorViewModel extends EditorController {
   Future<EntryDocument?> restoreCheckpoint({
     required String checkpointId,
     required String documentId,
-  }) =>
-      _checkpointRecovery.restore(
-        checkpointId: checkpointId,
-        documentId: documentId,
-      );
+  }) => _checkpointRecovery.restore(
+    checkpointId: checkpointId,
+    documentId: documentId,
+  );
 
   Future<bool> exportArchive({
     required String documentId,
     required String fileName,
-  }) => _archiveTransfer.exportDocument(documentId: documentId, fileName: fileName);
+  }) => _archiveTransfer.exportDocument(
+    documentId: documentId,
+    fileName: fileName,
+  );
 
   Future<EntryDocument?> importArchive() => _archiveTransfer.importDocument();
-
 }
 
 Future<void> _persistCurrentDocument(

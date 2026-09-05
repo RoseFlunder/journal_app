@@ -15,32 +15,49 @@ class EditorMusicView extends StatelessWidget {
     required this.documentTrack,
     required this.controller,
     required this.active,
+    required this.onChange,
   });
 
   final String documentId;
   final PageMusicTrack? documentTrack;
   final PageMusicController controller;
   final bool active;
+  final VoidCallback onChange;
 
   /// Opens the music catalog picker without exposing its sheet implementation
   /// to the page host.
   static Future<MusicPickerResult?> showPicker(
     BuildContext context, {
     required EntryEditorViewModel editor,
+    required PageMusicController playback,
     PageMusicTrack? current,
   }) async {
     // Keep the model outside the route builder. The builder may be invoked
     // again when inherited layout state changes, but a picker opening must
-    // retain one search generation, listener, and preview player.
-    final viewModel = editor.createMusicPickerViewModel(current: current);
+    // retain one search generation and listener to the shared page player.
+    final viewModel = editor.createMusicPickerViewModel(
+      current: current,
+      playback: playback,
+    );
+    final pageId = playback.pageId;
+    final wasPlaying = playback.isPlaying || playback.isLoading;
     try {
-      return await showModalBottomSheet<MusicPickerResult>(
+      final result = await showModalBottomSheet<MusicPickerResult>(
         context: context,
         backgroundColor: PaperPage.paper,
         showDragHandle: true,
         isScrollControlled: true,
         builder: (context) => MusicPickerSheet(viewModel: viewModel),
       );
+      if (result == null && viewModel.didPreview && playback.pageId == pageId) {
+        await playback.setActivePage(
+          pageId,
+          current,
+          restart: true,
+          autoplay: wasPlaying,
+        );
+      }
+      return result;
     } finally {
       try {
         await viewModel.close();
@@ -140,6 +157,11 @@ class EditorMusicView extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+              ),
+              IconButton(
+                tooltip: 'Change page music',
+                onPressed: active ? onChange : null,
+                icon: const Icon(Icons.library_music_outlined, size: 20),
               ),
               IconButton(
                 tooltip: 'Page music details',

@@ -123,8 +123,8 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
   selected unlocked blocks as one transaction; mobile hides the rotate handle.
 - [x] Contextual toolbar, scrollable More sheet, duplicate, clipboard, lock,
   layers, groups, and delete exist.
-- [x] Single-tap selects text and double-tap enters editing; double-tap visual
-  blocks opens the image editor.
+- [x] Single-tap selects text and double-tap enters editing. Imported photos
+  retain standard move, rotate, and resize controls without appearance editing.
 - [~] Desktop shortcuts cover common clipboard, history, selection, deletion,
   and nudge actions.
 - [ ] Add group/layer shortcuts, Space and middle-button pan, automatic
@@ -165,12 +165,15 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
   sticker rendering, and full-screen viewing.
 - [~] Preset crop, opacity, 90-degree rotation, flipping, masks, brightness,
   contrast, and saturation are stored and rendered.
-- [~] Image sliders and crop choices now use sheet-local preview state and
-  commit each continuous slider gesture once; dedicated editor interaction
-  coverage remains.
-- [ ] Add free crop, focal repositioning, replace-with-layout-retention,
-  frames, warmth, filter presets, and original/edited comparison.
-- [ ] Add image-editor interaction and golden tests.
+- [x] Photos open a temporary import editor before asset persistence. Filters
+  and simple frames preview before Add to page; cancellation inserts nothing.
+  On-page appearance editing is removed.
+- [x] Import uses pro_image_editor for live filter selection/export and
+  package:image for baked white, cream, or black frames. Existing saved
+  appearance properties remain readable.
+- [x] Import, cancel, reset, filter export, frame pixels, and page insertion
+  have regression tests.
+- [ ] Add image import golden tests.
 
 ### Ink and shapes
 
@@ -273,5 +276,6 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 - Real-time collaboration, generative AI, marketplace features, and rich
   embedded media remain deferred. Cloud sync is implemented behind its
   production configuration and validation gate.
-- Music remains separate page ambience and is deferred until editor
-  correctness and creative tools are stable.
+- Music remains separate page ambience. The picker searches immediately with
+  loading/retry states, shares the single page player for previews, and
+  preserves playback when a preview is selected.

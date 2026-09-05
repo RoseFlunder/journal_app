@@ -42,11 +42,11 @@ class AppDependencies {
       repository: repositories.persistence,
     );
     final wiredRepositories = repositories.withPersistence(persistence);
-    final resolvedFactory = editorViewModelFactory ??
+    final resolvedFactory =
+        editorViewModelFactory ??
         createEditorViewModelFactory(
           repositories: wiredRepositories,
           musicCatalog: musicCatalog,
-          audioPlaybackFactory: audioPlaybackFactory,
           imageProcessor: imageProcessor,
           archiveTransfer: archiveTransfer,
         );
@@ -146,7 +146,6 @@ class AppDependencies {
       editorViewModelFactory: createEditorViewModelFactory(
         repositories: wiredRepositories,
         musicCatalog: musicCatalog,
-        audioPlaybackFactory: audioPlaybackFactory,
         imageProcessor: imageProcessor,
         archiveTransfer: archiveTransfer,
       ),
@@ -202,7 +201,6 @@ AudioPlaybackService _disabledAudioFactory() =>
 EntryEditorViewModelFactory createEditorViewModelFactory({
   required JournalRepositories repositories,
   required MusicCatalogRepository musicCatalog,
-  required AudioPlaybackFactory audioPlaybackFactory,
   required ImageProcessingService imageProcessor,
   required JournalTransferGateway archiveTransfer,
 }) =>
@@ -215,7 +213,6 @@ EntryEditorViewModelFactory createEditorViewModelFactory({
       persistenceRepository: repositories.persistence,
       archiveRepository: repositories.archiveRepository,
       musicCatalog: musicCatalog,
-      audioPlaybackFactory: audioPlaybackFactory,
       imageInsertion: ImageInsertionUseCase(
         assets: repositories.assetRepository,
         processor: imageProcessor,

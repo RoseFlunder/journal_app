@@ -36,6 +36,8 @@ class PageMusicController extends ChangeNotifier {
   String? _error;
   int _selectionGeneration = 0;
   bool _disposed = false;
+  Future<void> _operations = Future.value();
+  bool _previewing = false;
 
   String? get pageId => _pageId;
   PageMusicTrack? get track => _track;
@@ -48,24 +50,41 @@ class PageMusicController extends ChangeNotifier {
     String? pageId,
     PageMusicTrack? track, {
     bool restart = false,
+    bool autoplay = true,
+    bool preview = false,
+    bool resume = false,
   }) async {
+    if (_disposed) return;
     final pageChanged = _pageId != pageId;
     final trackChanged =
         _track?.trackId != track?.trackId ||
         _track?.streamUrl != track?.streamUrl;
     final selectionChanged = pageChanged || trackChanged;
     final shouldPlay = pageId != null && track != null;
-    if (selectionChanged || restart) {
-      _selectionGeneration++;
-      await _stopSilently();
-    }
+    final generation = selectionChanged || restart
+        ? ++_selectionGeneration
+        : _selectionGeneration;
     _pageId = pageId;
     _track = track;
+    _previewing = preview;
     _error = null;
     _notify();
-    if ((selectionChanged || restart) && shouldPlay) {
-      await _playCurrentSelection();
-    }
+    await _enqueue(() async {
+      if (_disposed || generation != _selectionGeneration) return;
+      if (selectionChanged || restart) await _stopSilently();
+      if (_disposed || generation != _selectionGeneration) return;
+      if (shouldPlay &&
+          autoplay &&
+          (selectionChanged || restart || (resume && !isPlaying))) {
+        await _playCurrentSelection();
+      }
+    });
+  }
+
+  Future<void> _enqueue(Future<void> Function() operation) {
+    final next = _operations.then((_) => operation());
+    _operations = next.catchError((Object _) {});
+    return next;
   }
 
   Future<void> toggle() async {
@@ -73,10 +92,10 @@ class PageMusicController extends ChangeNotifier {
     final pageId = _pageId;
     if (track == null || pageId == null || isLoading) return;
     if (isPlaying) {
-      await _playback.pause();
+      await _enqueue(_playback.pause);
       return;
     }
-    await _playCurrentSelection();
+    await _enqueue(_playCurrentSelection);
   }
 
   Future<void> _playCurrentSelection() async {
@@ -95,7 +114,8 @@ class PageMusicController extends ChangeNotifier {
         final refreshed = await _catalog.resolveTrack(track.trackId);
         if (!_isCurrentSelection(pageId, track, generation)) return;
         _track = refreshed;
-        await _persistResolvedTrack(pageId, refreshed);
+        if (!_previewing) await _persistResolvedTrack(pageId, refreshed);
+        if (!_isCurrentSelection(pageId, refreshed, generation)) return;
         if (!await _loadAndPlay(refreshed, pageId, generation)) return;
       } catch (error) {
         if (!_isCurrentSelection(pageId, _track, generation)) return;
@@ -115,10 +135,19 @@ class PageMusicController extends ChangeNotifier {
     }
     if (_loadedUrl != track.streamUrl) {
       await _playback.load(track.streamUrl);
+      if (!_isCurrentSelection(pageId, track, generation)) return false;
       _loadedUrl = track.streamUrl;
     }
     if (!_isCurrentSelection(pageId, track, generation)) return false;
-    await _playback.play();
+    // just_audio's play future lasts until playback ends (forever for a loop).
+    // Source changes must remain available while that future is pending.
+    unawaited(
+      _playback.play().catchError((Object error) {
+        if (_isCurrentSelection(pageId, track, generation)) {
+          _setError(_friendlyError(error));
+        }
+      }),
+    );
     return true;
   }
 
@@ -136,7 +165,7 @@ class PageMusicController extends ChangeNotifier {
 
   Future<void> stopAndReset() async {
     _selectionGeneration++;
-    await _stopSilently();
+    await _enqueue(_stopSilently);
     _notify();
   }
 
@@ -151,6 +180,7 @@ class PageMusicController extends ChangeNotifier {
   }
 
   void _handlePlaybackState(AudioPlaybackSnapshot state) {
+    if (_disposed) return;
     _status = state.status;
     if (state.status == AudioPlaybackStatus.error) {
       _error = state.message ?? 'Could not play this track.';
@@ -178,7 +208,8 @@ class PageMusicController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     unawaited(_subscription.cancel());
-    unawaited(_playback.dispose());
+    _selectionGeneration++;
+    unawaited(_enqueue(_playback.dispose));
     super.dispose();
   }
 }

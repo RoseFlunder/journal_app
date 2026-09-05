@@ -15,13 +15,11 @@ class EditorMoreToolsView extends StatefulWidget {
     required this.canRedo,
     required this.canGroup,
     required this.canUngroup,
-    required this.hasImageSelection,
     required this.hasMusic,
     required this.selectMode,
     required this.drawMode,
     required this.onUndo,
     required this.onRedo,
-    required this.onEditImage,
     required this.onExportArchive,
     required this.onImportArchive,
     required this.onGroup,
@@ -41,14 +39,12 @@ class EditorMoreToolsView extends StatefulWidget {
   final bool canRedo;
   final bool canGroup;
   final bool canUngroup;
-  final bool hasImageSelection;
   final bool hasMusic;
   final bool selectMode;
   final bool drawMode;
 
   final VoidCallback onUndo;
   final VoidCallback onRedo;
-  final VoidCallback onEditImage;
   final VoidCallback onExportArchive;
   final VoidCallback onImportArchive;
   final VoidCallback onGroup;
@@ -185,13 +181,6 @@ class _EditorMoreToolsViewState extends State<EditorMoreToolsView> {
             subtitle: const Text('Open a .cozyjournal backup'),
             onTap: () => _close(widget.onImportArchive),
           ),
-          if (widget.hasImageSelection)
-            ListTile(
-              leading: const Icon(Icons.image_outlined),
-              title: const Text('Edit image'),
-              subtitle: const Text('Crop, flip, mask, filters, and frame'),
-              onTap: () => _close(widget.onEditImage),
-            ),
         ],
       ),
     ),

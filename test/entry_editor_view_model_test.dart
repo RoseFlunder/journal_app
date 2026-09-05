@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:journal_app/services/audio_playback.dart';
+
 import 'package:journal_app/models/document.dart';
+
 import 'support/legacy_test_models.dart';
+
 import 'package:journal_app/services/repositories.dart';
 import 'package:journal_app/services/image_processing.dart';
 import 'package:journal_app/services/journal_transfer_service.dart';
@@ -24,7 +26,6 @@ void main() {
       persistenceRepository: _NoopEditorCapabilities(),
       archiveRepository: _NoopEditorCapabilities(),
       musicCatalog: const DisabledMusicCatalogRepository(),
-      audioPlaybackFactory: _disabledAudioFactory,
       imageInsertion: _noOpImageInsertion(),
       archiveTransfer: _noOpArchiveTransfer(),
     );
@@ -54,7 +55,6 @@ void main() {
       persistenceRepository: _NoopEditorCapabilities(),
       archiveRepository: _NoopEditorCapabilities(),
       musicCatalog: const DisabledMusicCatalogRepository(),
-      audioPlaybackFactory: _disabledAudioFactory,
       imageInsertion: _noOpImageInsertion(),
       archiveTransfer: _noOpArchiveTransfer(),
     );
@@ -86,7 +86,6 @@ void main() {
       persistenceRepository: _NoopEditorCapabilities(),
       archiveRepository: _NoopEditorCapabilities(),
       musicCatalog: const DisabledMusicCatalogRepository(),
-      audioPlaybackFactory: _disabledAudioFactory,
       imageInsertion: _noOpImageInsertion(),
       archiveTransfer: _noOpArchiveTransfer(),
     );
@@ -135,7 +134,6 @@ void main() {
       persistenceRepository: _NoopEditorCapabilities(),
       archiveRepository: _NoopEditorCapabilities(),
       musicCatalog: const DisabledMusicCatalogRepository(),
-      audioPlaybackFactory: _disabledAudioFactory,
       imageInsertion: _noOpImageInsertion(),
       archiveTransfer: _noOpArchiveTransfer(),
     );
@@ -166,7 +164,6 @@ void main() {
       persistenceRepository: _NoopEditorCapabilities(),
       archiveRepository: _NoopEditorCapabilities(),
       musicCatalog: const DisabledMusicCatalogRepository(),
-      audioPlaybackFactory: _disabledAudioFactory,
       imageInsertion: _noOpImageInsertion(),
       archiveTransfer: _noOpArchiveTransfer(),
     );
@@ -194,7 +191,6 @@ void main() {
       persistenceRepository: _NoopEditorCapabilities(),
       archiveRepository: _NoopEditorCapabilities(),
       musicCatalog: const DisabledMusicCatalogRepository(),
-      audioPlaybackFactory: _disabledAudioFactory,
       imageInsertion: _noOpImageInsertion(),
       archiveTransfer: _noOpArchiveTransfer(),
     );
@@ -301,9 +297,6 @@ class _FakeCheckpointRepository implements CheckpointRepository {
   @override
   Future<void> restoreCheckpoint(String checkpointId) async {}
 }
-
-AudioPlaybackService _disabledAudioFactory() =>
-    const DisabledAudioPlaybackService();
 
 ImageInsertionUseCase _noOpImageInsertion() => ImageInsertionUseCase(
   assets: _NoopEditorCapabilities(),

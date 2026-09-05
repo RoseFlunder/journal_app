@@ -8,7 +8,9 @@ import 'package:journal_app/app/app_dependencies.dart';
 import 'package:journal_app/main.dart';
 import 'package:journal_app/models/page_music.dart';
 import 'package:journal_app/services/audio_playback.dart';
+
 import 'support/hive_test_environment.dart';
+
 import 'package:journal_app/services/repositories.dart';
 
 void main() {
@@ -36,9 +38,7 @@ void main() {
     temp.deleteSync(recursive: true);
   });
 
-  testWidgets('page music autoplays and resets on navigation', (
-    tester,
-  ) async {
+  testWidgets('page music autoplays and resets on navigation', (tester) async {
     store = TestHiveEnvironment();
     await store.init();
     final entry = await store.addEntry(title: 'Music page');
@@ -62,6 +62,22 @@ void main() {
     expect(playback.loadedUrls, [track.streamUrl]);
     expect(playback.playCalls, 1);
     expect(find.byTooltip('Pause page music'), findsOneWidget);
+
+    // Reopening while the looping play future is pending must remain possible.
+    final stopsBeforePicker = playback.stopCalls;
+    await tester.tap(find.byTooltip('Change page music'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choose page music'), findsOneWidget);
+    expect(playback.stopCalls, stopsBeforePicker);
+    await tester.tap(find.text('Use'));
+    await tester.pumpAndSettle();
+    expect(playback.playCalls, 1);
+    await tester.tap(find.byTooltip('Change page music'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choose page music'), findsOneWidget);
+    await tester.tap(find.byTooltip('Close music picker'));
+    await tester.pumpAndSettle();
+    expect(playback.stopCalls, stopsBeforePicker);
 
     await tester.tap(find.byTooltip('Pause page music'));
     await tester.pump();
@@ -91,6 +107,7 @@ class _WidgetCatalog implements MusicCatalogRepository {
 }
 
 class _WidgetPlayback implements AudioPlaybackService {
+  Completer<void>? _playing;
   final _states = StreamController<AudioPlaybackSnapshot>.broadcast();
   final loadedUrls = <String>[];
   int playCalls = 0;
@@ -100,18 +117,24 @@ class _WidgetPlayback implements AudioPlaybackService {
   @override
   Future<void> load(String url) async => loadedUrls.add(url);
   @override
-  Future<void> pause() async =>
-      _states.add(const AudioPlaybackSnapshot(AudioPlaybackStatus.paused));
+  Future<void> pause() async {
+    if (_playing != null && !_playing!.isCompleted) _playing!.complete();
+    _states.add(const AudioPlaybackSnapshot(AudioPlaybackStatus.paused));
+  }
+
   @override
   Future<void> play() async {
     playCalls++;
     _states.add(const AudioPlaybackSnapshot(AudioPlaybackStatus.playing));
+    _playing = Completer<void>();
+    await _playing!.future;
   }
 
   @override
   Future<void> setLoopOne() async {}
   @override
   Future<void> stopAndReset() async {
+    if (_playing != null && !_playing!.isCompleted) _playing!.complete();
     stopCalls++;
     _states.add(const AudioPlaybackSnapshot(AudioPlaybackStatus.idle));
   }

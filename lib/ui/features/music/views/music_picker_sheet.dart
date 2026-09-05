@@ -15,10 +15,7 @@ class MusicPickerResult {
 }
 
 class MusicPickerSheet extends StatefulWidget {
-  const MusicPickerSheet({
-    super.key,
-    required this.viewModel,
-  });
+  const MusicPickerSheet({super.key, required this.viewModel});
 
   final MusicPickerViewModel viewModel;
 
@@ -27,14 +24,13 @@ class MusicPickerSheet extends StatefulWidget {
 }
 
 class _MusicPickerSheetState extends State<MusicPickerSheet> {
-  late final TextEditingController _searchController =
-      TextEditingController();
+  late final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    unawaited(widget.viewModel.load());
     widget.viewModel.addListener(_handleModelChanged);
+    unawaited(widget.viewModel.load());
   }
 
   void _handleModelChanged() {
@@ -89,6 +85,11 @@ class _MusicPickerSheetState extends State<MusicPickerSheet> {
                     Navigator.pop(context, const MusicPickerResult.remove()),
               ),
             const Divider(height: 1),
+            if (model.error != null && model.tracks.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(model.error!),
+              ),
             Expanded(child: _buildResults(model)),
           ],
         ),
@@ -97,15 +98,24 @@ class _MusicPickerSheetState extends State<MusicPickerSheet> {
   }
 
   Widget _buildResults(MusicPickerViewModel model) {
-    if (model.loading) return const Center(child: CircularProgressIndicator());
+    if (model.loading) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Loading music…'),
+          ],
+        ),
+      );
+    }
     if (model.error != null && model.tracks.isEmpty) {
       return _MessageState(
         icon: Icons.cloud_off_outlined,
         message: model.error!,
         actionLabel: model.isConfigured ? 'Retry' : null,
-        onAction: model.isConfigured
-            ? () => model.search()
-            : null,
+        onAction: model.isConfigured ? () => model.search() : null,
       );
     }
     if (model.tracks.isEmpty) {
@@ -151,9 +161,7 @@ class _MusicPickerSheetState extends State<MusicPickerSheet> {
             children: [
               IconButton(
                 tooltip: playing ? 'Pause preview' : 'Preview ${track.title}',
-                onPressed: loading
-                    ? null
-                    : () => model.togglePreview(track),
+                onPressed: loading ? null : () => model.togglePreview(track),
                 icon: loading
                     ? const SizedBox.square(
                         dimension: 20,

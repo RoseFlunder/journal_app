@@ -19,7 +19,7 @@ import '../view_models/editor_tool_state.dart';
 import 'entry_editor_surface.dart';
 import 'editor_canvas_view.dart';
 import 'editor_layers_view.dart';
-import 'editor_image_editor_view.dart';
+import 'photo_import_editor.dart';
 import 'editor_history_view.dart';
 import 'editor_toolbar_view.dart';
 import 'editor_more_tools_view.dart';
@@ -541,24 +541,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
   }
 
-  Future<int?> _openImageFrameColor(
-    BuildContext sheetContext,
-    int? current,
-  ) async {
-    final result = await showVisualColorPicker(
-      sheetContext,
-      initialValue: current ?? PaperPage.ink.toARGB32(),
-      dialogTitle: 'Frame color',
-      recentColorValues: _editor.recentColorValues,
-      favoriteColorValues: _editor.favoriteColorValues,
-      onFavoriteColorsChanged: _editor.updateFavoriteColors,
-    );
-    if (!mounted || result == null) return null;
-    final value = result.value ?? PaperPage.ink.toARGB32();
-    _editor.addRecentColor(value);
-    return value;
-  }
-
   Future<Color?> _requestColorSample() {
     final current = _colorSampleCompleter;
     if (current != null) return current.future;
@@ -660,7 +642,17 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       if (!mounted || origin == null) return;
       final picked = await _imageSource.pickImage(origin);
       if (!mounted || picked == null) return;
-      final stored = await _editor.insertImageAsset(picked: picked);
+      final prepared = await _editor.prepareImage(picked);
+      if (!mounted) return;
+      final edited = await Navigator.of(context).push<Uint8List>(
+        MaterialPageRoute(
+          builder: (_) => PhotoImportEditor(bytes: prepared.bytes),
+        ),
+      );
+      if (!mounted || edited == null) return;
+      final stored = await _editor.insertImageAsset(
+        picked: PickedImage(bytes: edited, mime: 'image/png'),
+      );
       final image = stored.image;
       final assetId = stored.assetId;
       if (!mounted) return;
@@ -836,43 +828,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
   }
 
-  CanvasNode? _imageSelection() {
-    final block = _editor.primaryNode;
-    if (block == null ||
-        (block.type != BlockType.image && block.type != BlockType.sticker)) {
-      return null;
-    }
-    return _editor.primaryNode;
-  }
-
-  Future<void> _showImageEditor() async {
-    final node = _imageSelection();
-    if (node == null) return;
-    await _editor.commitTransaction();
-    if (!mounted) return;
-    _editor.beginStyleTransaction('Image appearance');
-    bool? result;
-    try {
-      result = await showModalBottomSheet<bool>(
-        context: context,
-        backgroundColor: PaperPage.paper,
-        showDragHandle: true,
-        isScrollControlled: true,
-        builder: (context) => EditorImageEditorView(
-          node: node,
-          onPreview: (next) => _editor.replaceNode(next),
-          onPickFrameColor: _openImageFrameColor,
-        ),
-      );
-    } finally {
-      if (result == true) {
-        await _editor.commitTransaction();
-      } else {
-        _editor.cancelTransaction();
-      }
-    }
-  }
-
   Future<void> _exportArchive() async {
     if (!mounted) return;
     final exported = await _editor.exportArchive(
@@ -938,13 +893,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         canRedo: _editor.canRedo,
         canGroup: _editor.canGroup,
         canUngroup: _editor.canUngroup,
-        hasImageSelection: _imageSelection() != null,
         hasMusic: _document.music != null,
         selectMode: _selectMode,
         drawMode: _drawMode,
         onUndo: _undo,
         onRedo: _redo,
-        onEditImage: _showImageEditor,
         onExportArchive: _exportArchive,
         onImportArchive: _importArchive,
         onGroup: _editor.groupSelection,
@@ -970,12 +923,11 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     if (_musicPickerOpen) return;
     _musicPickerOpen = true;
     try {
-      await widget.musicController.stopAndReset();
-      if (!mounted) return;
       final result = await EditorMusicView.showPicker(
         context,
         editor: _editor,
         current: _document.music,
+        playback: widget.musicController,
       );
       if (!mounted || result == null) return;
       final track = result.remove ? null : result.track;
@@ -984,7 +936,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       await widget.musicController.setActivePage(
         widget.active ? _document.id : null,
         widget.active ? track : null,
-        restart: true,
+        resume: true,
       );
       if (mounted) setState(() {});
     } catch (error) {
@@ -1237,7 +1189,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                           onEditImageId: (id) {
                             _editor.select(id);
                             setState(() => _selectedId = id);
-                            _showImageEditor();
                           },
                           onTransformChanged: (id, transform) =>
                               _editor.replaceNodeWorldTransform(id, transform),
@@ -1396,6 +1347,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       documentId: _document.id,
                       documentTrack: _document.music,
                       controller: widget.musicController,
+                      onChange: () => unawaited(_showMusicPicker()),
                       active: widget.active,
                     ),
                   ),
@@ -1415,6 +1367,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                             documentId: _document.id,
                             documentTrack: _document.music,
                             controller: widget.musicController,
+                            onChange: () => unawaited(_showMusicPicker()),
                             active: widget.active,
                           ),
                           const SizedBox(height: 8),
