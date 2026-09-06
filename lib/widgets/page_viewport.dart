@@ -43,6 +43,7 @@ class PageViewport extends StatefulWidget {
     this.pageRect,
     this.contentRect,
     this.openingMaxZoom = 2.0,
+    this.fitContentOnFirstOpen = true,
     this.controlsBottomInset = 12,
     // Kept for source compatibility with callers that used the old focused
     // page API. New callers should provide pageRect/contentRect instead.
@@ -96,6 +97,10 @@ class PageViewport extends StatefulWidget {
   /// Maximum page-relative zoom used by the automatic content fit.
   final double openingMaxZoom;
 
+  /// Whether a new camera starts focused on [contentRect]. Disable this for
+  /// finite-page readers that should open with the complete paper visible.
+  final bool fitContentOnFirstOpen;
+
   /// Extra space reserved below camera controls, for example for the editor
   /// toolbar.
   final double controlsBottomInset;
@@ -137,6 +142,14 @@ class _PageViewportState extends State<PageViewport> {
       openingMaxZoom: widget.openingMaxZoom,
     );
     _camera.addListener(_handleCameraChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant PageViewport oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_ready && oldWidget.contentRect != widget.contentRect) {
+      _camera.updateContentRect(_contentRect);
+    }
   }
 
   @override
@@ -195,7 +208,8 @@ class _PageViewportState extends State<PageViewport> {
       initialView: widget.initialView,
       initialFocus: widget.initialFocus,
       fitFocus: widget.fitFocus,
-      fitContentOnFirstOpen: widget.interactive,
+      fitContentOnFirstOpen:
+          widget.interactive && widget.fitContentOnFirstOpen,
       legacyFocusMode: widget.pageRect == null,
     );
     if (!widget.interactive) {

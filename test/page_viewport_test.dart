@@ -112,6 +112,57 @@ void main() {
     },
   );
 
+  testWidgets('fit content uses bounds updated after the first layout', (
+    tester,
+  ) async {
+    const page = Rect.fromLTWH(0, 0, 1000, 1414);
+    const key = ValueKey('updating-content-viewport');
+
+    Widget viewport(Rect content) => MaterialApp(
+      home: SizedBox(
+        width: 400,
+        height: 800,
+        child: PageViewport(
+          key: key,
+          canvasSize: PageViewport.pageSize,
+          pageRect: page,
+          contentRect: content,
+          initialView: const ViewState(zoom: 1),
+          child: const SizedBox.expand(),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(viewport(page));
+    await tester.pump();
+    await tester.pump();
+    final before = tester
+        .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+        .transformationController!
+        .value
+        .getMaxScaleOnAxis();
+
+    await tester.pumpWidget(
+      viewport(const Rect.fromLTWH(300, 120, 300, 300)),
+    );
+    await tester.pump();
+    final unchanged = tester
+        .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+        .transformationController!
+        .value
+        .getMaxScaleOnAxis();
+    expect(unchanged, closeTo(before, 0.001));
+
+    await tester.tap(find.byTooltip('Fit content'));
+    await tester.pump(const Duration(milliseconds: 300));
+    final fitted = tester
+        .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+        .transformationController!
+        .value
+        .getMaxScaleOnAxis();
+    expect(fitted, greaterThan(before));
+  });
+
   testWidgets('disabled viewport stays fixed and has no toolbar', (
     tester,
   ) async {

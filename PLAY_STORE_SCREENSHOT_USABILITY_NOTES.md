@@ -1,7 +1,8 @@
 # Play Store Screenshot Usability Notes
 
 Observed while staging the Android app on a Pixel 7 emulator at 1080 × 2400.
-These are product observations only; no fixes have been applied yet.
+These observations informed the first usability pass. Implemented items are
+marked below; the remaining notes are candidates for later product decisions.
 
 ## High priority
 
@@ -13,14 +14,16 @@ These are product observations only; no fixes have been applied yet.
   not saved.
 - **Suggested improvement:** Auto-grow text blocks while typing, with a sensible
   maximum width and minimum height. Keep all text visible when editing ends.
+- **Status:** Implemented. New blocks stay compact and grow downward as text
+  wraps, without shrinking a block the user has enlarged.
 
-### Edit mode is difficult to discover after controls auto-hide
+### Immersive reading mode is intentional
 
-- **Observed:** Page controls disappear after a short idle period. A tap reveals
-  them, then the user must find a separate Edit action near the top-right.
-- **Impact:** A page can look read-only, especially to a first-time mobile user.
-- **Suggested improvement:** Keep a persistent, clearly labeled Edit button or
-  show a brief first-use hint such as “Tap Edit to add to this page.”
+- **Product decision:** Page controls should disappear while reading so users
+  can enjoy the finished page without permanent interface chrome.
+- **Follow-up:** Keep the existing tap-to-reveal behavior. If first-time users
+  need help, prefer a one-time, dismissible hint rather than a persistent Edit
+  button.
 
 ### Android keyboard dismissal and editor completion are ambiguous
 
@@ -47,10 +50,14 @@ These are product observations only; no fixes have been applied yet.
 
 - **Observed:** Large previous/next buttons sit over the left and right edges of
   the paper at its vertical midpoint.
-- **Impact:** They obscure content and compete visually with selected-object
-  handles.
-- **Suggested improvement:** Move navigation outside the paper, reduce its visual
-  weight, or reveal it only after an edge tap/swipe.
+- **Existing behavior:** The buttons already fade with the rest of the page
+  chrome after three seconds and reappear on interaction.
+- **Optional polish:** When visible on narrow phones, use smaller visual circles
+  with the same large invisible touch targets, or tuck the circles halfway into
+  the screen edge. This reduces temporary content coverage without changing the
+  immersive interaction model.
+- **Status:** The visible circles are smaller while their 48 × 48 touch targets
+  and existing fade behavior remain unchanged.
 
 ### Selection handles overwhelm small elements
 
@@ -79,6 +86,7 @@ These are product observations only; no fixes have been applied yet.
 - **Impact:** It may look like an error or failed save state.
 - **Suggested improvement:** Hide it until sync is available, or make it tappable
   with a clear “Cloud sync unavailable” explanation.
+- **Status:** Hidden while cloud synchronization is disabled.
 
 ### Fit-page view leaves substantial unused vertical space
 
@@ -89,6 +97,8 @@ These are product observations only; no fixes have been applied yet.
 - **Suggested improvement:** Fit the page into the usable area below the top safe
   region and above controls, or remember a slightly larger comfortable reading
   zoom separately from the full-page overview.
+- **Status:** The full A4 overview remains unchanged. Fit content now uses the
+  actual title and rotated visible-element bounds to focus the decorated region.
 
 ### Delete is visually prominent on every contents card
 
@@ -97,4 +107,5 @@ These are product observations only; no fixes have been applied yet.
   anxiety even if a confirmation follows.
 - **Suggested improvement:** Move destructive actions into an overflow menu or
   swipe action while retaining confirmation and recovery where possible.
-
+- **Status:** Implemented as a page-actions overflow containing Rename and
+  Delete; deletion still requires confirmation.

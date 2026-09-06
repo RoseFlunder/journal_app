@@ -33,6 +33,21 @@ void main() {
     await viewModel.deletePage(created.id);
     expect(viewModel.documents, isEmpty);
   });
+
+  test('renames pages through the document repository', () async {
+    final repository = _FakeJournalRepository();
+    final viewModel = JournalViewModel(repository: repository);
+    addTearDown(viewModel.dispose);
+
+    final created = await viewModel.createPage(title: 'First title');
+    await viewModel.renamePage(created.id, '  New title  ');
+
+    expect(viewModel.documents.single.title, 'New title');
+    expect(
+      viewModel.documents.single.modifiedAt.isAfter(created.modifiedAt),
+      isTrue,
+    );
+  });
 }
 
 EntryDocument _document(String id) => EntryDocument(

@@ -16,6 +16,7 @@ class EntryEditorSurface extends StatelessWidget {
     required this.onViewportChanged,
     required this.canvasSize,
     required this.pageRect,
+    required this.contentRect,
     required this.controlsBottomInset,
     required this.controlsVisible,
     required this.gesturesEnabled,
@@ -29,6 +30,7 @@ class EntryEditorSurface extends StatelessWidget {
   final ValueChanged<PageViewportSnapshot> onViewportChanged;
   final Size canvasSize;
   final Rect pageRect;
+  final Rect contentRect;
   final double controlsBottomInset;
   final bool controlsVisible;
   final bool gesturesEnabled;
@@ -42,6 +44,8 @@ class EntryEditorSurface extends StatelessWidget {
     onViewportChanged: onViewportChanged,
     canvasSize: canvasSize,
     pageRect: pageRect,
+    contentRect: contentRect,
+    fitContentOnFirstOpen: false,
     controlsBottomInset: controlsBottomInset,
     controlsVisible: controlsVisible,
     gesturesEnabled: gesturesEnabled,

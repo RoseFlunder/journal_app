@@ -52,6 +52,15 @@ class JournalViewModel extends ChangeNotifier {
     _refresh();
   }
 
+  Future<void> renamePage(String id, String title) async {
+    final document = documentById(id);
+    final trimmed = title.trim();
+    if (document == null || trimmed.isEmpty || trimmed == document.title) return;
+    await saveDocument(
+      document.copyWith(title: trimmed, modifiedAt: DateTime.now()),
+    );
+  }
+
   /// Persists a catalog-resolved track without exposing the document
   /// repository to the music controller or its views.
   Future<void> persistResolvedTrack(String pageId, PageMusicTrack track) async {

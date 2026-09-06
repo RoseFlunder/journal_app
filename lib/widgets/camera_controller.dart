@@ -98,6 +98,12 @@ class CameraController extends ChangeNotifier {
   double get zoom => _zoom;
   bool get isInitialized => _initialized;
 
+  /// Refreshes the region used by [fitContent] without disturbing the user's
+  /// current camera. The next explicit content-fit action uses these bounds.
+  void updateContentRect(Rect contentRect) {
+    _contentRect = contentRect;
+  }
+
   /// Configures the camera for a viewport and establishes its initial fit.
   void configure({
     required Size viewport,

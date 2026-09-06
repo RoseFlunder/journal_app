@@ -199,6 +199,7 @@ void main() {
         isTrue,
       );
       expect(find.text('Add shared page'), findsNothing);
+      expect(find.byTooltip('Cloud sync is not configured'), findsNothing);
       expect(find.text('This journal is empty.'), findsOneWidget);
       expect(find.byTooltip('New page'), findsNothing);
       expect(find.byTooltip('Home'), findsNothing);
@@ -277,16 +278,35 @@ void main() {
       // The entry now appears as a TOC row.
       expect(find.text('Untitled page'), findsOneWidget);
 
+      // Destructive actions stay out of the card's primary surface. The
+      // overflow also offers renaming without opening the editor.
+      expect(find.byTooltip('Delete page'), findsNothing);
+      await tester.tap(find.byTooltip('Page actions'));
+      await tester.pumpAndSettle();
+      expect(find.text('Rename page'), findsOneWidget);
+      expect(find.text('Delete page'), findsOneWidget);
+      await tester.tap(find.text('Rename page'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('rename-page-title')),
+        'Sunday notes',
+      );
+      await tester.tap(find.text('Rename'));
+      await tester.pumpAndSettle();
+      expect(find.text('Sunday notes'), findsOneWidget);
+
       // Tap the row to jump to the page.
-      await tester.tap(find.text('Untitled page'));
+      await tester.tap(find.text('Sunday notes'));
       await tester.pumpAndSettle();
       expect(find.byType(AppBar), findsNothing);
-      expect(find.text('Untitled page'), findsOneWidget);
+      expect(find.text('Sunday notes'), findsOneWidget);
 
       // System back returns to the landing page.
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Delete page'));
+      await tester.tap(find.byTooltip('Page actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete page'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Delete'));
       await tester.pumpAndSettle();
@@ -702,6 +722,22 @@ void main() {
       isTrue,
     );
     expect(store.entries.single.blocks.single.text, 'A first note');
+    await tester.enterText(
+      find.byKey(ValueKey('block-text-$blockId')),
+      'A first note that wraps onto several lines in this compact block.\n'
+          'The block should grow while typing so every line remains visible.',
+    );
+    await tester.pump();
+    final grownHeight = store.entries.single.blocks.single.h;
+    expect(grownHeight, greaterThan(11));
+    expect(store.entries.single.blocks.single.w, 30);
+
+    await tester.enterText(
+      find.byKey(ValueKey('block-text-$blockId')),
+      'A first note',
+    );
+    await tester.pump();
+    expect(store.entries.single.blocks.single.h, grownHeight);
     await tester.tap(find.byTooltip('Choose font'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Lora'));
@@ -791,6 +827,8 @@ void main() {
     expect(find.byTooltip('Fit content'), findsOneWidget);
     await tester.tap(find.byTooltip('Fit content'));
     await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byTooltip('Fit page'));
+    await tester.pump(const Duration(milliseconds: 300));
 
     final beforeX = store.entries.single.blocks.single.x;
     await tester.drag(
@@ -802,8 +840,12 @@ void main() {
 
     final beforeWidth = store.entries.single.blocks.single.w;
     await tester.drag(
-      find.byKey(ValueKey('resize-${store.entries.single.blocks.single.id}')),
-      const Offset(40, 20),
+      find.byKey(
+        ValueKey(
+          'resize-${store.entries.single.blocks.single.id}-topRight',
+        ),
+      ),
+      const Offset(40, -20),
     );
     await tester.pump();
     expect(store.entries.single.blocks.single.w, greaterThan(beforeWidth));

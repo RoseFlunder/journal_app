@@ -225,6 +225,20 @@ class _JournalScreenState extends State<JournalScreen> {
     });
   }
 
+  Future<void> _renamePage(String id, String title) async {
+    final trimmed = title.trim();
+    if (trimmed.isEmpty) return;
+    final editor = _editorViewModels[id];
+    if (editor == null) {
+      await _journal.renamePage(id, trimmed);
+      return;
+    }
+    if (editor.document.title == trimmed) return;
+    await editor.updateMetadata(
+      editor.document.copyWith(title: trimmed, modifiedAt: DateTime.now()),
+    );
+  }
+
   Future<String?> _promptForTitle() async {
     return showDialog<String>(
       context: context,
@@ -409,6 +423,7 @@ class _JournalScreenState extends State<JournalScreen> {
                           readAsset: _journal.readAsset,
                           onOpenPage: goToEntry,
                           onNewPage: _createPage,
+                          onRenamePage: _renamePage,
                           onDeletePage: _journal.deletePage,
                           cloudSync: widget.cloudSync,
                         );
@@ -547,14 +562,34 @@ class _NavigationButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.88),
-      shape: const CircleBorder(),
-      elevation: 2,
+    final surface = Theme.of(
+      context,
+    ).colorScheme.surface.withValues(alpha: 0.88);
+    return SizedBox(
+      width: 48,
+      height: 48,
       child: IconButton(
         tooltip: tooltip,
         onPressed: onPressed,
-        icon: Icon(icon),
+        padding: const EdgeInsets.all(4),
+        icon: DecoratedBox(
+          decoration: BoxDecoration(
+            color: surface,
+            shape: BoxShape.circle,
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Icon(icon, size: 22),
+          ),
+        ),
       ),
     );
   }

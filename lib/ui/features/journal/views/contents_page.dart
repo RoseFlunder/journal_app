@@ -20,6 +20,7 @@ class ContentsPage extends StatefulWidget {
     required this.readAsset,
     required this.onOpenPage,
     required this.onNewPage,
+    required this.onRenamePage,
     required this.onDeletePage,
     required this.cloudSync,
   });
@@ -28,6 +29,7 @@ class ContentsPage extends StatefulWidget {
   final Uint8List? Function(String id) readAsset;
   final ValueChanged<int> onOpenPage;
   final VoidCallback onNewPage;
+  final Future<void> Function(String id, String title) onRenamePage;
   final Future<void> Function(String id) onDeletePage;
   final CloudSyncViewModel cloudSync;
 
@@ -43,6 +45,8 @@ class _ContentsPageState extends State<ContentsPage> {
   Uint8List? Function(String id) get readAsset => widget.readAsset;
   ValueChanged<int> get onOpenPage => widget.onOpenPage;
   VoidCallback get onNewPage => widget.onNewPage;
+  Future<void> Function(String id, String title) get onRenamePage =>
+      widget.onRenamePage;
   Future<void> Function(String id) get onDeletePage => widget.onDeletePage;
   CloudSyncViewModel get cloudSync => widget.cloudSync;
   late final Future<_WelcomeMessage> _welcomeMessage = _loadWelcomeMessage();
@@ -73,6 +77,19 @@ class _ContentsPageState extends State<ContentsPage> {
     );
     if (confirmed == true && context.mounted) {
       await onDeletePage(document.id);
+    }
+  }
+
+  Future<void> _renamePage(
+    BuildContext context,
+    EntryDocument document,
+  ) async {
+    final title = await showDialog<String>(
+      context: context,
+      builder: (context) => _RenamePageDialog(initialTitle: document.title),
+    );
+    if (title != null && context.mounted) {
+      await onRenamePage(document.id, title);
     }
   }
 
@@ -167,6 +184,8 @@ class _ContentsPageState extends State<ContentsPage> {
                                 ),
                                 preview: _preview(documents[index]),
                                 onTap: () => onOpenPage(index),
+                                onRename: () =>
+                                    _renamePage(context, documents[index]),
                                 onDelete: () =>
                                     _confirmDelete(context, documents[index]),
                               ),
@@ -356,6 +375,60 @@ class _EmptyJournal extends StatelessWidget {
   );
 }
 
+class _RenamePageDialog extends StatefulWidget {
+  const _RenamePageDialog({required this.initialTitle});
+
+  final String initialTitle;
+
+  @override
+  State<_RenamePageDialog> createState() => _RenamePageDialogState();
+}
+
+class _RenamePageDialogState extends State<_RenamePageDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialTitle,
+  );
+
+  bool get _canRename => _controller.text.trim().isNotEmpty;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (_canRename) Navigator.pop(context, _controller.text.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Rename page'),
+    content: TextField(
+      key: const ValueKey('rename-page-title'),
+      controller: _controller,
+      autofocus: true,
+      textCapitalization: TextCapitalization.sentences,
+      textInputAction: TextInputAction.done,
+      onChanged: (_) => setState(() {}),
+      onSubmitted: (_) => _submit(),
+      decoration: const InputDecoration(labelText: 'Page title'),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: _canRename ? _submit : null,
+        child: const Text('Rename'),
+      ),
+    ],
+  );
+}
+
+enum _PageCardAction { rename, delete }
+
 class _EntryCard extends StatelessWidget {
   const _EntryCard({
     required this.document,
@@ -363,6 +436,7 @@ class _EntryCard extends StatelessWidget {
     required this.date,
     required this.preview,
     required this.onTap,
+    required this.onRename,
     required this.onDelete,
   });
 
@@ -371,6 +445,7 @@ class _EntryCard extends StatelessWidget {
   final String date;
   final ImageProvider<Object>? preview;
   final VoidCallback onTap;
+  final VoidCallback onRename;
   final VoidCallback onDelete;
 
   @override
@@ -424,17 +499,46 @@ class _EntryCard extends StatelessWidget {
                 ],
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline),
-              tooltip: 'Delete page',
-              onPressed: onDelete,
-            ),
             Text(
               '${index + 1}',
               style: TextStyle(
                 fontFamily: 'Lora',
                 color: PaperPage.ink.withValues(alpha: 0.45),
               ),
+            ),
+            PopupMenuButton<_PageCardAction>(
+              tooltip: 'Page actions',
+              onSelected: (action) => switch (action) {
+                _PageCardAction.rename => onRename(),
+                _PageCardAction.delete => onDelete(),
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: _PageCardAction.rename,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.edit_outlined),
+                    title: Text('Rename page'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _PageCardAction.delete,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      Icons.delete_outline,
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                    title: Text(
+                      'Delete page',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              icon: const Icon(Icons.more_vert),
             ),
           ],
         ),
@@ -453,6 +557,9 @@ class _CloudSyncAction extends StatelessWidget {
     listenable: viewModel,
     builder: (context, _) {
       final state = viewModel.state;
+      if (state.phase == CloudSyncPhase.disabled) {
+        return const SizedBox.shrink();
+      }
       final busy =
           state.phase == CloudSyncPhase.signingIn ||
           state.phase == CloudSyncPhase.initialSync ||

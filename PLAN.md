@@ -96,7 +96,7 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
 
 - [x] Finite A4 ruled-paper background, persisted camera, centered title, and
   full-page first-open fit.
-- [~] Coordinates retain the page-local model scale, and content-fit includes
+- [x] Coordinates retain the page-local model scale, and content-fit includes
   rotated bounds for the optional fit-content action.
 - [x] Rendering uses the finite A4 `InteractiveViewer` host instead of an
   infinite board.
@@ -156,6 +156,11 @@ Legend: **[x] Done**, **[~] Partial**, **[ ] Missing**, **[!] Fix required**.
   restore.
 - [~] Plain documents still use `TextField`, and formatting controls apply to
   the complete block.
+- [x] Keep a newly inserted text block compact, then automatically grow its
+  height while the user types so all lines remain visible. Automatic growth
+  must preserve the user's chosen width, never shrink a manually enlarged
+  block, stay within the finite page, and coalesce with the active text-edit
+  transaction rather than creating a save or undo step for every line.
 - [ ] Use Quill for all text nodes and add selection/paragraph formatting,
   underline, alignment, spacing, lists, links, backgrounds, borders, and saved
   defaults.

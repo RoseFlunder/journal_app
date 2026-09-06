@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -9,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../editor/editor_state.dart';
+import '../../../../editor/geometry_services.dart';
 import '../../../../editor/image_layout.dart';
 import '../../../../models/document.dart';
 import '../../../../models/sticker.dart';
@@ -633,6 +635,108 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     });
   }
 
+  void _replaceTextAndGrow(
+    String id,
+    String text, {
+    List<dynamic>? delta,
+  }) {
+    final node = _document.nodeById(id);
+    if (node == null || node.type != BlockType.text || node.locked) return;
+
+    _editor.replaceText(id, text, delta: delta);
+    if (text.isEmpty) return;
+
+    final world = _document.worldTransformFor(id);
+    if (world == null) return;
+    final availableWidth = math.max(
+      1.0,
+      world.width * PageViewport.modelToRenderScale - 16,
+    );
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: (Theme.of(context).textTheme.bodyLarge ?? const TextStyle())
+            .copyWith(
+              fontSize: node.fontSize,
+              fontFamily: node.fontFamily,
+              fontWeight: node.bold ? FontWeight.bold : FontWeight.normal,
+              fontStyle: node.italic ? FontStyle.italic : FontStyle.normal,
+            ),
+      ),
+      textDirection: Directionality.of(context),
+    )..layout(maxWidth: availableWidth);
+    final requiredHeight =
+        (painter.height + 16) / PageViewport.modelToRenderScale;
+    if (requiredHeight <= world.height + 0.01) return;
+
+    final pageBottom = PageViewport.modelPageSize.height - _worldOrigin.dy;
+    final maximumHeight = math.max(world.height, pageBottom - world.y);
+    final nextHeight = requiredHeight.clamp(world.height, maximumHeight);
+    if (nextHeight <= world.height + 0.01) return;
+    _editor.replaceNodeWorldTransform(
+      id,
+      world.copyWith(height: nextHeight),
+      label: 'Edit text',
+    );
+  }
+
+  Rect _contentBounds(BuildContext context) {
+    Rect? bounds;
+    final nodes = _editor.renderNodes;
+    if (nodes.isNotEmpty) {
+      final modelBounds = BoundsService.rotated(nodes);
+      bounds = Rect.fromLTRB(
+        (modelBounds.left + _worldOrigin.dx) *
+            PageViewport.modelToRenderScale,
+        (modelBounds.top + _worldOrigin.dy) * PageViewport.modelToRenderScale,
+        (modelBounds.right + _worldOrigin.dx) *
+            PageViewport.modelToRenderScale,
+        (modelBounds.bottom + _worldOrigin.dy) *
+            PageViewport.modelToRenderScale,
+      );
+    }
+
+    final textDirection = Directionality.of(context);
+    final titlePainter = TextPainter(
+      text: TextSpan(
+        text: _document.title.isEmpty ? 'Untitled page' : _document.title,
+        style: _titleStyle(context),
+      ),
+      textDirection: textDirection,
+      textAlign: TextAlign.center,
+      maxLines: 1,
+    )..layout(maxWidth: PageViewport.pageSize.width - 56);
+    final titleRect = Rect.fromLTWH(
+      (PageViewport.pageSize.width - titlePainter.width) / 2,
+      18,
+      titlePainter.width,
+      titlePainter.height,
+    );
+    bounds = bounds == null ? titleRect : bounds.expandToInclude(titleRect);
+
+    final datePainter = TextPainter(
+      text: TextSpan(
+        text: DateFormat.yMMMMd().format(_document.createdAt),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Colors.black54,
+        ),
+      ),
+      textDirection: textDirection,
+      textAlign: TextAlign.center,
+      maxLines: 1,
+    )..layout(maxWidth: PageViewport.pageSize.width - 56);
+    final dateRect = Rect.fromLTWH(
+      (PageViewport.pageSize.width - datePainter.width) / 2,
+      titleRect.bottom + 4,
+      datePainter.width,
+      datePainter.height,
+    );
+    bounds = bounds.expandToInclude(dateRect);
+
+    final clipped = bounds.intersect(Offset.zero & _workspaceSize);
+    return clipped.isEmpty ? Offset.zero & _workspaceSize : clipped;
+  }
+
   Future<void> _addImage() async {
     if (_pickingImage) return;
     setState(() => _pickingImage = true);
@@ -1159,6 +1263,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                   PageViewport.pageSize.width,
                   PageViewport.pageSize.height,
                 ),
+                contentRect: _contentBounds(context),
                 controlsBottomInset: _editing ? 88 : 12,
                 controlsVisible: widget.controlsVisible,
                 gesturesEnabled:
@@ -1226,7 +1331,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                           },
                           onTransformChanged: (id, transform) =>
                               _editor.replaceNodeWorldTransform(id, transform),
-                          onTextChanged: _editor.replaceText,
+                          onTextChanged: _replaceTextAndGrow,
                           onInteractionStart: () =>
                               _editor.beginTransformTransaction('Transform'),
                           onInteractionEnd: () {
