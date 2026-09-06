@@ -1568,6 +1568,138 @@ void main() {
     },
   );
 
+  testWidgets(
+    'second touch cannot select another block during selection rotation',
+    (tester) async {
+      final selected = ContentBlock(
+        id: 'rotation-selected',
+        type: BlockType.text,
+        text: 'Selected',
+        x: 10,
+        y: 10,
+        w: 20,
+        h: 10,
+      );
+      final other = ContentBlock(
+        id: 'rotation-other',
+        type: BlockType.text,
+        text: 'Other',
+        x: 50,
+        y: 10,
+        w: 20,
+        h: 10,
+      );
+      final selections = <String?>[];
+      final targetSets = <Set<String>>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EntryCanvas(
+            workspaceSize: const Size(800, 400),
+            nodes: [
+              EntryDocumentCodec.nodeFromBlock(selected),
+              EntryDocumentCodec.nodeFromBlock(other),
+            ],
+            editing: true,
+            selectedId: selected.id,
+            selectedIds: {selected.id},
+            textEditingId: null,
+            onSelect: selections.add,
+            onEditText: (_) {},
+            onTouchRotateSelection: (blockIds, _, _) {
+              targetSets.add(blockIds);
+            },
+            imageBytes: (_) => null,
+            onOpenImage: (_) {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final firstFinger = await tester.startGesture(
+        const Offset(40, 40),
+        pointer: 20,
+        kind: PointerDeviceKind.touch,
+      );
+      final secondFinger = await tester.startGesture(
+        const Offset(600, 150),
+        pointer: 21,
+        kind: PointerDeviceKind.touch,
+      );
+      await secondFinger.moveBy(const Offset(0, -40));
+      await tester.pump();
+
+      expect(selections, isEmpty);
+      expect(targetSets, isNotEmpty);
+      expect(targetSets, everyElement({selected.id}));
+
+      await secondFinger.up();
+      await tester.pump();
+      expect(selections, isEmpty);
+
+      await firstFinger.up();
+      await tester.pump();
+      expect(selections, isEmpty);
+
+      await tester.tapAt(const Offset(600, 150));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(selections, [other.id]);
+    },
+  );
+
+  testWidgets('single selected block rotates around its own center', (
+    tester,
+  ) async {
+    final block = ContentBlock(
+      id: 'single-rotation-center',
+      type: BlockType.text,
+      text: 'Centered',
+      x: 10,
+      y: 12,
+      w: 20,
+      h: 14,
+    );
+    final pivots = <Offset>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EntryCanvas(
+          workspaceSize: const Size(800, 400),
+          nodes: [EntryDocumentCodec.nodeFromBlock(block)],
+          editing: true,
+          selectedId: block.id,
+          selectedIds: {block.id},
+          textEditingId: null,
+          onSelect: (_) {},
+          onEditText: (_) {},
+          onTouchRotateSelection: (_, pivot, _) => pivots.add(pivot),
+          imageBytes: (_) => null,
+          onOpenImage: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final firstFinger = await tester.startGesture(
+      const Offset(40, 40),
+      pointer: 22,
+      kind: PointerDeviceKind.touch,
+    );
+    final secondFinger = await tester.startGesture(
+      const Offset(760, 360),
+      pointer: 23,
+      kind: PointerDeviceKind.touch,
+    );
+    await secondFinger.moveBy(const Offset(0, -40));
+    await tester.pump();
+
+    expect(pivots, isNotEmpty);
+    expect(pivots, everyElement(const Offset(20, 19)));
+
+    await secondFinger.up();
+    await firstFinger.up();
+  });
+
   testWidgets('selected block border uses the same anchored drag path', (
     tester,
   ) async {

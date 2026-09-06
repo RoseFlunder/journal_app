@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -17,6 +18,7 @@ class BlockWidget extends StatefulWidget {
     this.controlScale = 1,
     required this.textEditing,
     required this.onTap,
+    this.onSelectionRequested,
     required this.onEditText,
     required this.onMoveStart,
     required this.onMoveUpdate,
@@ -41,6 +43,8 @@ class BlockWidget extends StatefulWidget {
   final double controlScale;
   final bool textEditing;
   final VoidCallback onTap;
+  final void Function(PointerDeviceKind kind, {required bool pointerDown})?
+  onSelectionRequested;
   final VoidCallback onEditText;
   final ValueChanged<Offset> onMoveStart;
   final ValueChanged<Offset> onMoveUpdate;
@@ -154,7 +158,11 @@ class _BlockWidgetState extends State<BlockWidget> {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: widget.editing ? widget.onTap : widget.onOpenImage,
+      onTapUp: widget.editing
+          ? (details) => _requestSelection(details.kind)
+          : widget.onOpenImage == null
+          ? null
+          : (_) => widget.onOpenImage!(),
       onDoubleTap: widget.editing
           ? () {
               if (widget.locked) return;
@@ -176,7 +184,7 @@ class _BlockWidgetState extends State<BlockWidget> {
                   details.localPosition.dy <= 20 ||
                   details.localPosition.dx >= size.width - 20 ||
                   details.localPosition.dy >= size.height - 20;
-              widget.onTap();
+              _requestSelection(details.kind);
               _movingBody = _moveEdgePointer == null && !_movingEdge;
               if (_movingBody) {
                 widget.onMoveStart(
@@ -507,7 +515,7 @@ class _BlockWidgetState extends State<BlockWidget> {
       onPointerDown: (event) {
         if (_moveEdgePointer != null) return;
         _moveEdgePointer = event.pointer;
-        widget.onTap();
+        _requestSelection(event.kind, pointerDown: true);
         widget.onMoveStart(event.position);
       },
       onPointerMove: (event) {
@@ -525,6 +533,18 @@ class _BlockWidgetState extends State<BlockWidget> {
     _movingEdge = false;
     _movingBody = false;
     _panDownGlobalPosition = null;
+  }
+
+  void _requestSelection(
+    PointerDeviceKind? kind, {
+    bool pointerDown = false,
+  }) {
+    final onSelectionRequested = widget.onSelectionRequested;
+    if (kind != null && onSelectionRequested != null) {
+      onSelectionRequested(kind, pointerDown: pointerDown);
+      return;
+    }
+    widget.onTap();
   }
 
   void _finishEdgeGesture(PointerEvent event) {
