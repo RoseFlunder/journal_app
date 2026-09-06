@@ -48,6 +48,7 @@ void main() {
           titleFontSize: 32,
           titleFontFamily: 'Lora',
           titleItalic: true,
+          previewImageNodeId: 'image',
           music: const PageMusicTrack(
             provider: 'jamendo',
             trackId: '123',
@@ -88,6 +89,7 @@ void main() {
       expect(first.titleFontSize, 32);
       expect(first.titleFontFamily, 'Lora');
       expect(first.titleItalic, isTrue);
+      expect(first.previewImageNodeId, 'image');
       expect(first.music!.trackId, '123');
       final assetId = first.nodes.single.children.single.assetId!;
       expect(assetId, isNot('source-asset'));

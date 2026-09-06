@@ -165,6 +165,39 @@ void main() {
     expect(documents.savedDocuments, hasLength(2));
   });
 
+  test('sets photo preview as metadata without adding undo history', () async {
+    final photo = CanvasNode(
+      id: 'photo',
+      type: BlockType.image,
+      transform: const Transform2D(width: 30, height: 20),
+      payload: const {'assetId': 'asset'},
+    );
+    final document = _document().copyWith(nodes: [..._document().nodes, photo]);
+    final documents = _FakeDocumentRepository(document);
+    final editor = EntryEditorViewModel(
+      document: document,
+      documentRepository: documents,
+      checkpointRepository: _FakeCheckpointRepository(),
+      assetRepository: _NoopEditorCapabilities(),
+      preferenceRepository: _NoopEditorCapabilities(),
+      persistenceRepository: _NoopEditorCapabilities(),
+      archiveRepository: _NoopEditorCapabilities(),
+      musicCatalog: const DisabledMusicCatalogRepository(),
+      imageInsertion: _noOpImageInsertion(),
+      archiveTransfer: _noOpArchiveTransfer(),
+    );
+    addTearDown(editor.dispose);
+
+    expect(editor.canUndo, isFalse);
+    await editor.setPreviewImage('photo');
+    expect(editor.document.previewImageNodeId, 'photo');
+    expect(documents.savedDocuments.single.previewImageNodeId, 'photo');
+    expect(editor.canUndo, isFalse);
+
+    await editor.setPreviewImage('text');
+    expect(documents.savedDocuments, hasLength(1));
+  });
+
   test('persists editor transactions through narrow repositories', () async {
     final document = _document();
     final documents = _FakeDocumentRepository(document);

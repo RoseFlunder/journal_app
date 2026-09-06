@@ -55,6 +55,8 @@ class EditorToolbarView extends StatelessWidget {
     this.onSendToBack,
     this.onToggleLock,
     this.locked = false,
+    this.onUseAsPreview,
+    this.previewSelected = false,
   });
 
   final bool editing;
@@ -104,6 +106,8 @@ class EditorToolbarView extends StatelessWidget {
   final VoidCallback? onSendToBack;
   final VoidCallback? onToggleLock;
   final bool locked;
+  final VoidCallback? onUseAsPreview;
+  final bool previewSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -255,6 +259,16 @@ class EditorToolbarView extends StatelessWidget {
                     onRecentColorAdded: onRecentColorAdded,
                     onFavoriteColorsChanged: onFavoriteColorsChanged,
                     onSampleColor: onSampleColor,
+                  ),
+                if (onUseAsPreview != null)
+                  _Action(
+                    tooltip: previewSelected
+                        ? 'Selected as page preview'
+                        : 'Use as page preview',
+                    icon: previewSelected ? Icons.image : Icons.image_outlined,
+                    label: compact ? null : 'Preview',
+                    selected: previewSelected,
+                    onPressed: onUseAsPreview,
                   ),
                 _Action(
                   tooltip: 'More editing tools',

@@ -23,15 +23,15 @@ abstract final class JournalStorageFormat {
 /// Stable persisted discriminators. Enum names are implementation details and
 /// must not silently change a long-lived storage contract.
 String assetKindDiscriminator(AssetKind kind) => switch (kind) {
-      AssetKind.image => 'image',
-      AssetKind.audio => 'audio',
-    };
+  AssetKind.image => 'image',
+  AssetKind.audio => 'audio',
+};
 
 AssetKind assetKindFromDiscriminator(Object? value) => switch (value) {
-      'image' => AssetKind.image,
-      'audio' => AssetKind.audio,
-      _ => throw const StorageFormatException('Unsupported asset kind'),
-    };
+  'image' => AssetKind.image,
+  'audio' => AssetKind.audio,
+  _ => throw const StorageFormatException('Unsupported asset kind'),
+};
 
 class StorageFormatException implements Exception {
   const StorageFormatException(this.message, {this.path});
@@ -61,30 +61,32 @@ class StoredDocumentRecord {
   final int revision;
   final EntryDocument document;
 
-  Map<String, dynamic> toJson() => JournalDocumentCodec.encodeRecord(
-        document,
-        revision: revision,
-      );
+  Map<String, dynamic> toJson() =>
+      JournalDocumentCodec.encodeRecord(document, revision: revision);
 }
 
 class StoredJournalManifest {
   StoredJournalManifest(Iterable<String> documentIds)
-      : documentIds = List<String>.unmodifiable(documentIds) {
+    : documentIds = List<String>.unmodifiable(documentIds) {
     if (this.documentIds.any((id) => id.trim().isEmpty)) {
-      throw const StorageFormatException('Manifest document IDs must not be empty');
+      throw const StorageFormatException(
+        'Manifest document IDs must not be empty',
+      );
     }
     if (this.documentIds.toSet().length != this.documentIds.length) {
-      throw const StorageFormatException('Manifest contains duplicate document IDs');
+      throw const StorageFormatException(
+        'Manifest contains duplicate document IDs',
+      );
     }
   }
 
   final List<String> documentIds;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'format': JournalStorageFormat.manifest,
-        'schemaVersion': JournalStorageFormat.schemaVersion,
-        'documentIds': documentIds,
-      };
+    'format': JournalStorageFormat.manifest,
+    'schemaVersion': JournalStorageFormat.schemaVersion,
+    'documentIds': documentIds,
+  };
 
   factory StoredJournalManifest.fromJson(Object? raw) {
     final json = _stringMap(raw, 'Manifest is not an object');
@@ -92,11 +94,15 @@ class StoredJournalManifest {
     _requireVersion(json);
     final ids = json['documentIds'];
     if (ids is! List || ids.any((value) => value is! String || value.isEmpty)) {
-      throw const StorageFormatException('Manifest documentIds must be strings');
+      throw const StorageFormatException(
+        'Manifest documentIds must be strings',
+      );
     }
     final result = ids.cast<String>();
     if (result.toSet().length != result.length) {
-      throw const StorageFormatException('Manifest contains duplicate document IDs');
+      throw const StorageFormatException(
+        'Manifest contains duplicate document IDs',
+      );
     }
     return StoredJournalManifest(result);
   }
@@ -112,9 +118,13 @@ class StoredViewPreferences {
 
   Map<String, dynamic> toJson() {
     if (view != null &&
-        (!view!.zoom.isFinite || view!.zoom <= 0 ||
-            !view!.panX.isFinite || !view!.panY.isFinite)) {
-      throw const StorageFormatException('View preferences contain invalid numbers');
+        (!view!.zoom.isFinite ||
+            view!.zoom <= 0 ||
+            !view!.panX.isFinite ||
+            !view!.panY.isFinite)) {
+      throw const StorageFormatException(
+        'View preferences contain invalid numbers',
+      );
     }
     return <String, dynamic>{
       'format': JournalStorageFormat.viewPreferences,
@@ -133,7 +143,9 @@ class StoredViewPreferences {
       throw const StorageFormatException('View preferences view is invalid');
     }
     if (json['gridVisible'] is! bool) {
-      throw const StorageFormatException('View preferences grid visibility is invalid');
+      throw const StorageFormatException(
+        'View preferences grid visibility is invalid',
+      );
     }
     final preferences = StoredViewPreferences(
       view: rawView == null
@@ -161,13 +173,13 @@ class StoredCheckpointRecord {
   final EntryDocument document;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'format': JournalStorageFormat.checkpoint,
-        'schemaVersion': JournalStorageFormat.schemaVersion,
-        'id': id,
-        'documentId': documentId,
-        'createdAt': createdAt.toUtc().toIso8601String(),
-        'document': JournalDocumentCodec.canonicalDocument(document),
-      };
+    'format': JournalStorageFormat.checkpoint,
+    'schemaVersion': JournalStorageFormat.schemaVersion,
+    'id': id,
+    'documentId': documentId,
+    'createdAt': createdAt.toUtc().toIso8601String(),
+    'document': JournalDocumentCodec.canonicalDocument(document),
+  };
 
   factory StoredCheckpointRecord.fromJson(Object? raw) {
     final json = _stringMap(raw, 'Checkpoint is not an object');
@@ -176,8 +188,10 @@ class StoredCheckpointRecord {
     final id = json['id'];
     final documentId = json['documentId'];
     final createdAt = json['createdAt'];
-    if (id is! String || id.isEmpty ||
-        documentId is! String || documentId.isEmpty ||
+    if (id is! String ||
+        id.isEmpty ||
+        documentId is! String ||
+        documentId.isEmpty ||
         createdAt is! String) {
       throw const StorageFormatException('Checkpoint metadata is invalid');
     }
@@ -191,7 +205,9 @@ class StoredCheckpointRecord {
     }
     final document = JournalDocumentCodec.decodeDocument(documentRaw);
     if (document.id != documentId) {
-      throw const StorageFormatException('Checkpoint document ID does not match metadata');
+      throw const StorageFormatException(
+        'Checkpoint document ID does not match metadata',
+      );
     }
     return StoredCheckpointRecord(
       id: id,
@@ -226,7 +242,9 @@ abstract final class JournalDocumentCodec {
     _requireFormat(json, JournalStorageFormat.document);
     _requireVersion(json);
     final revision = json['revision'];
-    if (revision is! num || !revision.isFinite || revision < 0 ||
+    if (revision is! num ||
+        !revision.isFinite ||
+        revision < 0 ||
         revision != revision.toInt()) {
       throw const StorageFormatException('Document revision is invalid');
     }
@@ -235,10 +253,7 @@ abstract final class JournalDocumentCodec {
       throw const StorageFormatException('Document record is missing document');
     }
     final decoded = decodeDocument(document);
-    return StoredDocumentRecord(
-      revision: revision.toInt(),
-      document: decoded,
-    );
+    return StoredDocumentRecord(revision: revision.toInt(), document: decoded);
   }
 
   /// Content identity intentionally omits local camera state, persistence
@@ -289,7 +304,8 @@ abstract final class JournalDocumentCodec {
     }
     final music = document.music;
     if (music != null &&
-        (music.provider.trim().isEmpty || music.trackId.trim().isEmpty ||
+        (music.provider.trim().isEmpty ||
+            music.trackId.trim().isEmpty ||
             music.duration.isNegative)) {
       throw const StorageFormatException('Music reference is invalid');
     }
@@ -310,10 +326,14 @@ abstract final class JournalDocumentCodec {
       for (final node in nodes) {
         count++;
         if (count > 10000) {
-          throw const StorageFormatException('Document contains too many nodes');
+          throw const StorageFormatException(
+            'Document contains too many nodes',
+          );
         }
         if (node.id.trim().isEmpty || !ids.add(node.id)) {
-          throw const StorageFormatException('Node IDs must be unique and non-empty');
+          throw const StorageFormatException(
+            'Node IDs must be unique and non-empty',
+          );
         }
         final transform = node.transform;
         for (final value in <double>[
@@ -325,11 +345,15 @@ abstract final class JournalDocumentCodec {
           node.opacity,
         ]) {
           if (!value.isFinite) {
-            throw const StorageFormatException('Node contains a non-finite number');
+            throw const StorageFormatException(
+              'Node contains a non-finite number',
+            );
           }
         }
         if (transform.width <= 0 || transform.height <= 0) {
-          throw const StorageFormatException('Node dimensions must be positive');
+          throw const StorageFormatException(
+            'Node dimensions must be positive',
+          );
         }
         if (node.opacity < 0 || node.opacity > 1) {
           throw const StorageFormatException('Node opacity is outside 0..1');
@@ -346,22 +370,37 @@ abstract final class JournalDocumentCodec {
     final id = json['id'];
     final createdAt = json['createdAt'];
     final modifiedAt = json['modifiedAt'];
-    if (id is! String || id.trim().isEmpty ||
-        createdAt is! String || DateTime.tryParse(createdAt) == null ||
-        modifiedAt is! String || DateTime.tryParse(modifiedAt) == null) {
+    if (id is! String ||
+        id.trim().isEmpty ||
+        createdAt is! String ||
+        DateTime.tryParse(createdAt) == null ||
+        modifiedAt is! String ||
+        DateTime.tryParse(modifiedAt) == null) {
       throw const StorageFormatException('Document metadata is invalid');
     }
-    if (json['page'] is! Map || json['nodes'] is! List || json['board'] is! Map) {
-      throw const StorageFormatException('Document structural fields are invalid');
+    if (json['page'] is! Map ||
+        json['nodes'] is! List ||
+        json['board'] is! Map) {
+      throw const StorageFormatException(
+        'Document structural fields are invalid',
+      );
     }
-    final page = _stringMap(json['page'], 'Document page specification is invalid');
+    final page = _stringMap(
+      json['page'],
+      'Document page specification is invalid',
+    );
     if (page['format'] is! String ||
         page['coordinateSystemVersion'] is! num ||
         page['width'] is! num ||
         page['height'] is! num) {
-      throw const StorageFormatException('Document page specification is invalid');
+      throw const StorageFormatException(
+        'Document page specification is invalid',
+      );
     }
-    final board = _stringMap(json['board'], 'Document board settings are invalid');
+    final board = _stringMap(
+      json['board'],
+      'Document board settings are invalid',
+    );
     final gridSize = board['gridSize'];
     if (gridSize != null &&
         (gridSize is! num || !gridSize.isFinite || gridSize <= 0)) {
@@ -380,12 +419,17 @@ abstract final class JournalDocumentCodec {
       final node = _stringMap(raw, 'Canvas node must have string keys');
       final id = node['id'];
       final kind = node['kind'] ?? node['type'];
-      if (id is! String || id.trim().isEmpty || kind is! String || kind.isEmpty) {
+      if (id is! String ||
+          id.trim().isEmpty ||
+          kind is! String ||
+          kind.isEmpty) {
         throw const StorageFormatException('Canvas node metadata is invalid');
       }
       if (node['version'] != null) {
         final version = node['version'];
-        if (version is! num || !version.isFinite || version != version.toInt()) {
+        if (version is! num ||
+            !version.isFinite ||
+            version != version.toInt()) {
           throw const StorageFormatException('Canvas node version is invalid');
         }
       }
@@ -405,7 +449,10 @@ abstract final class JournalDocumentCodec {
       }
       final opacity = node['opacity'];
       if (opacity != null &&
-          (opacity is! num || !opacity.isFinite || opacity < 0 || opacity > 1)) {
+          (opacity is! num ||
+              !opacity.isFinite ||
+              opacity < 0 ||
+              opacity > 1)) {
         throw const StorageFormatException('Canvas node opacity is invalid');
       }
       for (final key in const ['locked', 'visible']) {
@@ -465,6 +512,7 @@ abstract final class JournalDocumentCodec {
         'titleTextColorValue': document.titleTextColorValue,
         'titleBold': document.titleBold,
         'titleItalic': document.titleItalic,
+        'previewImageNodeId': document.previewImageNodeId,
       };
 
   static Map<String, dynamic> _canonicalNode(CanvasNode node) {
@@ -474,20 +522,18 @@ abstract final class JournalDocumentCodec {
     // The typed content projection supplies the known fields. Legacy payload
     // keys are merged afterwards so unsupported extensions are not discarded
     // while callers migrate away from the compatibility map.
-    final payload = <String, dynamic>{
-      ...node.content.toPayload(),
-      ...node.payload,
-    }
-      ..remove('id')
-      ..remove('type')
-      ..remove('transform')
-      ..remove('opacity')
-      ..remove('locked')
-      ..remove('visible')
-      ..remove('accessibilityLabel')
-      ..remove('children')
-      ..remove('groupId')
-      ..remove('childIds');
+    final payload =
+        <String, dynamic>{...node.content.toPayload(), ...node.payload}
+          ..remove('id')
+          ..remove('type')
+          ..remove('transform')
+          ..remove('opacity')
+          ..remove('locked')
+          ..remove('visible')
+          ..remove('accessibilityLabel')
+          ..remove('children')
+          ..remove('groupId')
+          ..remove('childIds');
     if (node.type == BlockType.text && payload['richTextDelta'] is List) {
       payload['text'] = _plainTextFromDelta(payload['richTextDelta'] as List);
     }
@@ -505,23 +551,23 @@ abstract final class JournalDocumentCodec {
         'children': node.children.map(_canonicalNode).toList(growable: false),
     };
   }
-
 }
 
 String _nodeKindDiscriminator(BlockType type) => switch (type) {
-      BlockType.text => 'text',
-      BlockType.image => 'image',
-      BlockType.sticker => 'sticker',
-      BlockType.ink => 'ink',
-      BlockType.shape => 'shape',
-      BlockType.group => 'group',
-    };
+  BlockType.text => 'text',
+  BlockType.image => 'image',
+  BlockType.sticker => 'sticker',
+  BlockType.ink => 'ink',
+  BlockType.shape => 'shape',
+  BlockType.group => 'group',
+};
 
 void _validateNodeData(CanvasNode node) {
   if (node.isOpaque) return;
   final payload = node.payload;
   _validateFiniteTree(payload);
-  if (node.type == BlockType.text && payload['richTextDelta'] != null &&
+  if (node.type == BlockType.text &&
+      payload['richTextDelta'] != null &&
       payload['richTextDelta'] is! List) {
     throw const StorageFormatException('Text Delta is invalid');
   }
@@ -532,16 +578,23 @@ void _validateNodeData(CanvasNode node) {
         throw const StorageFormatException('Text Delta operation is invalid');
       }
       if (operation.keys.any(
-        (key) => key != 'insert' && key != 'delete' &&
-            key != 'retain' && key != 'attributes',
+        (key) =>
+            key != 'insert' &&
+            key != 'delete' &&
+            key != 'retain' &&
+            key != 'attributes',
       )) {
-        throw const StorageFormatException('Text Delta operation has unknown fields');
+        throw const StorageFormatException(
+          'Text Delta operation has unknown fields',
+        );
       }
       final keys = operation.keys.where(
         (key) => key == 'insert' || key == 'delete' || key == 'retain',
       );
       if (keys.length != 1) {
-        throw const StorageFormatException('Text Delta operation must have one action');
+        throw const StorageFormatException(
+          'Text Delta operation must have one action',
+        );
       }
       final action = keys.single;
       final value = operation[action];
@@ -549,8 +602,13 @@ void _validateNodeData(CanvasNode node) {
         if (value is! String && value is! Map) {
           throw const StorageFormatException('Text Delta insert is invalid');
         }
-      } else if (value is! num || !value.isFinite || value <= 0 || value != value.toInt()) {
-        throw const StorageFormatException('Text Delta retain/delete is invalid');
+      } else if (value is! num ||
+          !value.isFinite ||
+          value <= 0 ||
+          value != value.toInt()) {
+        throw const StorageFormatException(
+          'Text Delta retain/delete is invalid',
+        );
       }
       final attributes = operation['attributes'];
       if (attributes != null && attributes is! Map) {
@@ -586,8 +644,7 @@ void _validateNodeData(CanvasNode node) {
   }
   if (node.type == BlockType.ink) {
     final width = payload['strokeWidth'];
-    if (width != null &&
-        (width is! num || !width.isFinite || width <= 0)) {
+    if (width != null && (width is! num || !width.isFinite || width <= 0)) {
       throw const StorageFormatException('Ink stroke width is invalid');
     }
     final points = payload['inkPoints'];
@@ -601,7 +658,9 @@ void _validateNodeData(CanvasNode node) {
         }
         for (final value in point.values) {
           if (value is! num || !value.isFinite) {
-            throw const StorageFormatException('Ink point contains a non-finite number');
+            throw const StorageFormatException(
+              'Ink point contains a non-finite number',
+            );
           }
         }
       }
@@ -609,8 +668,7 @@ void _validateNodeData(CanvasNode node) {
   }
   if (node.type == BlockType.shape) {
     final width = payload['strokeWidth'];
-    if (width != null &&
-        (width is! num || !width.isFinite || width <= 0)) {
+    if (width != null && (width is! num || !width.isFinite || width <= 0)) {
       throw const StorageFormatException('Shape stroke width is invalid');
     }
   }
@@ -618,7 +676,9 @@ void _validateNodeData(CanvasNode node) {
 
 void _validateFiniteTree(Object? value) {
   if (value is num && !value.isFinite) {
-    throw const StorageFormatException('Node payload contains a non-finite number');
+    throw const StorageFormatException(
+      'Node payload contains a non-finite number',
+    );
   }
   if (value is Map) {
     for (final child in value.values) {
@@ -662,7 +722,7 @@ class StoredAssetRecord {
     required List<int> bytes,
     this.width,
     this.height,
-  })  : bytes = List<int>.unmodifiable(bytes);
+  }) : bytes = List<int>.unmodifiable(bytes);
 
   final String id;
   final String kind;
@@ -672,17 +732,17 @@ class StoredAssetRecord {
   final int? height;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'format': JournalStorageFormat.asset,
-        'schemaVersion': JournalStorageFormat.schemaVersion,
-        'id': id,
-        'kind': kind,
-        'mime': mime,
-        'byteLength': bytes.length,
-        'sha256': sha256.convert(bytes).toString(),
-        'width': width,
-        'height': height,
-        'bytes': bytes.toList(growable: false),
-      };
+    'format': JournalStorageFormat.asset,
+    'schemaVersion': JournalStorageFormat.schemaVersion,
+    'id': id,
+    'kind': kind,
+    'mime': mime,
+    'byteLength': bytes.length,
+    'sha256': sha256.convert(bytes).toString(),
+    'width': width,
+    'height': height,
+    'bytes': bytes.toList(growable: false),
+  };
 
   factory StoredAssetRecord.fromJson(Object? raw) {
     final json = _stringMap(raw, 'Asset record is not an object');
@@ -692,13 +752,17 @@ class StoredAssetRecord {
     final mime = json['mime'];
     final kind = json['kind'];
     final bytesRaw = json['bytes'];
-    if (id is! String || id.isEmpty || mime is! String || !_validMime(mime) ||
+    if (id is! String ||
+        id.isEmpty ||
+        mime is! String ||
+        !_validMime(mime) ||
         (kind != 'image' && kind != 'audio')) {
       throw const StorageFormatException('Asset metadata is invalid');
     }
     if (bytesRaw is! List ||
         bytesRaw.any(
-          (value) => value is! num ||
+          (value) =>
+              value is! num ||
               !value.isFinite ||
               value < 0 ||
               value > 255 ||
@@ -706,12 +770,18 @@ class StoredAssetRecord {
         )) {
       throw const StorageFormatException('Asset bytes are invalid');
     }
-    final bytes = Uint8List.fromList(bytesRaw.cast<num>().map((value) => value.toInt()).toList());
+    final bytes = Uint8List.fromList(
+      bytesRaw.cast<num>().map((value) => value.toInt()).toList(),
+    );
     final byteLength = json['byteLength'];
-    if (byteLength is! num || !byteLength.isFinite ||
-        byteLength < 0 || byteLength != byteLength.toInt() ||
+    if (byteLength is! num ||
+        !byteLength.isFinite ||
+        byteLength < 0 ||
+        byteLength != byteLength.toInt() ||
         byteLength.toInt() != bytes.length) {
-      throw const StorageFormatException('Asset byte length does not match bytes');
+      throw const StorageFormatException(
+        'Asset byte length does not match bytes',
+      );
     }
     final expectedHash = sha256.convert(bytes).toString();
     if (json['sha256'] != expectedHash || id != expectedHash) {
@@ -720,11 +790,17 @@ class StoredAssetRecord {
     final width = json['width'];
     final height = json['height'];
     if (width != null &&
-        (width is! num || !width.isFinite || width <= 0 || width != width.toInt())) {
+        (width is! num ||
+            !width.isFinite ||
+            width <= 0 ||
+            width != width.toInt())) {
       throw const StorageFormatException('Asset width is invalid');
     }
     if (height != null &&
-        (height is! num || !height.isFinite || height <= 0 || height != height.toInt())) {
+        (height is! num ||
+            !height.isFinite ||
+            height <= 0 ||
+            height != height.toInt())) {
       throw const StorageFormatException('Asset height is invalid');
     }
     return StoredAssetRecord(
@@ -740,7 +816,9 @@ class StoredAssetRecord {
 
 void _requireFormat(Map<String, dynamic> json, String expected) {
   if (json['format'] != expected) {
-    throw StorageFormatException('Unsupported record format: ${json['format']}');
+    throw StorageFormatException(
+      'Unsupported record format: ${json['format']}',
+    );
   }
 }
 
@@ -755,7 +833,9 @@ void _requireVersion(Map<String, dynamic> json) {
 Map<String, dynamic> _deepMutable(Object? value) {
   if (value is Map<Object?, Object?>) {
     final entries = value.entries.toList()
-      ..sort((left, right) => left.key.toString().compareTo(right.key.toString()));
+      ..sort(
+        (left, right) => left.key.toString().compareTo(right.key.toString()),
+      );
     return <String, dynamic>{
       for (final entry in entries)
         entry.key.toString(): _deepValue(entry.value),
@@ -765,14 +845,18 @@ Map<String, dynamic> _deepMutable(Object? value) {
 }
 
 bool _validMime(String value) =>
-    value.trim().isNotEmpty && value.contains('/') && !value.contains(RegExp(r'\s'));
+    value.trim().isNotEmpty &&
+    value.contains('/') &&
+    !value.contains(RegExp(r'\s'));
 
 Object? _deepValue(Object? value) => switch (value) {
-      Map<Object?, Object?> map => <String, dynamic>{
-          for (final entry in (map.entries.toList()
-            ..sort((left, right) => left.key.toString().compareTo(right.key.toString()))))
-            entry.key.toString(): _deepValue(entry.value),
-        },
-      List<Object?> list => [for (final item in list) _deepValue(item)],
-      _ => value,
-    };
+  Map<Object?, Object?> map => <String, dynamic>{
+    for (final entry
+        in (map.entries.toList()..sort(
+          (left, right) => left.key.toString().compareTo(right.key.toString()),
+        )))
+      entry.key.toString(): _deepValue(entry.value),
+  },
+  List<Object?> list => [for (final item in list) _deepValue(item)],
+  _ => value,
+};

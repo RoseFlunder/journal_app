@@ -179,6 +179,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   bool get _strokeColorAvailable =>
       _editor.selectedDrawableNodes.any((node) => !node.locked);
 
+  CanvasNode? get _singleSelectedImage {
+    if (_editor.selection.length != 1) return null;
+    final node = _editor.primaryNode;
+    return node?.type == BlockType.image ? node : null;
+  }
+
   int? get _activeStrokeColorValue {
     final block = _activeStrokeBlock;
     if (block == null) return null;
@@ -956,6 +962,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     );
   }
 
+  void _useSelectedImageAsPreview() {
+    final node = _singleSelectedImage;
+    if (node == null) return;
+    unawaited(_editor.setPreviewImage(node.id));
+  }
+
   Future<void> _showMusicPicker() async {
     if (_musicPickerOpen) return;
     _musicPickerOpen = true;
@@ -1479,6 +1491,7 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                           onSendToBack: _sendToBack,
                           onToggleLock: _toggleSelectedLock,
                           locked: _editor.primaryNode?.locked ?? false,
+                          onUseAsPreview: null,
                         ),
                       ],
                     ),
@@ -1555,6 +1568,12 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       onSendToBack: _sendToBack,
                       onToggleLock: _toggleSelectedLock,
                       locked: _editor.primaryNode?.locked ?? false,
+                      onUseAsPreview: _singleSelectedImage == null
+                          ? null
+                          : _useSelectedImageAsPreview,
+                      previewSelected:
+                          _singleSelectedImage?.id ==
+                          _document.previewImageNodeId,
                     ),
                   ),
                 ),

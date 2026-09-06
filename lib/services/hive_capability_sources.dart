@@ -893,6 +893,7 @@ class HiveArchiveDataSource {
       titleTextColorValue: source.titleTextColorValue,
       titleBold: source.titleBold,
       titleItalic: source.titleItalic,
+      previewImageNodeId: source.previewImageNodeId,
       revision: 0,
       schemaVersion: source.schemaVersion,
     );

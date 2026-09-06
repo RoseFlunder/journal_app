@@ -250,6 +250,16 @@ class EntryEditorViewModel extends EditorController {
     document.copyWith(title: title, modifiedAt: DateTime.now()),
   );
 
+  /// Chooses an image node as the contents-page thumbnail. This is page
+  /// metadata, so it does not create a canvas undo command.
+  Future<void> setPreviewImage(String nodeId) async {
+    final node = document.nodeById(nodeId);
+    if (node?.type != BlockType.image) return;
+    await updateMetadata(
+      document.copyWith(previewImageNodeId: nodeId, modifiedAt: DateTime.now()),
+    );
+  }
+
   /// Applies text styling to one immutable node. Callers may wrap a series of
   /// previews in an existing transaction (for example, a color picker); a
   /// standalone update owns and commits its transaction here.

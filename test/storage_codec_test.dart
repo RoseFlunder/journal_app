@@ -15,9 +15,12 @@ void main() {
         id: 'text',
         type: BlockType.text,
         transform: const Transform2D(width: 30, height: 12),
-        payload: const {'text': 'Hello', 'richTextDelta': [
-          {'insert': 'Hello'},
-        ]},
+        payload: const {
+          'text': 'Hello',
+          'richTextDelta': [
+            {'insert': 'Hello'},
+          ],
+        },
       ),
     ],
     view: const ViewState(zoom: 2, panX: 4),
@@ -33,55 +36,93 @@ void main() {
     expect(document['schemaVersion'], 1);
     expect(document['view'], isNull);
     expect((document['music'] as Object?), isNull);
+    expect(document['previewImageNodeId'], isNull);
     expect(node['kind'], 'text');
     expect(node['version'], 1);
     expect(node['data'], isA<Map<String, dynamic>>());
-    expect(JournalDocumentCodec.sameContent(base, base.copyWith(
-      view: const ViewState(zoom: 0.5, panY: 80),
-    )), isTrue);
+    expect(
+      JournalDocumentCodec.sameContent(
+        base,
+        base.copyWith(view: const ViewState(zoom: 0.5, panY: 80)),
+      ),
+      isTrue,
+    );
   });
 
-  test('unknown node kinds stay opaque and round-trip without becoming text', () {
-    final raw = <String, dynamic>{
-      'schemaVersion': 1,
-      'id': 'future-page',
-      'title': 'Future',
-      'createdAt': '2026-01-01T00:00:00.000Z',
-      'modifiedAt': '2026-01-01T00:00:00.000Z',
-      'page': const {
-        'format': 'a4Portrait',
-        'coordinateSystemVersion': 1,
-        'width': 100.0,
-        'height': 141.4,
-      },
-      'nodes': [
-        {
-          'id': 'future-node',
-          'kind': 'magicBrush',
-          'version': 4,
-          'transform': {'x': 1, 'y': 2, 'w': 10, 'h': 10, 'rotation': 0},
-          'opacity': 1,
-          'locked': false,
-          'visible': true,
-          'data': {'newField': [1, 2, 3]},
+  test('preview image choice is optional and round-trips canonically', () {
+    final oldDocument = JournalDocumentCodec.canonicalDocument(base)
+      ..remove('previewImageNodeId');
+    expect(
+      JournalDocumentCodec.decodeDocument(oldDocument).previewImageNodeId,
+      isNull,
+    );
+
+    final selected = base.copyWith(previewImageNodeId: 'photo');
+    final decoded = JournalDocumentCodec.decodeDocument(
+      JournalDocumentCodec.canonicalDocument(selected),
+    );
+    expect(decoded.previewImageNodeId, 'photo');
+    expect(JournalDocumentCodec.sameContent(base, selected), isFalse);
+  });
+
+  test(
+    'unknown node kinds stay opaque and round-trip without becoming text',
+    () {
+      final raw = <String, dynamic>{
+        'schemaVersion': 1,
+        'id': 'future-page',
+        'title': 'Future',
+        'createdAt': '2026-01-01T00:00:00.000Z',
+        'modifiedAt': '2026-01-01T00:00:00.000Z',
+        'page': const {
+          'format': 'a4Portrait',
+          'coordinateSystemVersion': 1,
+          'width': 100.0,
+          'height': 141.4,
         },
-      ],
-      'board': {'backgroundColorValue': 0xFFFFFFFF, 'snapToGrid': false, 'gridSize': 8},
-      'titleFontSize': 28,
-      'titleBold': true,
-      'titleItalic': false,
-    };
+        'nodes': [
+          {
+            'id': 'future-node',
+            'kind': 'magicBrush',
+            'version': 4,
+            'transform': {'x': 1, 'y': 2, 'w': 10, 'h': 10, 'rotation': 0},
+            'opacity': 1,
+            'locked': false,
+            'visible': true,
+            'data': {
+              'newField': [1, 2, 3],
+            },
+          },
+        ],
+        'board': {
+          'backgroundColorValue': 0xFFFFFFFF,
+          'snapToGrid': false,
+          'gridSize': 8,
+        },
+        'titleFontSize': 28,
+        'titleBold': true,
+        'titleItalic': false,
+      };
 
-    final document = JournalDocumentCodec.decodeDocument(raw);
-    final node = document.nodes.single;
-    expect(node.isOpaque, isTrue);
-    expect(node.locked, isTrue);
-    expect(JournalDocumentCodec.canonicalDocument(document)['nodes'], raw['nodes']);
-  });
+      final document = JournalDocumentCodec.decodeDocument(raw);
+      final node = document.nodes.single;
+      expect(node.isOpaque, isTrue);
+      expect(node.locked, isTrue);
+      expect(
+        JournalDocumentCodec.canonicalDocument(document)['nodes'],
+        raw['nodes'],
+      );
+    },
+  );
 
   test('invalid duplicate node IDs are rejected before persistence', () {
     final duplicate = base.copyWith(
-      nodes: [base.nodes.single, base.nodes.single.copyWith(transform: const Transform2D(width: 4, height: 4))],
+      nodes: [
+        base.nodes.single,
+        base.nodes.single.copyWith(
+          transform: const Transform2D(width: 4, height: 4),
+        ),
+      ],
     );
     expect(
       () => JournalDocumentCodec.encodeRecord(duplicate, revision: 0),

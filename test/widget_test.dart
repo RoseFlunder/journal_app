@@ -14,6 +14,8 @@ import 'package:journal_app/main.dart';
 import 'support/legacy_test_models.dart';
 
 import 'package:journal_app/models/sticker.dart';
+import 'package:journal_app/models/asset_kind.dart';
+import 'package:journal_app/models/document.dart';
 
 import 'support/hive_test_environment.dart';
 
@@ -169,7 +171,15 @@ void main() {
       );
 
       // Starts on the (empty) table of contents.
-      expect(find.text('Cozy Bloom Journal'), findsNWidgets(2));
+      expect(find.text('Cozy Bloom Journal'), findsOneWidget);
+      expect(
+        find.text('Capture little moments, cherish big memories.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Take a deep breath and let your thoughts bloom.'),
+        findsOneWidget,
+      );
       expect(find.text('This journal is empty.'), findsOneWidget);
       expect(find.byTooltip('New page'), findsNothing);
       expect(find.byTooltip('Home'), findsNothing);
@@ -267,6 +277,96 @@ void main() {
       expect(store.entries, isEmpty);
     },
   );
+
+  testWidgets('contents previews honor selection and preserve photo ratios', (
+    tester,
+  ) async {
+    store = await TestHiveEnvironment.fresh();
+    final documents = store.repositories.documentRepository;
+
+    Future<String> imageAsset(int width, int height, int color) async {
+      final image = img.Image(width: width, height: height)
+        ..clear(
+          img.ColorUint8.rgba(
+            (color >> 16) & 0xFF,
+            (color >> 8) & 0xFF,
+            color & 0xFF,
+            0xFF,
+          ),
+        );
+      return store.addAsset(
+        'preview-test',
+        AssetKind.image,
+        'image/png',
+        img.encodePng(image),
+      );
+    }
+
+    final landscapeAsset = await imageAsset(120, 60, 0xCC3344);
+    final portraitAsset = await imageAsset(60, 120, 0x3366CC);
+    final squareAsset = await imageAsset(80, 80, 0x44AA66);
+
+    CanvasNode photo(String id, String assetId) => CanvasNode(
+      id: id,
+      type: BlockType.image,
+      transform: const Transform2D(width: 30, height: 20),
+      payload: {'assetId': assetId},
+    );
+
+    final selected = await documents.createDocument(title: 'Selected photo');
+    await documents.saveDocument(
+      selected.copyWith(
+        nodes: [
+          photo('landscape', landscapeAsset),
+          photo('portrait', portraitAsset),
+        ],
+        previewImageNodeId: 'portrait',
+      ),
+    );
+    final automatic = await documents.createDocument(title: 'Automatic photo');
+    await documents.saveDocument(
+      automatic.copyWith(
+        nodes: [photo('square', squareAsset)],
+        previewImageNodeId: 'missing-photo',
+      ),
+    );
+    final landscape = await documents.createDocument(title: 'Landscape photo');
+    await documents.saveDocument(
+      landscape.copyWith(nodes: [photo('wide', landscapeAsset)]),
+    );
+    final stickerOnly = await documents.createDocument(title: 'Sticker only');
+    await documents.saveDocument(
+      stickerOnly.copyWith(
+        nodes: [
+          CanvasNode(
+            id: 'sticker',
+            type: BlockType.sticker,
+            transform: const Transform2D(width: 20, height: 20),
+            payload: const {'stickerId': 'daisy'},
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(
+      JournalApp(
+        dependencies: AppDependencies(repositories: store.repositories),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Size previewSize(EntryDocument document) => tester.getSize(
+      find.byKey(ValueKey('page-preview-image-${document.id}')),
+    );
+
+    expect(previewSize(selected).aspectRatio, closeTo(0.5, 0.01));
+    expect(previewSize(automatic).aspectRatio, closeTo(1, 0.01));
+    expect(previewSize(landscape).aspectRatio, closeTo(2, 0.01));
+    expect(
+      find.byKey(ValueKey('page-preview-image-${stickerOnly.id}')),
+      findsNothing,
+    );
+  });
 
   testWidgets('edge navigation controls follow page boundaries', (
     tester,
@@ -1093,10 +1193,8 @@ void main() {
           builder: (context) => Scaffold(
             body: Center(
               child: FilledButton(
-                onPressed: () => showVisualColorPicker(
-                  context,
-                  initialValue: 0xFF873F4D,
-                ),
+                onPressed: () =>
+                    showVisualColorPicker(context, initialValue: 0xFF873F4D),
                 child: const Text('Open picker'),
               ),
             ),
@@ -1120,10 +1218,7 @@ void main() {
         tester.state<ScrollableState>(scrollable).position.pixels;
 
     final fieldOffset = scrollOffset();
-    await tester.dragFrom(
-      tester.getRect(field).center,
-      const Offset(0, -60),
-    );
+    await tester.dragFrom(tester.getRect(field).center, const Offset(0, -60));
     await tester.pumpAndSettle();
     expect(scrollOffset(), closeTo(fieldOffset, 0.01));
 

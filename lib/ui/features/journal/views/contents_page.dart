@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../models/document.dart';
-import '../../../../models/sticker.dart';
 import '../../../../widgets/paper_page.dart';
 import '../view_models/cloud_sync_view_model.dart';
 import '../../../../platform/cloud_sign_in_button.dart';
@@ -191,30 +190,34 @@ class _ContentsPageState extends State<ContentsPage> {
   }
 
   ImageProvider<Object>? _preview(EntryDocument document) {
+    ImageProvider<Object>? providerFor(CanvasNode node) {
+      if (node.type != BlockType.image) return null;
+      final assetId = node.assetId;
+      if (assetId == null) return null;
+      final cached = _previewProviders[assetId];
+      if (cached != null) return cached;
+      final bytes = readAsset(assetId);
+      if (bytes == null) return null;
+      return _previewProviders[assetId] = ResizeImage.resizeIfNeeded(
+        160,
+        160,
+        MemoryImage(bytes),
+      );
+    }
+
+    final selectedId = document.previewImageNodeId;
+    if (selectedId != null) {
+      final selected = document.nodeById(selectedId);
+      if (selected != null) {
+        final provider = providerFor(selected);
+        if (provider != null) return provider;
+      }
+    }
+
     ImageProvider<Object>? visit(Iterable<CanvasNode> nodes) {
       for (final node in nodes) {
-        if (node.type.name == 'sticker') {
-          final stickerId = node.payload['stickerId'];
-          final sticker = stickerId is String
-              ? StickerCatalog.byId(stickerId)
-              : null;
-          if (sticker != null) return AssetImage(sticker.assetPath);
-        }
-        if (node.type.name == 'image') {
-          final assetId = node.payload['assetId'];
-          if (assetId is String) {
-            final cached = _previewProviders[assetId];
-            if (cached != null) return cached;
-            final bytes = readAsset(assetId);
-            if (bytes != null) {
-              return _previewProviders[assetId] = ResizeImage.resizeIfNeeded(
-                160,
-                160,
-                MemoryImage(bytes),
-              );
-            }
-          }
-        }
+        final provider = providerFor(node);
+        if (provider != null) return provider;
         final nested = visit(node.children);
         if (nested != null) return nested;
       }
@@ -259,16 +262,6 @@ class _WelcomeCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Cozy Bloom Journal',
-                style: TextStyle(
-                  fontFamily: 'Lora',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 25,
-                  color: PaperPage.ink,
-                ),
-              ),
-              const SizedBox(height: 8),
               Text(
                 'Capture little moments, cherish big memories.',
                 style: Theme.of(context).textTheme.bodyLarge,
@@ -345,6 +338,7 @@ class _EntryCard extends StatelessWidget {
         child: Row(
           children: [
             Container(
+              key: ValueKey('page-preview-${document.id}'),
               width: 78,
               height: 74,
               clipBehavior: Clip.antiAlias,
@@ -354,9 +348,15 @@ class _EntryCard extends StatelessWidget {
               ),
               child: preview == null
                   ? const Icon(Icons.auto_awesome, color: PaperPage.margin)
-                  : Padding(
-                      padding: const EdgeInsets.all(7),
-                      child: Image(image: preview!, fit: BoxFit.contain),
+                  : Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(7),
+                        child: Image(
+                          key: ValueKey('page-preview-image-${document.id}'),
+                          image: preview!,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
                     ),
             ),
             const SizedBox(width: 14),

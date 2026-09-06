@@ -122,6 +122,7 @@ class CanvasNode implements CanvasRenderable {
   @override
   final BlockType type;
   final Transform2D transform;
+
   /// Read-only compatibility projection used by the renderer while typed
   /// content is consumed throughout the editor.
   final Map<String, dynamic> payload;
@@ -132,6 +133,7 @@ class CanvasNode implements CanvasRenderable {
   final bool visible;
   final String? accessibilityLabel;
   final List<CanvasNode> children;
+
   /// Version of the node payload in the permanent storage format.
   final int nodeVersion;
 
@@ -142,7 +144,8 @@ class CanvasNode implements CanvasRenderable {
   final CanvasNodeContent content;
 
   @override
-  bool get isOpaque => opaqueType != null || opaqueJson != null || nodeVersion != 1;
+  bool get isOpaque =>
+      opaqueType != null || opaqueJson != null || nodeVersion != 1;
 
   @override
   String get text => content is TextNodeContent
@@ -297,7 +300,8 @@ class CanvasNode implements CanvasRenderable {
     final nextContent = identical(content, _unset)
         ? (payload == null ? this.content : null)
         : content as CanvasNodeContent?;
-    final nextPayload = payload ??
+    final nextPayload =
+        payload ??
         (identical(content, _unset)
             ? this.payload
             : nextContent?.toPayload() ?? const <String, dynamic>{});
@@ -330,16 +334,16 @@ class CanvasNode implements CanvasRenderable {
       return _thawMap(opaqueJson!);
     }
     return {
-    'id': id,
-    'type': type.name,
-    'transform': transform.toJson(),
-    'payload': payload,
-    'opacity': opacity,
-    'locked': locked,
-    'visible': visible,
-    'accessibilityLabel': accessibilityLabel,
-    'children': children.map((node) => node.toJson()).toList(),
-  };
+      'id': id,
+      'type': type.name,
+      'transform': transform.toJson(),
+      'payload': payload,
+      'opacity': opacity,
+      'locked': locked,
+      'visible': visible,
+      'accessibilityLabel': accessibilityLabel,
+      'children': children.map((node) => node.toJson()).toList(),
+    };
   }
 
   factory CanvasNode.fromJson(Map<String, dynamic> json) {
@@ -361,10 +365,13 @@ class CanvasNode implements CanvasRenderable {
     final rawVersion = json['version'];
     final version = rawVersion == null
         ? 1
-        : rawVersion is num && rawVersion.isFinite && rawVersion == rawVersion.toInt()
+        : rawVersion is num &&
+              rawVersion.isFinite &&
+              rawVersion == rawVersion.toInt()
         ? rawVersion.toInt()
         : -1;
-    final isKnown = rawType == 'text' ||
+    final isKnown =
+        rawType == 'text' ||
         rawType == 'image' ||
         rawType == 'sticker' ||
         rawType == 'ink' ||
@@ -381,8 +388,10 @@ class CanvasNode implements CanvasRenderable {
     final rawOpacity = json['opacity'];
     final opacity = rawOpacity == null
         ? 1.0
-        : rawOpacity is num && rawOpacity.isFinite &&
-            rawOpacity >= 0 && rawOpacity <= 1
+        : rawOpacity is num &&
+              rawOpacity.isFinite &&
+              rawOpacity >= 0 &&
+              rawOpacity <= 1
         ? rawOpacity.toDouble()
         : double.nan;
     final rawChildren = json['children'];
@@ -406,25 +415,20 @@ class CanvasNode implements CanvasRenderable {
       nodeVersion: version,
       opaqueType: isKnown && version == 1 ? null : (rawType ?? 'unknown'),
       opaqueJson: isKnown && version == 1 ? null : json,
-      content: isKnown && version == 1
-          ? null
-          : OpaqueNodeContent(json),
+      content: isKnown && version == 1 ? null : OpaqueNodeContent(json),
     );
   }
-
 }
 
 Map<String, dynamic> _thawMap(Map<String, dynamic> source) => {
-      for (final entry in source.entries) entry.key: _thawValue(entry.value),
-    };
+  for (final entry in source.entries) entry.key: _thawValue(entry.value),
+};
 
 Object? _thawValue(Object? value) => switch (value) {
-      Map<Object?, Object?> map => _thawMap(
-          Map<String, dynamic>.from(map),
-        ),
-      List<Object?> list => [for (final item in list) _thawValue(item)],
-      _ => value,
-    };
+  Map<Object?, Object?> map => _thawMap(Map<String, dynamic>.from(map)),
+  List<Object?> list => [for (final item in list) _thawValue(item)],
+  _ => value,
+};
 
 /// Immutable document boundary for repository, editor, archive, and sync
 /// code. It is the only durable document shape exposed to repositories,
@@ -447,6 +451,7 @@ class EntryDocument {
     this.titleTextColorValue,
     this.titleBold = true,
     this.titleItalic = false,
+    this.previewImageNodeId,
     this.revision = 0,
     this.schemaVersion = 1,
   }) : nodes = UnmodifiableListView(List<CanvasNode>.from(nodes));
@@ -458,6 +463,7 @@ class EntryDocument {
   final List<CanvasNode> nodes;
   final PageSpec pageSpec;
   final BoardSettings board;
+
   /// Compatibility projection of device-local view preferences. It is not
   /// included in canonical document records.
   final ViewState? view;
@@ -467,6 +473,11 @@ class EntryDocument {
   final int? titleTextColorValue;
   final bool titleBold;
   final bool titleItalic;
+
+  /// The photo node explicitly chosen for the journal contents thumbnail.
+  /// A missing or stale reference falls back to the first available photo.
+  final String? previewImageNodeId;
+
   /// Local storage metadata retained for compatibility projections only.
   /// Canonical codecs store both values outside the durable document tree.
   final int revision;
@@ -485,6 +496,7 @@ class EntryDocument {
     Object? titleTextColorValue = _copyWithUnset,
     bool? titleBold,
     bool? titleItalic,
+    Object? previewImageNodeId = _copyWithUnset,
     int? revision,
     int? schemaVersion,
   }) => EntryDocument(
@@ -508,6 +520,9 @@ class EntryDocument {
         : titleTextColorValue as int?,
     titleBold: titleBold ?? this.titleBold,
     titleItalic: titleItalic ?? this.titleItalic,
+    previewImageNodeId: identical(previewImageNodeId, _copyWithUnset)
+        ? this.previewImageNodeId
+        : previewImageNodeId as String?,
     revision: revision ?? this.revision,
     schemaVersion: schemaVersion ?? this.schemaVersion,
   );
@@ -537,6 +552,7 @@ class EntryDocument {
     titleTextColorValue: (json['titleTextColorValue'] as num?)?.toInt(),
     titleBold: json['titleBold'] as bool? ?? true,
     titleItalic: json['titleItalic'] as bool? ?? false,
+    previewImageNodeId: json['previewImageNodeId'] as String?,
     revision: (json['revision'] as num?)?.toInt() ?? 0,
     schemaVersion: (json['schemaVersion'] as num?)?.toInt() ?? 1,
   );
@@ -607,16 +623,14 @@ class EntryDocument {
     var replaced = false;
 
     List<CanvasNode> visit(Iterable<CanvasNode> candidates) => candidates
-        .map(
-          (node) {
-            if (node.id == replacement.id) {
-              replaced = true;
-              return replacement;
-            }
-            if (node.children.isEmpty) return node;
-            return node.copyWith(children: visit(node.children));
-          },
-        )
+        .map((node) {
+          if (node.id == replacement.id) {
+            replaced = true;
+            return replacement;
+          }
+          if (node.children.isEmpty) return node;
+          return node.copyWith(children: visit(node.children));
+        })
         .toList(growable: false);
 
     final next = visit(nodes);
@@ -640,20 +654,19 @@ class EntryDocument {
 
     var inserted = false;
     List<CanvasNode> visit(Iterable<CanvasNode> candidates) => candidates
-        .map(
-          (node) {
-            if (node.id == parentId) {
-              inserted = true;
-              final children = List<CanvasNode>.from(node.children);
-              final insertion =
-                  (index ?? children.length).clamp(0, children.length).toInt();
-              children.insertAll(insertion, incoming);
-              return node.copyWith(children: children);
-            }
-            if (node.children.isEmpty) return node;
-            return node.copyWith(children: visit(node.children));
-          },
-        )
+        .map((node) {
+          if (node.id == parentId) {
+            inserted = true;
+            final children = List<CanvasNode>.from(node.children);
+            final insertion = (index ?? children.length)
+                .clamp(0, children.length)
+                .toInt();
+            children.insertAll(insertion, incoming);
+            return node.copyWith(children: children);
+          }
+          if (node.children.isEmpty) return node;
+          return node.copyWith(children: visit(node.children));
+        })
         .toList(growable: false);
 
     final next = visit(nodes);
@@ -706,10 +719,7 @@ class EntryDocument {
 
   /// Moves the selected sibling nodes to the front or back of their current
   /// sibling list, preserving their relative order.
-  EntryDocument reorderNodes(
-    Iterable<String> ids, {
-    required bool toEnd,
-  }) {
+  EntryDocument reorderNodes(Iterable<String> ids, {required bool toEnd}) {
     final selectedIds = ids.toSet();
     if (selectedIds.isEmpty) return this;
 
@@ -790,9 +800,8 @@ class EntryDocument {
     );
     final children = selected
         .map(
-          (node) => node.copyWith(
-            transform: _toLocal(world[node.id]!, groupWorld),
-          ),
+          (node) =>
+              node.copyWith(transform: _toLocal(world[node.id]!, groupWorld)),
         )
         .toList(growable: false);
     final group = CanvasNode(
@@ -831,9 +840,7 @@ class EntryDocument {
   /// Applies world-space transforms while retaining each node's local
   /// transform relative to its parent. Unspecified descendants inherit any
   /// parent movement without being rewritten as world-space values.
-  EntryDocument replaceWorldTransforms(
-    Map<String, Transform2D> transforms,
-  ) {
+  EntryDocument replaceWorldTransforms(Map<String, Transform2D> transforms) {
     if (transforms.isEmpty) return this;
 
     List<CanvasNode> visit(
@@ -861,9 +868,7 @@ class EntryDocument {
   /// Applies parent-local transforms directly. This is used by immutable
   /// history commands, whose deltas are captured from the node tree rather
   /// than from a flattened world-space adapter.
-  EntryDocument replaceLocalTransforms(
-    Map<String, Transform2D> transforms,
-  ) {
+  EntryDocument replaceLocalTransforms(Map<String, Transform2D> transforms) {
     if (transforms.isEmpty) return this;
     List<CanvasNode> visit(Iterable<CanvasNode> candidates) => candidates
         .map(
@@ -899,6 +904,7 @@ class EntryDocument {
     'titleTextColorValue': titleTextColorValue,
     'titleBold': titleBold,
     'titleItalic': titleItalic,
+    'previewImageNodeId': previewImageNodeId,
     'revision': revision,
     'schemaVersion': schemaVersion,
   };
@@ -913,7 +919,8 @@ class EntryDocument {
       world.x + world.width / 2,
       world.y + world.height / 2,
     );
-    final localCenter = parentCenter +
+    final localCenter =
+        parentCenter +
         _rotate(worldCenter - worldParentCenter, -parent.rotation);
     return Transform2D(
       x: localCenter.dx - world.width / 2,
@@ -924,10 +931,7 @@ class EntryDocument {
     );
   }
 
-  static Transform2D _worldTransform(
-    Transform2D local,
-    Transform2D parent,
-  ) {
+  static Transform2D _worldTransform(Transform2D local, Transform2D parent) {
     final parentCenter = Offset(parent.width / 2, parent.height / 2);
     final localCenter = Offset(
       local.x + local.width / 2,
@@ -937,7 +941,8 @@ class EntryDocument {
       parent.x + parentCenter.dx,
       parent.y + parentCenter.dy,
     );
-    final worldCenter = worldParentCenter +
+    final worldCenter =
+        worldParentCenter +
         _rotate(localCenter - parentCenter, parent.rotation);
     return Transform2D(
       x: worldCenter.dx - local.width / 2,

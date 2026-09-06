@@ -1,7 +1,9 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+
 import 'support/legacy_test_models.dart';
+
 import 'package:journal_app/services/journal_archive.dart';
 
 void main() {
@@ -23,7 +25,7 @@ void main() {
           ),
         ],
       ),
-    );
+    ).copyWith(previewImageNodeId: 'photo');
     final archive = JournalArchive(
       document: document,
       assets: [
@@ -38,6 +40,7 @@ void main() {
     final decoded = JournalArchive.decode(archive.encode());
     expect(decoded.document.id, 'archive-entry');
     expect(decoded.document.nodes.single.payload['assetId'], 'asset-1');
+    expect(decoded.document.previewImageNodeId, 'photo');
     expect(decoded.assets.single.bytes, [1, 2, 3]);
   });
 

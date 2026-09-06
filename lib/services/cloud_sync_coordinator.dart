@@ -766,6 +766,7 @@ class CloudSyncCoordinator extends ChangeNotifier
       titleTextColorValue: copy.titleTextColorValue,
       titleBold: copy.titleBold,
       titleItalic: copy.titleItalic,
+      previewImageNodeId: copy.previewImageNodeId,
       schemaVersion: copy.schemaVersion,
     );
     await local.upsertDocumentExact(conflict);
