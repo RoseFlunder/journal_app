@@ -13,6 +13,9 @@ import '../../../../services/repositories.dart';
 
 /// Owns catalog search and preview state for the music picker view.
 class MusicPickerViewModel extends ChangeNotifier {
+  static const _emptySearchAttempts = 3;
+  static const _emptySearchRetryDelay = Duration(milliseconds: 500);
+
   MusicPickerViewModel({
     required MusicCatalogRepository catalog,
     required PageMusicController playback,
@@ -100,9 +103,18 @@ class MusicPickerViewModel extends ChangeNotifier {
     }
     _notify();
     try {
-      final tracks = await _catalog
-          .searchTracks(query: query, offset: offset, limit: 20)
-          .timeout(const Duration(seconds: 20));
+      var tracks = const <PageMusicTrack>[];
+      for (var attempt = 0; attempt < _emptySearchAttempts; attempt++) {
+        tracks = await _catalog
+            .searchTracks(query: query, offset: offset, limit: 20)
+            .timeout(const Duration(seconds: 20));
+        if (_disposed || generation != _requestGeneration) return;
+        if (tracks.isNotEmpty || append || attempt == _emptySearchAttempts - 1) {
+          break;
+        }
+        await Future<void>.delayed(_emptySearchRetryDelay);
+        if (_disposed || generation != _requestGeneration) return;
+      }
       if (_disposed || generation != _requestGeneration) return;
       _tracks = append ? [..._tracks, ...tracks] : tracks;
       _loading = false;

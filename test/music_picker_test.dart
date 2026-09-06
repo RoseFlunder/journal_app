@@ -96,6 +96,101 @@ void main() {
     viewModel.dispose();
   });
 
+  testWidgets('retries empty searches twice before returning results', (
+    tester,
+  ) async {
+    final catalog = _ImmediateCatalog([
+      const <PageMusicTrack>[],
+      const <PageMusicTrack>[],
+      [track],
+    ]);
+    final viewModel = MusicPickerViewModel(
+      catalog: catalog,
+      playback: _controller(_PickerPlayback()),
+    );
+
+    final search = viewModel.search();
+    expect(catalog.calls, 1);
+    expect(viewModel.loading, isTrue);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(catalog.calls, 2);
+    expect(viewModel.loading, isTrue);
+    await tester.pump(const Duration(milliseconds: 500));
+    await search;
+
+    expect(catalog.calls, 3);
+    expect(viewModel.tracks, [track]);
+    expect(viewModel.loading, isFalse);
+    await viewModel.close();
+    viewModel.dispose();
+  });
+
+  testWidgets('stops after three empty search responses', (tester) async {
+    final catalog = _ImmediateCatalog([
+      const <PageMusicTrack>[],
+      const <PageMusicTrack>[],
+      const <PageMusicTrack>[],
+    ]);
+    final viewModel = MusicPickerViewModel(
+      catalog: catalog,
+      playback: _controller(_PickerPlayback()),
+    );
+
+    final search = viewModel.search();
+    await tester.pump(const Duration(seconds: 1));
+    await search;
+
+    expect(catalog.calls, 3);
+    expect(viewModel.tracks, isEmpty);
+    expect(viewModel.loading, isFalse);
+    await viewModel.close();
+    viewModel.dispose();
+  });
+
+  testWidgets('query changes cancel an empty-result retry chain', (
+    tester,
+  ) async {
+    final catalog = _QueryCatalog(track);
+    final viewModel = MusicPickerViewModel(
+      catalog: catalog,
+      playback: _controller(_PickerPlayback()),
+    );
+
+    viewModel.setQuery('first');
+    final firstSearch = viewModel.search();
+    expect(catalog.queries, ['first']);
+    viewModel.setQuery('second');
+    final secondSearch = viewModel.search();
+    await secondSearch;
+    await tester.pump(const Duration(milliseconds: 500));
+    await firstSearch;
+
+    expect(catalog.queries, ['first', 'second']);
+    expect(viewModel.tracks.single.trackId, track.trackId);
+    await viewModel.close();
+    viewModel.dispose();
+  });
+
+  test('does not retry an empty pagination response', () async {
+    final catalog = _ImmediateCatalog([
+      [track],
+      const <PageMusicTrack>[],
+    ]);
+    final viewModel = MusicPickerViewModel(
+      catalog: catalog,
+      playback: _controller(_PickerPlayback()),
+    );
+
+    await viewModel.search();
+    await viewModel.search(append: true);
+
+    expect(catalog.calls, 2);
+    expect(catalog.offsets, [0, 1]);
+    expect(viewModel.tracks, [track]);
+    await viewModel.close();
+    viewModel.dispose();
+  });
+
   testWidgets('first opening stays loading until the catalog responds', (
     tester,
   ) async {
@@ -248,6 +343,53 @@ class _SequencedCatalog implements MusicCatalogRepository {
     final response = Completer<List<PageMusicTrack>>();
     responses.add(response);
     return response.future;
+  }
+}
+
+class _ImmediateCatalog implements MusicCatalogRepository {
+  _ImmediateCatalog(this.results);
+
+  final List<List<PageMusicTrack>> results;
+  final List<int> offsets = <int>[];
+  int calls = 0;
+
+  @override
+  bool get isConfigured => true;
+
+  @override
+  Future<PageMusicTrack> resolveTrack(String trackId) async => _track(trackId);
+
+  @override
+  Future<List<PageMusicTrack>> searchTracks({
+    String query = '',
+    int offset = 0,
+    int limit = 20,
+  }) async {
+    offsets.add(offset);
+    return results[calls++];
+  }
+}
+
+class _QueryCatalog implements MusicCatalogRepository {
+  _QueryCatalog(this.track);
+
+  final PageMusicTrack track;
+  final List<String> queries = <String>[];
+
+  @override
+  bool get isConfigured => true;
+
+  @override
+  Future<PageMusicTrack> resolveTrack(String trackId) async => track;
+
+  @override
+  Future<List<PageMusicTrack>> searchTracks({
+    String query = '',
+    int offset = 0,
+    int limit = 20,
+  }) async {
+    queries.add(query);
+    return query == 'second' ? [track] : const <PageMusicTrack>[];
   }
 }
 

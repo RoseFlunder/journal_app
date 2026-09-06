@@ -25,6 +25,7 @@ class HiveDocumentDataSource {
   final StreamController<void> _changes = StreamController<void>.broadcast();
   List<EntryDocument> _documents = <EntryDocument>[];
   final Map<String, int> _revisions = <String, int>{};
+  final Map<String, String> _durableFingerprints = <String, String>{};
   bool _loaded = false;
 
   bool get isLoaded => _loaded;
@@ -63,6 +64,9 @@ class HiveDocumentDataSource {
       await _writeManifest(order);
       _publish();
     });
+    _durableFingerprints[document.id] = JournalDocumentCodec.fingerprint(
+      document,
+    );
     return document;
   }
 
@@ -84,6 +88,9 @@ class HiveDocumentDataSource {
         rethrow;
       }
       _revisions[document.id] = 0;
+      _durableFingerprints[document.id] = JournalDocumentCodec.fingerprint(
+        document,
+      );
       _documents = next;
       _publish();
     });
@@ -94,10 +101,11 @@ class HiveDocumentDataSource {
     final index = _documents.indexWhere((item) => item.id == document.id);
     if (index < 0) return;
     final existing = _documents[index];
-    final contentChanged = !JournalDocumentCodec.sameContent(
-      existing,
-      document,
-    );
+    final documentFingerprint = JournalDocumentCodec.fingerprint(document);
+    final durableFingerprint =
+        _durableFingerprints[document.id] ??
+        JournalDocumentCodec.fingerprint(existing);
+    final contentChanged = durableFingerprint != documentFingerprint;
     final next = document.copyWith(
       modifiedAt: contentChanged ? DateTime.now().toUtc() : existing.modifiedAt,
     );
@@ -137,6 +145,7 @@ class HiveDocumentDataSource {
       );
       _publish();
     });
+    _durableFingerprints[next.id] = JournalDocumentCodec.fingerprint(next);
   }
 
   /// Publishes a responsive in-memory preview without writing to Hive.
@@ -159,6 +168,8 @@ class HiveDocumentDataSource {
       await _writeManifest(order);
       _publish();
     });
+    _durableFingerprints.remove(id);
+    _revisions.remove(id);
   }
 
   Future<void> replaceRestoredDocument(EntryDocument document) async {
@@ -183,6 +194,9 @@ class HiveDocumentDataSource {
       await _writeManifest(_documents.map((item) => item.id).toList());
       _publish();
     });
+    _durableFingerprints[restored.id] = JournalDocumentCodec.fingerprint(
+      restored,
+    );
   }
 
   /// Applies a cloud document without incrementing its local revision. This
@@ -219,6 +233,9 @@ class HiveDocumentDataSource {
       await _writeManifest(order);
       _publish();
     });
+    _durableFingerprints[imported.id] = JournalDocumentCodec.fingerprint(
+      imported,
+    );
   }
 
   /// Removes a cloud tombstoned document without changing any sync metadata.
@@ -234,6 +251,8 @@ class HiveDocumentDataSource {
       await _writeManifest(order);
       _publish();
     });
+    _durableFingerprints.remove(id);
+    _revisions.remove(id);
   }
 
   Future<void> clearAll() async {
@@ -246,6 +265,7 @@ class HiveDocumentDataSource {
         await storage.deleteMeta(_viewKey(id.toString()));
       }
       _revisions.clear();
+      _durableFingerprints.clear();
       await _writeManifest(const <String>[]);
       _publish();
     });
@@ -357,6 +377,9 @@ class HiveDocumentDataSource {
       if (json['format'] == JournalStorageFormat.document) {
         final record = JournalDocumentCodec.decodeRecord(json);
         _revisions[id] = record.revision;
+        _durableFingerprints[id] = JournalDocumentCodec.fingerprint(
+          record.document,
+        );
         final view = _readView(id);
         final gridVisible = _readGridVisible(id);
         var document = record.document;
