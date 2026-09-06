@@ -265,7 +265,9 @@ class EditorToolbarView extends StatelessWidget {
                     tooltip: previewSelected
                         ? 'Selected as page preview'
                         : 'Use as page preview',
-                    icon: previewSelected ? Icons.image : Icons.image_outlined,
+                    icon: previewSelected
+                        ? Icons.bookmark_added
+                        : Icons.bookmark_add_outlined,
                     label: compact ? null : 'Preview',
                     selected: previewSelected,
                     onPressed: onUseAsPreview,

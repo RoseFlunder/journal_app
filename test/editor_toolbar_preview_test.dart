@@ -45,6 +45,8 @@ void main() {
     expect(find.byTooltip('Use as page preview'), findsNothing);
 
     await tester.pumpWidget(toolbar(onUseAsPreview: () => uses++));
+    expect(find.byIcon(Icons.bookmark_add_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.photo_outlined), findsOneWidget);
     await tester.tap(find.byTooltip('Use as page preview'));
     expect(uses, 1);
 
@@ -52,5 +54,6 @@ void main() {
       toolbar(onUseAsPreview: () => uses++, selected: true),
     );
     expect(find.byTooltip('Selected as page preview'), findsOneWidget);
+    expect(find.byIcon(Icons.bookmark_added), findsOneWidget);
   });
 }
