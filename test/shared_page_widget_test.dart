@@ -49,37 +49,11 @@ void main() {
     temp.deleteSync(recursive: true);
   });
 
-  testWidgets('empty journal offers picker and confirmation before adding', (
-    tester,
-  ) async {
+  testWidgets('home omits the shared page picker', (tester) async {
     await tester.pumpWidget(JournalApp(dependencies: dependencies));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Add shared page'));
-    await tester.pumpAndSettle();
-    expect(
-      find.text('Do you want to add this page to your journal?'),
-      findsOneWidget,
-    );
-    expect(find.textContaining('March 2, 2020'), findsOneWidget);
-    expect(store.entries, isEmpty);
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-    expect(store.entries, isEmpty);
-    await tester.tap(find.text('Add shared page'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Add page'));
-    await tester.pumpAndSettle();
-    expect(store.entries.single.createdAt, DateTime.utc(2020, 3, 2));
-    expect(
-      tester
-          .widgetList<EntryPage>(find.byType(EntryPage))
-          .where((page) => page.active)
-          .single
-          .viewModel
-          .document
-          .title,
-      'A spring memory',
-    );
+    expect(find.text('Add shared page'), findsNothing);
+    expect(find.byIcon(Icons.note_add_outlined), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
   });

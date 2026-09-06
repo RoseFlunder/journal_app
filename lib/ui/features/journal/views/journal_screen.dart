@@ -409,9 +409,6 @@ class _JournalScreenState extends State<JournalScreen> {
                           readAsset: _journal.readAsset,
                           onOpenPage: goToEntry,
                           onNewPage: _createPage,
-                          onAddSharedPage: widget.sharedPages.busy
-                              ? null
-                              : () => unawaited(widget.sharedPages.pickPage()),
                           onDeletePage: _journal.deletePage,
                           cloudSync: widget.cloudSync,
                         );

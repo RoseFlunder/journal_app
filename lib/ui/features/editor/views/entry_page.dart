@@ -21,7 +21,6 @@ import 'entry_editor_surface.dart';
 import 'editor_canvas_view.dart';
 import 'editor_layers_view.dart';
 import 'photo_import_editor.dart';
-import 'editor_history_view.dart';
 import 'editor_toolbar_view.dart';
 import 'editor_more_tools_view.dart';
 import 'editor_ink_settings_view.dart';
@@ -932,7 +931,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
       showDragHandle: true,
       isScrollControlled: true,
       builder: (context) => EditorMoreToolsView(
-        board: _editor.board,
         canUndo: _editor.canUndo,
         canRedo: _editor.canRedo,
         canGroup: _editor.canGroup,
@@ -953,11 +951,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         onInkSettings: _showInkSettings,
         onMusic: () => unawaited(_showMusicPicker()),
         onLayers: _showLayers,
-        onHistory: _showHistory,
-        onSnapToGridChanged: (value) =>
-            _editor.updateBoard(_editor.board.copyWith(snapToGrid: value)),
-        onGridVisibilityChanged: (value) =>
-            unawaited(_editor.updateGridVisibility(value)),
       ),
     );
   }
@@ -1023,25 +1016,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
   void _toggleSelectedLock() {
     final block = _editor.primaryNode;
     if (block != null) _editor.setLocked(!block.locked);
-  }
-
-  void _showHistory() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: PaperPage.paper,
-      showDragHandle: true,
-      builder: (context) => EditorHistoryView(
-        checkpoints: _editor.checkpointsFor(_document.id),
-        onCreateCheckpoint: () => _editor.createCheckpoint(_document.id),
-        onRestore: (checkpoint) async {
-          final restored = await _editor.restoreCheckpoint(
-            checkpointId: checkpoint.id,
-            documentId: _document.id,
-          );
-          if (restored != null) _editor.replaceDocumentModel(restored);
-        },
-      ),
-    );
   }
 
   KeyEventResult _handleEditorKey(FocusNode _, KeyEvent event) {

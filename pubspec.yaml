@@ -82,6 +82,7 @@ flutter:
   assets:
     - assets/branding/cozy_bloom_wordmark.png
     - assets/branding/cozy_bloom_icon.png
+    - assets/content/welcome_messages.json
     - assets/stickers/daisy.png
     - assets/stickers/butterfly.png
     - assets/stickers/extracted/

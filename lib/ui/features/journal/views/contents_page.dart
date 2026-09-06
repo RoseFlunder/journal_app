@@ -1,5 +1,9 @@
+import 'dart:convert';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../models/document.dart';
@@ -16,7 +20,6 @@ class ContentsPage extends StatefulWidget {
     required this.readAsset,
     required this.onOpenPage,
     required this.onNewPage,
-    required this.onAddSharedPage,
     required this.onDeletePage,
     required this.cloudSync,
   });
@@ -25,7 +28,6 @@ class ContentsPage extends StatefulWidget {
   final Uint8List? Function(String id) readAsset;
   final ValueChanged<int> onOpenPage;
   final VoidCallback onNewPage;
-  final VoidCallback? onAddSharedPage;
   final Future<void> Function(String id) onDeletePage;
   final CloudSyncViewModel cloudSync;
 
@@ -41,9 +43,9 @@ class _ContentsPageState extends State<ContentsPage> {
   Uint8List? Function(String id) get readAsset => widget.readAsset;
   ValueChanged<int> get onOpenPage => widget.onOpenPage;
   VoidCallback get onNewPage => widget.onNewPage;
-  VoidCallback? get onAddSharedPage => widget.onAddSharedPage;
   Future<void> Function(String id) get onDeletePage => widget.onDeletePage;
   CloudSyncViewModel get cloudSync => widget.cloudSync;
+  late final Future<_WelcomeMessage> _welcomeMessage = _loadWelcomeMessage();
 
   Future<void> _confirmDelete(
     BuildContext context,
@@ -117,15 +119,7 @@ class _ContentsPageState extends State<ContentsPage> {
                 Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 900),
-                    child: const _WelcomeCard(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Center(
-                  child: OutlinedButton.icon(
-                    onPressed: onAddSharedPage,
-                    icon: const Icon(Icons.note_add_outlined),
-                    label: const Text('Add shared page'),
+                    child: _WelcomeCard(message: _welcomeMessage),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -189,6 +183,25 @@ class _ContentsPageState extends State<ContentsPage> {
     );
   }
 
+  Future<_WelcomeMessage> _loadWelcomeMessage() async {
+    try {
+      final source = await rootBundle.loadString(
+        'assets/content/welcome_messages.json',
+      );
+      final decoded = jsonDecode(source);
+      if (decoded is! List) return _WelcomeMessage.fallback;
+      final messages = decoded
+          .whereType<Map<Object?, Object?>>()
+          .map(_WelcomeMessage.fromJson)
+          .where((message) => message.isValid)
+          .toList(growable: false);
+      if (messages.isEmpty) return _WelcomeMessage.fallback;
+      return messages[math.Random().nextInt(messages.length)];
+    } catch (_) {
+      return _WelcomeMessage.fallback;
+    }
+  }
+
   ImageProvider<Object>? _preview(EntryDocument document) {
     ImageProvider<Object>? providerFor(CanvasNode node) {
       if (node.type != BlockType.image) return null;
@@ -198,10 +211,11 @@ class _ContentsPageState extends State<ContentsPage> {
       if (cached != null) return cached;
       final bytes = readAsset(assetId);
       if (bytes == null) return null;
-      return _previewProviders[assetId] = ResizeImage.resizeIfNeeded(
-        160,
-        160,
+      return _previewProviders[assetId] = ResizeImage(
         MemoryImage(bytes),
+        width: 160,
+        height: 160,
+        policy: ResizeImagePolicy.fit,
       );
     }
 
@@ -228,8 +242,32 @@ class _ContentsPageState extends State<ContentsPage> {
   }
 }
 
+class _WelcomeMessage {
+  const _WelcomeMessage({required this.message, required this.reflection});
+
+  static const fallback = _WelcomeMessage(
+    message: 'Capture little moments, cherish big memories.',
+    reflection: 'Take a deep breath and let your thoughts bloom.',
+  );
+
+  factory _WelcomeMessage.fromJson(Map<Object?, Object?> json) =>
+      _WelcomeMessage(
+        message: json['message'] is String ? json['message'] as String : '',
+        reflection: json['reflection'] is String
+            ? json['reflection'] as String
+            : '',
+      );
+
+  final String message;
+  final String reflection;
+
+  bool get isValid => message.trim().isNotEmpty && reflection.trim().isNotEmpty;
+}
+
 class _WelcomeCard extends StatelessWidget {
-  const _WelcomeCard();
+  const _WelcomeCard({required this.message});
+
+  final Future<_WelcomeMessage> message;
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
@@ -258,24 +296,33 @@ class _WelcomeCard extends StatelessWidget {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 22, 110, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Capture little moments, cherish big memories.',
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Take a deep breath and let your thoughts bloom.',
-                style: TextStyle(
-                  fontFamily: 'Caveat',
-                  fontSize: 22,
-                  color: PaperPage.ink,
-                ),
-              ),
-            ],
+          padding: const EdgeInsets.fromLTRB(20, 14, 100, 16),
+          child: FutureBuilder<_WelcomeMessage>(
+            future: message,
+            initialData: _WelcomeMessage.fallback,
+            builder: (context, snapshot) {
+              final welcome = snapshot.data ?? _WelcomeMessage.fallback;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    welcome.message,
+                    key: const ValueKey('welcome-message'),
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    welcome.reflection,
+                    key: const ValueKey('welcome-reflection'),
+                    style: const TextStyle(
+                      fontFamily: 'Caveat',
+                      fontSize: 18,
+                      color: PaperPage.ink,
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ],
@@ -343,7 +390,7 @@ class _EntryCard extends StatelessWidget {
               height: 74,
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
-                color: const Color(0xFFF2D7D3),
+                color: preview == null ? const Color(0xFFF2D7D3) : Colors.white,
                 borderRadius: BorderRadius.circular(13),
               ),
               child: preview == null
@@ -351,10 +398,12 @@ class _EntryCard extends StatelessWidget {
                   : Center(
                       child: Padding(
                         padding: const EdgeInsets.all(7),
-                        child: Image(
-                          key: ValueKey('page-preview-image-${document.id}'),
-                          image: preview!,
-                          fit: BoxFit.contain,
+                        child: SizedBox.expand(
+                          child: Image(
+                            key: ValueKey('page-preview-image-${document.id}'),
+                            image: preview!,
+                            fit: BoxFit.contain,
+                          ),
                         ),
                       ),
                     ),

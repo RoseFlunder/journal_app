@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../../models/document.dart';
-
 /// Presentation for the editor's secondary actions.
 ///
 /// The view receives a snapshot of editor state and emits intents. It does
@@ -10,7 +8,6 @@ import '../../../../models/document.dart';
 class EditorMoreToolsView extends StatefulWidget {
   const EditorMoreToolsView({
     super.key,
-    required this.board,
     required this.canUndo,
     required this.canRedo,
     required this.canGroup,
@@ -28,12 +25,8 @@ class EditorMoreToolsView extends StatefulWidget {
     required this.onInkSettings,
     required this.onMusic,
     required this.onLayers,
-    required this.onHistory,
-    required this.onSnapToGridChanged,
-    required this.onGridVisibilityChanged,
   });
 
-  final BoardSettings board;
   final bool canUndo;
   final bool canRedo;
   final bool canGroup;
@@ -52,9 +45,6 @@ class EditorMoreToolsView extends StatefulWidget {
   final VoidCallback onInkSettings;
   final VoidCallback onMusic;
   final VoidCallback onLayers;
-  final VoidCallback onHistory;
-  final ValueChanged<bool> onSnapToGridChanged;
-  final ValueChanged<bool> onGridVisibilityChanged;
 
   @override
   State<EditorMoreToolsView> createState() => _EditorMoreToolsViewState();
@@ -63,8 +53,6 @@ class EditorMoreToolsView extends StatefulWidget {
 class _EditorMoreToolsViewState extends State<EditorMoreToolsView> {
   late final bool _selectMode = widget.selectMode;
   late final bool _drawMode = widget.drawMode;
-  late bool _snapToGrid = widget.board.snapToGrid;
-  late bool _gridVisible = widget.board.gridVisible;
 
   void _close(VoidCallback action) {
     Navigator.pop(context);
@@ -143,29 +131,6 @@ class _EditorMoreToolsViewState extends State<EditorMoreToolsView> {
             title: const Text('Ungroup selection'),
             enabled: widget.canUngroup,
             onTap: widget.canUngroup ? () => _close(widget.onUngroup) : null,
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.grid_4x4_outlined),
-            title: const Text('Snap to grid'),
-            value: _snapToGrid,
-            onChanged: (value) {
-              setState(() => _snapToGrid = value);
-              widget.onSnapToGridChanged(value);
-            },
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.grid_on_outlined),
-            title: const Text('Show grid'),
-            value: _gridVisible,
-            onChanged: (value) {
-              setState(() => _gridVisible = value);
-              widget.onGridVisibilityChanged(value);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.history),
-            title: const Text('History and Recovery'),
-            onTap: () => _close(widget.onHistory),
           ),
           ListTile(
             leading: const Icon(Icons.share_outlined),

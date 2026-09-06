@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -172,14 +173,32 @@ void main() {
 
       // Starts on the (empty) table of contents.
       expect(find.text('Cozy Bloom Journal'), findsOneWidget);
-      expect(
-        find.text('Capture little moments, cherish big memories.'),
-        findsOneWidget,
+      final welcomeMessage = tester.widget<Text>(
+        find.byKey(const ValueKey('welcome-message')),
       );
-      expect(
-        find.text('Take a deep breath and let your thoughts bloom.'),
-        findsOneWidget,
+      final welcomeReflection = tester.widget<Text>(
+        find.byKey(const ValueKey('welcome-reflection')),
       );
+      expect(welcomeMessage.data, isNotEmpty);
+      expect(
+        welcomeMessage.style,
+        Theme.of(tester.element(find.byType(AppBar))).textTheme.bodyMedium,
+      );
+      expect(welcomeReflection.data, isNotEmpty);
+      expect(welcomeReflection.style?.fontSize, 18);
+      final welcomeOptions = jsonDecode(
+        File('assets/content/welcome_messages.json').readAsStringSync(),
+      ) as List<dynamic>;
+      expect(
+        welcomeOptions.any(
+          (value) =>
+              value is Map &&
+              value['message'] == welcomeMessage.data &&
+              value['reflection'] == welcomeReflection.data,
+        ),
+        isTrue,
+      );
+      expect(find.text('Add shared page'), findsNothing);
       expect(find.text('This journal is empty.'), findsOneWidget);
       expect(find.byTooltip('New page'), findsNothing);
       expect(find.byTooltip('Home'), findsNothing);
@@ -355,13 +374,32 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    Size previewSize(EntryDocument document) => tester.getSize(
+    Image previewImage(EntryDocument document) => tester.widget<Image>(
       find.byKey(ValueKey('page-preview-image-${document.id}')),
     );
 
-    expect(previewSize(selected).aspectRatio, closeTo(0.5, 0.01));
-    expect(previewSize(automatic).aspectRatio, closeTo(1, 0.01));
-    expect(previewSize(landscape).aspectRatio, closeTo(2, 0.01));
+    for (final document in [selected, automatic, landscape]) {
+      final image = previewImage(document);
+      expect(image.fit, BoxFit.contain);
+      final provider = image.image as ResizeImage;
+      expect(provider.width, 160);
+      expect(provider.height, 160);
+      expect(provider.policy, ResizeImagePolicy.fit);
+      final frame = tester.widget<Container>(
+        find.byKey(ValueKey('page-preview-${document.id}')),
+      );
+      expect((frame.decoration! as BoxDecoration).color, Colors.white);
+    }
+    double sourceAspectRatio(EntryDocument document) {
+      final resized = previewImage(document).image as ResizeImage;
+      final source = resized.imageProvider as MemoryImage;
+      final decoded = img.decodeImage(source.bytes)!;
+      return decoded.width / decoded.height;
+    }
+
+    expect(sourceAspectRatio(selected), closeTo(0.5, 0.01));
+    expect(sourceAspectRatio(automatic), closeTo(1, 0.01));
+    expect(sourceAspectRatio(landscape), closeTo(2, 0.01));
     expect(
       find.byKey(ValueKey('page-preview-image-${stickerOnly.id}')),
       findsNothing,
@@ -781,7 +819,7 @@ void main() {
     );
   });
 
-  testWidgets('grid switches update immediately and persist their state', (
+  testWidgets('advanced grid and recovery tools stay hidden', (
     tester,
   ) async {
     store = TestHiveEnvironment();
@@ -802,29 +840,9 @@ void main() {
     await tester.tap(find.byTooltip('More editing tools'));
     await tester.pumpAndSettle();
 
-    final showGridText = find.text('Show grid');
-    final snapToGridText = find.text('Snap to grid');
-    await tester.scrollUntilVisible(
-      showGridText,
-      500,
-      scrollable: find.byType(Scrollable).last,
-    );
-    final showGrid = find.widgetWithText(SwitchListTile, 'Show grid');
-    final snapToGrid = find.widgetWithText(SwitchListTile, 'Snap to grid');
-    await tester.ensureVisible(showGrid);
-    await tester.ensureVisible(snapToGridText);
-    expect(tester.widget<SwitchListTile>(showGrid).value, isFalse);
-    expect(tester.widget<SwitchListTile>(snapToGrid).value, isFalse);
-
-    await tester.tap(showGrid);
-    await tester.pump();
-    expect(tester.widget<SwitchListTile>(showGrid).value, isTrue);
-    expect(store.entries.single.board.gridVisible, isTrue);
-
-    await tester.tap(snapToGrid);
-    await tester.pump();
-    expect(tester.widget<SwitchListTile>(snapToGrid).value, isTrue);
-    expect(store.entries.single.board.snapToGrid, isTrue);
+    expect(find.text('Show grid'), findsNothing);
+    expect(find.text('Snap to grid'), findsNothing);
+    expect(find.text('History and Recovery'), findsNothing);
   });
 
   testWidgets('image blocks render and expose rotation controls', (

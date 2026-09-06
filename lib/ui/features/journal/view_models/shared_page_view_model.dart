@@ -51,7 +51,7 @@ class SharedPageViewModel extends ChangeNotifier {
         _enqueue(() => _transfer.readIncoming(file), deliveryId: file.id);
       },
       onError: (Object error) {
-        _error = 'Could not open the shared page. Try Add shared page.';
+        _error = 'Could not open the shared page. Try opening it again.';
         _notify();
       },
     );
