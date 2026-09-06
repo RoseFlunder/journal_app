@@ -1084,6 +1084,59 @@ void main() {
     },
   );
 
+  testWidgets('color controls do not scroll the picker dialog while dragging', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: FilledButton(
+                onPressed: () => showVisualColorPicker(
+                  context,
+                  initialValue: 0xFF873F4D,
+                ),
+                child: const Text('Open picker'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open picker'));
+    await tester.pumpAndSettle();
+
+    final scrollable = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(Scrollable),
+    );
+    final field = find.byKey(const ValueKey('color-field'));
+    await tester.ensureVisible(field);
+    await tester.pumpAndSettle();
+
+    double scrollOffset() =>
+        tester.state<ScrollableState>(scrollable).position.pixels;
+
+    final fieldOffset = scrollOffset();
+    await tester.dragFrom(
+      tester.getRect(field).center,
+      const Offset(0, -60),
+    );
+    await tester.pumpAndSettle();
+    expect(scrollOffset(), closeTo(fieldOffset, 0.01));
+
+    final brightness = find.byKey(const ValueKey('color-value'));
+    final brightnessOffset = scrollOffset();
+    await tester.dragFrom(
+      tester.getRect(brightness).center,
+      const Offset(0, 60),
+    );
+    await tester.pumpAndSettle();
+    expect(scrollOffset(), closeTo(brightnessOffset, 0.01));
+  });
+
   testWidgets('image provider remains stable across rebuilds', (tester) async {
     final bytes = Uint8List.fromList(
       img.encodePng(img.Image(width: 2, height: 1)),

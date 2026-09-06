@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../models/document.dart';
@@ -935,11 +936,8 @@ class _ColorField extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final size = Size(constraints.maxWidth, constraints.maxHeight);
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (details) => onChanged(details.localPosition, size),
-            onPanStart: (details) => onChanged(details.localPosition, size),
-            onPanUpdate: (details) => onChanged(details.localPosition, size),
+          return _ExclusiveDragSurface(
+            onChanged: (position) => onChanged(position, size),
             child: CustomPaint(painter: _ColorFieldPainter(hue, saturation)),
           );
         },
@@ -968,11 +966,8 @@ class _ValueField extends StatelessWidget {
     child: LayoutBuilder(
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (details) => onChanged(details.localPosition, size),
-          onPanStart: (details) => onChanged(details.localPosition, size),
-          onPanUpdate: (details) => onChanged(details.localPosition, size),
+        return _ExclusiveDragSurface(
+          onChanged: (position) => onChanged(position, size),
           child: CustomPaint(
             painter: _ValueFieldPainter(hue, saturation, value),
           ),
@@ -1003,15 +998,40 @@ class _OpacityField extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final size = Size(constraints.maxWidth, constraints.maxHeight);
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (details) => onChanged(details.localPosition, size),
-            onPanStart: (details) => onChanged(details.localPosition, size),
-            onPanUpdate: (details) => onChanged(details.localPosition, size),
+          return _ExclusiveDragSurface(
+            onChanged: (position) => onChanged(position, size),
             child: CustomPaint(painter: _OpacityPainter(color, alpha)),
           );
         },
       ),
+    ),
+  );
+}
+
+/// Claims pointer drags before the dialog's scroll view can pan.
+///
+/// Picker controls use raw pointer positions so a drag remains two-dimensional
+/// while the surrounding dialog stays at its current scroll offset.
+class _ExclusiveDragSurface extends StatelessWidget {
+  const _ExclusiveDragSurface({required this.onChanged, required this.child});
+
+  final ValueChanged<Offset> onChanged;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => RawGestureDetector(
+    gestures: {
+      EagerGestureRecognizer:
+          GestureRecognizerFactoryWithHandlers<EagerGestureRecognizer>(
+            EagerGestureRecognizer.new,
+            (recognizer) {},
+          ),
+    },
+    child: Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (event) => onChanged(event.localPosition),
+      onPointerMove: (event) => onChanged(event.localPosition),
+      child: child,
     ),
   );
 }
