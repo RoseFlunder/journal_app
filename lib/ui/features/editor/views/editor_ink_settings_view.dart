@@ -159,12 +159,12 @@ class _InkStrokePreviewPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final points = <Offset>[];
+    final points = <InkStrokePoint>[];
     for (var index = 0; index <= 48; index++) {
       final t = index / 48;
       final x = 3 + (size.width - 6) * t;
       final y = size.height * (.52 + .22 * math.sin(t * math.pi * 2.2));
-      points.add(Offset(x, y));
+      points.add(InkStrokePoint(Offset(x, y)));
     }
     InkStrokeRenderer.paint(
       canvas,

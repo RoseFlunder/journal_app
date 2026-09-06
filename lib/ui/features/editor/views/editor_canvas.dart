@@ -125,7 +125,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
   Offset? _lassoStart;
   Offset? _lassoEnd;
   int? _inkPointer;
-  final List<Offset> _inkPoints = <Offset>[];
+  final List<InkStrokePoint> _inkPoints = <InkStrokePoint>[];
   final Map<int, Offset> _selectionRotationPointers = <int, Offset>{};
   final Set<int> _activeTouchPointers = <int>{};
   List<int> _selectionRotationPointerIds = const <int>[];
@@ -241,7 +241,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
                             _inkPointer = event.pointer;
                             _inkPoints
                               ..clear()
-                              ..add(_localToModel(point));
+                              ..add(_inkPoint(event));
                             setState(() {});
                             return;
                           }
@@ -279,7 +279,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
                       ? (event) {
                           _handleSelectionRotationMove(event);
                           if (_inkPointer == event.pointer) {
-                            _inkPoints.add(_localToModel(event.localPosition));
+                            _inkPoints.add(_inkPoint(event));
                             setState(() {});
                             return;
                           }
@@ -829,6 +829,17 @@ class _EntryCanvasState extends State<EntryCanvas> {
   Offset _localToModel(Offset point) =>
       point / PageViewport.modelToRenderScale - widget.worldOrigin;
 
+  InkStrokePoint _inkPoint(PointerEvent event) {
+    final pressureRange = event.pressureMax - event.pressureMin;
+    final pressure = pressureRange > 0 && event.pressureMin < 1
+        ? ((event.pressure - event.pressureMin) / pressureRange).clamp(0.0, 1.0)
+        : null;
+    return InkStrokePoint(
+      _localToModel(event.localPosition),
+      pressure: pressure,
+    );
+  }
+
   void _finishInk() {
     _inkPointer = null;
     if (_inkPoints.length < 2) {
@@ -836,17 +847,17 @@ class _EntryCanvasState extends State<EntryCanvas> {
       setState(() {});
       return;
     }
-    var minX = _inkPoints.first.dx;
+    var minX = _inkPoints.first.position.dx;
     var maxX = minX;
-    var minY = _inkPoints.first.dy;
+    var minY = _inkPoints.first.position.dy;
     var maxY = minY;
     for (final point in _inkPoints.skip(1)) {
-      minX = math.min(minX, point.dx);
-      maxX = math.max(maxX, point.dx);
-      minY = math.min(minY, point.dy);
-      maxY = math.max(maxY, point.dy);
+      minX = math.min(minX, point.position.dx);
+      maxX = math.max(maxX, point.position.dx);
+      minY = math.min(minY, point.position.dy);
+      maxY = math.max(maxY, point.position.dy);
     }
-    const padding = 2.0;
+    final padding = widget.inkWidth * widget.inkStrokeType.widthMultiplier + 1;
     final node = CanvasNode(
       id: _uuid.v4(),
       type: BlockType.ink,
@@ -863,7 +874,7 @@ class _EntryCanvasState extends State<EntryCanvas> {
         'strokeType': widget.inkStrokeType.name,
         'inkPoints': [
           for (final point in _inkPoints)
-            {'x': point.dx - minX + padding, 'y': point.dy - minY + padding},
+            point.translate(Offset(-minX + padding, -minY + padding)).toJson(),
         ],
       },
     );
@@ -1143,7 +1154,7 @@ class _InkPreviewPainter extends CustomPainter {
     required this.strokeType,
   });
 
-  final List<Offset> points;
+  final List<InkStrokePoint> points;
   final Offset worldOrigin;
   final Color color;
   final double width;
@@ -1155,7 +1166,12 @@ class _InkPreviewPainter extends CustomPainter {
     if (points.length < 2) return;
     final renderPoints = [
       for (final point in points)
-        (point + worldOrigin) * PageViewport.modelToRenderScale,
+        point
+            .translate(worldOrigin)
+            .scale(
+              PageViewport.modelToRenderScale,
+              PageViewport.modelToRenderScale,
+            ),
     ];
     InkStrokeRenderer.paint(
       canvas,
@@ -1164,6 +1180,7 @@ class _InkPreviewPainter extends CustomPainter {
       width: width * PageViewport.modelToRenderScale,
       opacity: opacity,
       strokeType: strokeType,
+      isComplete: false,
     );
   }
 

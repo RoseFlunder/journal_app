@@ -635,10 +635,8 @@ class _InkPainter extends CustomPainter {
     if (points.length < 2 || block.w <= 0 || block.h <= 0) return;
     final renderPoints = [
       for (final point in points)
-        Offset(
-          ((point['x'] as num?)?.toDouble() ?? 0) * size.width / block.w,
-          ((point['y'] as num?)?.toDouble() ?? 0) * size.height / block.h,
-        ),
+        InkStrokePoint.fromJson(point)
+            .scale(size.width / block.w, size.height / block.h),
     ];
     InkStrokeRenderer.paint(
       canvas,

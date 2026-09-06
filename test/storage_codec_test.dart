@@ -143,6 +143,33 @@ void main() {
     );
   });
 
+  test('ink pressure round-trips and rejects values outside zero to one', () {
+    EntryDocument withPressure(double pressure) => base.copyWith(
+      nodes: [
+        CanvasNode(
+          id: 'ink',
+          type: BlockType.ink,
+          transform: const Transform2D(width: 20, height: 10),
+          payload: {
+            'inkPoints': [
+              {'x': 1, 'y': 2, 'p': pressure},
+              {'x': 3, 'y': 4, 'p': pressure},
+            ],
+          },
+        ),
+      ],
+    );
+
+    final decoded = JournalDocumentCodec.decodeDocument(
+      JournalDocumentCodec.canonicalDocument(withPressure(.42)),
+    );
+    expect(decoded.nodes.single.inkPoints?.first['p'], .42);
+    expect(
+      () => JournalDocumentCodec.encodeRecord(withPressure(1.01), revision: 0),
+      throwsA(isA<StorageFormatException>()),
+    );
+  });
+
   test('asset records are content addressed and verify their bytes', () {
     final record = StoredAssetRecord(
       id: 'wrong',

@@ -656,12 +656,19 @@ void _validateNodeData(CanvasNode node) {
         if (point is! Map) {
           throw const StorageFormatException('Ink point is invalid');
         }
-        for (final value in point.values) {
-          if (value is! num || !value.isFinite) {
-            throw const StorageFormatException(
-              'Ink point contains a non-finite number',
-            );
-          }
+        final x = point['x'];
+        final y = point['y'];
+        final pressure = point['p'];
+        if (x is! num ||
+            !x.isFinite ||
+            y is! num ||
+            !y.isFinite ||
+            pressure != null &&
+                (pressure is! num ||
+                    !pressure.isFinite ||
+                    pressure < 0 ||
+                    pressure > 1)) {
+          throw const StorageFormatException('Ink point is invalid');
         }
       }
     }

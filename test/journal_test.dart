@@ -68,7 +68,7 @@ void main() {
         strokeType: 'marker',
         strokeWidth: 3.5,
         inkPoints: [
-          {'x': 0, 'y': 0},
+          {'x': 0, 'y': 0, 'p': .35},
           {'x': 10, 'y': 4},
         ],
       );
@@ -77,10 +77,11 @@ void main() {
 
       expect(decodedMarker.strokeType, 'marker');
       expect(decodedMarker.strokeWidth, 3.5);
+      expect(decodedMarker.inkPoints?.first['p'], .35);
       expect(legacy.strokeType, 'pen');
     });
 
-    test('supports every Paint-style stroke type and safe fallback', () {
+    test('supports every polished stroke type and safe fallback', () {
       for (final type in InkStrokeType.values) {
         final block = ContentBlock(
           id: type.name,
@@ -95,13 +96,15 @@ void main() {
         );
       }
       expect(inkStrokeTypeFromName('unknown-brush'), InkStrokeType.pen);
+      expect(inkStrokeTypeFromName('airbrush'), InkStrokeType.pen);
       expect(inkStrokeTypeFromName(null), InkStrokeType.pen);
     });
 
-    test('stroke presets expose deterministic rendering characteristics', () {
-      expect(InkStrokeType.pencil.widthMultiplier, lessThan(1));
+    test('polished stroke presets expose rendering characteristics', () {
+      expect(InkStrokeType.values, hasLength(4));
+      expect(InkStrokeType.brush.label, 'Brush pen');
       expect(InkStrokeType.highlighter.widthMultiplier, greaterThan(2));
-      expect(InkStrokeType.airbrush.opacityMultiplier, lessThan(.5));
+      expect(InkStrokeType.highlighter.opacityMultiplier, lessThan(.5));
       expect(InkStrokeType.marker.strokeCap, StrokeCap.square);
       expect(InkStrokeType.pen.strokeCap, StrokeCap.round);
     });

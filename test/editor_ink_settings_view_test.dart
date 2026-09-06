@@ -5,7 +5,7 @@ import 'package:journal_app/ui/features/editor/view_models/editor_tool_state.dar
 import 'package:journal_app/ui/features/editor/views/editor_ink_settings_view.dart';
 
 void main() {
-  testWidgets('brush gallery lists and selects every stroke type', (
+  testWidgets('brush gallery lists and selects every polished stroke type', (
     tester,
   ) async {
     final previews = <InkSettings>[];
@@ -24,7 +24,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('ink-stroke-selector')));
     await tester.pumpAndSettle();
 
-    expect(find.byType(InkStrokePreview), findsNWidgets(10));
+    expect(find.byType(InkStrokePreview), findsNWidgets(5));
     for (final type in InkStrokeType.values) {
       final option = find.byKey(ValueKey('ink-stroke-option-${type.name}'));
       await tester.scrollUntilVisible(
@@ -47,7 +47,9 @@ void main() {
     expect(previews.single.opacity, .7);
   });
 
-  testWidgets('cancel closes the gallery after a preview change', (tester) async {
+  testWidgets('selecting a brush closes the gallery after a preview change', (
+    tester,
+  ) async {
     final previews = <InkSettings>[];
     const initial = InkSettings(strokeType: InkStrokeType.brush);
     await tester.pumpWidget(
@@ -64,13 +66,18 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ink-stroke-selector')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ink-stroke-option-airbrush')));
+    await tester.tap(find.byKey(const ValueKey('ink-stroke-option-marker')));
     await tester.pumpAndSettle();
-    expect(previews.single.strokeType, InkStrokeType.airbrush);
-    expect(find.byKey(const ValueKey('ink-stroke-option-airbrush')), findsNothing);
+    expect(previews.single.strokeType, InkStrokeType.marker);
+    expect(
+      find.byKey(const ValueKey('ink-stroke-option-marker')),
+      findsNothing,
+    );
   });
 
-  testWidgets('ink settings keeps Apply above the bottom inset', (tester) async {
+  testWidgets('ink settings keeps Apply above the bottom inset', (
+    tester,
+  ) async {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.binding.setSurfaceSize(const Size(360, 640));
     await tester.pumpWidget(
@@ -78,9 +85,8 @@ void main() {
         home: Scaffold(
           body: Builder(
             builder: (context) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(
-                padding: const EdgeInsets.only(bottom: 32),
-              ),
+              data: MediaQuery.of(context)
+                  .copyWith(padding: const EdgeInsets.only(bottom: 32)),
               child: Center(
                 child: ElevatedButton(
                   onPressed: () => showModalBottomSheet<void>(
