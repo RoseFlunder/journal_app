@@ -1042,17 +1042,17 @@ void main() {
     expect(find.byTooltip('Text color'), findsNothing);
     expect(find.byTooltip('Decrease font size'), findsNothing);
     expect(find.byTooltip('Increase font size'), findsNothing);
-    expect(find.byTooltip('Brush settings'), findsOneWidget);
+    expect(find.byTooltip('Ink settings'), findsOneWidget);
+    expect(find.byTooltip('Ink color'), findsNothing);
 
-    await tester.tap(find.byTooltip('Brush settings'));
+    await tester.tap(find.byTooltip('Ink settings'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('ink-stroke-selector')), findsOneWidget);
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ink-stroke-options')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ink-color')), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Ink color'));
+    await tester.tap(find.byKey(const ValueKey('ink-color')));
     await tester.pumpAndSettle();
-    expect(find.text('Ink color'), findsOneWidget);
+    expect(find.text('Ink color'), findsNWidgets(2));
     expect(find.byKey(const ValueKey('color-field')), findsOneWidget);
     expect(find.byKey(const ValueKey('color-preview')), findsOneWidget);
     expect(find.byKey(const ValueKey('color-value')), findsOneWidget);
@@ -1062,6 +1062,13 @@ void main() {
       closeTo(1, 0.01),
     );
     await tester.tap(find.bySemanticsLabel('Berry'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Cancel'),
+      ),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 
@@ -1097,9 +1104,18 @@ void main() {
     );
     expect(ink.strokeColorValue, 0xFF3B3226);
 
-    await tester.tap(find.byTooltip('Ink color'));
+    await tester.tap(find.byTooltip('Ink settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ink-color')));
     await tester.pumpAndSettle();
     await tester.tap(find.bySemanticsLabel('Berry'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Apply'),
+      ),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Apply'));
     await tester.pumpAndSettle();
     final secondGesture = await tester.startGesture(
@@ -1113,7 +1129,8 @@ void main() {
       (block) => block.type == BlockType.ink,
     );
     expect(ink.strokeColorValue, 0xFF873F4D);
-    expect(find.byTooltip('Ink color'), findsOneWidget);
+    expect(find.byTooltip('Ink settings'), findsOneWidget);
+    expect(find.byTooltip('Ink color'), findsNothing);
     expect(find.byTooltip('Stroke color'), findsNothing);
 
     await tester.tap(find.byTooltip('More editing tools'));

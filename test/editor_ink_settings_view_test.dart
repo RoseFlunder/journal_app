@@ -5,7 +5,7 @@ import 'package:journal_app/ui/features/editor/view_models/editor_tool_state.dar
 import 'package:journal_app/ui/features/editor/views/editor_ink_settings_view.dart';
 
 void main() {
-  testWidgets('brush gallery lists and selects every polished stroke type', (
+  testWidgets('combined ink menu lists and selects every stroke type', (
     tester,
   ) async {
     final previews = <InkSettings>[];
@@ -21,17 +21,10 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const ValueKey('ink-stroke-selector')));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(InkStrokePreview), findsNWidgets(5));
+    expect(find.byKey(const ValueKey('ink-stroke-options')), findsOneWidget);
+    expect(find.byType(InkStrokePreview), findsNWidgets(4));
     for (final type in InkStrokeType.values) {
       final option = find.byKey(ValueKey('ink-stroke-option-${type.name}'));
-      await tester.scrollUntilVisible(
-        option,
-        240,
-        scrollable: find.byType(Scrollable).last,
-      );
       expect(option, findsOneWidget);
     }
 
@@ -41,13 +34,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Highlighter'), findsOneWidget);
+    expect(find.byKey(const ValueKey('ink-stroke-options')), findsOneWidget);
     expect(previews, hasLength(1));
     expect(previews.single.strokeType, InkStrokeType.highlighter);
     expect(previews.single.width, 3.4);
     expect(previews.single.opacity, .7);
   });
 
-  testWidgets('selecting a brush closes the gallery after a preview change', (
+  testWidgets('selecting a stroke keeps every setting in the same menu', (
     tester,
   ) async {
     final previews = <InkSettings>[];
@@ -64,15 +58,15 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const ValueKey('ink-stroke-selector')));
-    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('ink-stroke-option-marker')));
     await tester.pumpAndSettle();
     expect(previews.single.strokeType, InkStrokeType.marker);
     expect(
       find.byKey(const ValueKey('ink-stroke-option-marker')),
-      findsNothing,
+      findsOneWidget,
     );
+    expect(find.byKey(const ValueKey('ink-color')), findsOneWidget);
+    expect(find.byType(Slider), findsOneWidget);
   });
 
   testWidgets('ink settings keeps Apply above the bottom inset', (

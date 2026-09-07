@@ -38,9 +38,7 @@ class EditorToolbarView extends StatelessWidget {
     this.onStrokeColorChanged,
     this.onStrokeColorEditStart,
     this.onStrokeColorEditEnd,
-    this.inkColorValue,
-    this.inkColorAvailable = false,
-    this.onInkColorChanged,
+    this.inkSettingsAvailable = false,
     required this.onToggleBold,
     required this.onToggleItalic,
     required this.bold,
@@ -89,9 +87,7 @@ class EditorToolbarView extends StatelessWidget {
   final ValueChanged<int?>? onStrokeColorChanged;
   final VoidCallback? onStrokeColorEditStart;
   final VoidCallback? onStrokeColorEditEnd;
-  final int? inkColorValue;
-  final bool inkColorAvailable;
-  final ValueChanged<int?>? onInkColorChanged;
+  final bool inkSettingsAvailable;
   final VoidCallback onToggleBold;
   final VoidCallback onToggleItalic;
   final bool bold;
@@ -222,8 +218,8 @@ class EditorToolbarView extends StatelessWidget {
                   ),
                 ],
                 // A newly drawn ink block becomes selected, but draw mode
-                // already exposes the ink color control.
-                if (strokeColorAvailable && !inkColorAvailable)
+                // already exposes the combined ink settings control.
+                if (strokeColorAvailable && !inkSettingsAvailable)
                   _ColorPickerButton(
                     compact: compact,
                     colorValue: strokeColorValue,
@@ -239,26 +235,12 @@ class EditorToolbarView extends StatelessWidget {
                     onFavoriteColorsChanged: onFavoriteColorsChanged,
                     onSampleColor: onSampleColor,
                   ),
-                if (inkColorAvailable)
+                if (inkSettingsAvailable)
                   _Action(
-                    tooltip: 'Brush settings',
-                    icon: Icons.brush_outlined,
-                    label: compact ? null : 'Brush',
+                    tooltip: 'Ink settings',
+                    icon: Icons.draw_outlined,
+                    label: compact ? null : 'Ink',
                     onPressed: onInkSettings,
-                  ),
-                if (inkColorAvailable)
-                  _ColorPickerButton(
-                    compact: compact,
-                    colorValue: inkColorValue,
-                    label: 'Ink color',
-                    toolbarLabel: 'Ink',
-                    icon: Icons.brush_outlined,
-                    onChanged: onInkColorChanged!,
-                    recentColorValues: recentColorValues,
-                    favoriteColorValues: favoriteColorValues,
-                    onRecentColorAdded: onRecentColorAdded,
-                    onFavoriteColorsChanged: onFavoriteColorsChanged,
-                    onSampleColor: onSampleColor,
                   ),
                 if (onUseAsPreview != null)
                   _Action(

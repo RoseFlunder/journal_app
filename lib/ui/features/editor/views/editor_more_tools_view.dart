@@ -22,7 +22,6 @@ class EditorMoreToolsView extends StatefulWidget {
     required this.onUngroup,
     required this.onToggleSelectMode,
     required this.onToggleDrawMode,
-    required this.onInkSettings,
     required this.onMusic,
     required this.onLayers,
   });
@@ -42,7 +41,6 @@ class EditorMoreToolsView extends StatefulWidget {
   final VoidCallback onUngroup;
   final VoidCallback onToggleSelectMode;
   final VoidCallback onToggleDrawMode;
-  final VoidCallback onInkSettings;
   final VoidCallback onMusic;
   final VoidCallback onLayers;
 
@@ -88,14 +86,6 @@ class _EditorMoreToolsViewState extends State<EditorMoreToolsView> {
             subtitle: const Text('Draw a vector ink stroke on the board'),
             onTap: () => _close(widget.onToggleDrawMode),
           ),
-          if (_drawMode)
-            ListTile(
-              key: const ValueKey('ink-settings'),
-              leading: const Icon(Icons.tune),
-              title: const Text('Ink settings'),
-              subtitle: const Text('Color, width, and opacity'),
-              onTap: () => _close(widget.onInkSettings),
-            ),
           ListTile(
             key: const ValueKey('page-music-tool'),
             leading: const Icon(Icons.library_music_outlined),

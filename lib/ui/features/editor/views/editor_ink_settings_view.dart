@@ -49,15 +49,6 @@ class _EditorInkSettingsViewState extends State<EditorInkSettingsView> {
     widget.onPreview(next);
   }
 
-  Future<void> _pickStrokeType() async {
-    final selected = await showDialog<InkStrokeType>(
-      context: context,
-      builder: (context) => _StrokeTypeGallery(selected: _settings.strokeType),
-    );
-    if (!mounted || selected == null) return;
-    _changeStrokeType(selected);
-  }
-
   @override
   Widget build(BuildContext context) => SafeArea(
     child: SingleChildScrollView(
@@ -85,18 +76,26 @@ class _EditorInkSettingsViewState extends State<EditorInkSettingsView> {
             onTap: _pickColor,
           ),
           const SizedBox(height: 8),
-          ListTile(
-            key: const ValueKey('ink-stroke-selector'),
-            contentPadding: EdgeInsets.zero,
-            leading: InkStrokePreview(
-              strokeType: _settings.strokeType,
-              color: Theme.of(context).colorScheme.onSurface,
-              width: 64,
+          Text('Stroke style', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          LayoutBuilder(
+            builder: (context, constraints) => GridView.count(
+              key: const ValueKey('ink-stroke-options'),
+              crossAxisCount: constraints.maxWidth >= 520 ? 4 : 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 1.8,
+              children: [
+                for (final type in InkStrokeType.values)
+                  _StrokeTypeOption(
+                    type: type,
+                    selected: type == _settings.strokeType,
+                    onTap: () => _changeStrokeType(type),
+                  ),
+              ],
             ),
-            title: Text(_settings.strokeType.label),
-            subtitle: const Text('Choose a brush style'),
-            trailing: const Icon(Icons.expand_more),
-            onTap: _pickStrokeType,
           ),
           const SizedBox(height: 8),
           Text('Stroke size ${_settings.width.toStringAsFixed(1)}'),
@@ -181,70 +180,64 @@ class _InkStrokePreviewPainter extends CustomPainter {
       oldDelegate.strokeType != strokeType || oldDelegate.color != color;
 }
 
-class _StrokeTypeGallery extends StatelessWidget {
-  const _StrokeTypeGallery({required this.selected});
+class _StrokeTypeOption extends StatelessWidget {
+  const _StrokeTypeOption({
+    required this.type,
+    required this.selected,
+    required this.onTap,
+  });
 
-  final InkStrokeType selected;
+  final InkStrokeType type;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final maxHeight = MediaQuery.sizeOf(context).height * .72;
-    return Dialog(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 380,
-          maxHeight: maxHeight.clamp(280.0, 620.0),
+    final colors = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: type.label,
+      child: Material(
+        color: selected ? colors.primaryContainer : colors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: selected ? colors.primary : colors.outlineVariant,
+          ),
         ),
-        child: ListView.separated(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          shrinkWrap: true,
-          itemCount: InkStrokeType.values.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (context, index) {
-            final type = InkStrokeType.values[index];
-            final isSelected = type == selected;
-            return Semantics(
-              button: true,
-              selected: isSelected,
-              label: type.label,
-              child: InkWell(
-                key: ValueKey('ink-stroke-option-${type.name}'),
-                onTap: () => Navigator.pop(context, type),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 150,
-                        child: Text(
-                          type.label,
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          key: ValueKey('ink-stroke-option-${type.name}'),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        type.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
-                      Expanded(
-                        child: InkStrokePreview(
-                          strokeType: type,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                      ),
-                      SizedBox(
-                        width: 28,
-                        child: isSelected
-                            ? Icon(
-                                Icons.check,
-                                color: Theme.of(context).colorScheme.primary,
-                              )
-                            : null,
-                      ),
-                    ],
-                  ),
+                    ),
+                    if (selected)
+                      Icon(Icons.check, size: 18, color: colors.primary),
+                  ],
                 ),
-              ),
-            );
-          },
+                const SizedBox(height: 4),
+                InkStrokePreview(
+                  strokeType: type,
+                  color: colors.onSurface,
+                  width: double.infinity,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

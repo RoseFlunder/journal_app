@@ -194,8 +194,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
         .toARGB32();
   }
 
-  int get _inkPickerValue => _inkSettings.pickerValue;
-
   bool _isDrawable(CanvasRenderable block) =>
       block.type == BlockType.ink || block.type == BlockType.shape;
 
@@ -448,17 +446,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
     if (_colorTransactionBlockId == null) return;
     _colorTransactionBlockId = null;
     unawaited(_editor.commitTransaction());
-  }
-
-  void _applyInkColorValue(int? value, {VoidCallback? refreshSheet}) {
-    final color = value == null ? PaperPage.ink : Color(value);
-    _editor.updateInkSettings(
-      _inkSettings.copyWith(
-        colorValue: color.withValues(alpha: 1).toARGB32(),
-        opacity: value == null ? 1 : color.a,
-      ),
-    );
-    refreshSheet?.call();
   }
 
   void _beginStrokeColorEdit() {
@@ -1052,7 +1039,6 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
           _drawMode = !_drawMode;
           if (_drawMode) _selectMode = false;
         },
-        onInkSettings: _showInkSettings,
         onMusic: () => unawaited(_showMusicPicker()),
         onLayers: _showLayers,
       ),
@@ -1551,11 +1537,9 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                           onStrokeColorChanged: _changeStrokeColor,
                           onStrokeColorEditStart: _beginStrokeColorEdit,
                           onStrokeColorEditEnd: _endStrokeColorEdit,
-                          inkColorValue: _inkPickerValue,
-                          inkColorAvailable:
+                          inkSettingsAvailable:
                               _drawMode &&
                               _activeStrokeBlock?.type != BlockType.shape,
-                          onInkColorChanged: _applyInkColorValue,
                           onToggleBold: _toggleBold,
                           onToggleItalic: _toggleItalic,
                           bold: _activeBold,
@@ -1628,11 +1612,9 @@ class _EntryPageState extends State<EntryPage> with WidgetsBindingObserver {
                       onStrokeColorChanged: _changeStrokeColor,
                       onStrokeColorEditStart: _beginStrokeColorEdit,
                       onStrokeColorEditEnd: _endStrokeColorEdit,
-                      inkColorValue: _inkPickerValue,
-                      inkColorAvailable:
+                      inkSettingsAvailable:
                           _drawMode &&
                           _activeStrokeBlock?.type != BlockType.shape,
-                      onInkColorChanged: _applyInkColorValue,
                       onToggleBold: _toggleBold,
                       onToggleItalic: _toggleItalic,
                       bold: _activeBold,
