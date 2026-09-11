@@ -37,6 +37,11 @@ void main() {
   late Directory temp;
   late TestHiveEnvironment store;
 
+  Finder blockQuillEditor(String blockId) => find.descendant(
+    of: find.byKey(ValueKey('block-quill-$blockId')),
+    matching: find.byType(QuillEditor),
+  );
+
   setUpAll(() async {
     temp = Directory.systemTemp.createTempSync('journal_widget_test');
     Hive.init(temp.path);
@@ -64,9 +69,7 @@ void main() {
     String blockId,
     String text,
   ) async {
-    final editor = tester.widget<QuillEditor>(
-      find.byKey(ValueKey('block-quill-$blockId')),
-    );
+    final editor = tester.widget<QuillEditor>(blockQuillEditor(blockId));
     editor.focusNode.requestFocus();
     await tester.pump();
     editor.controller.replaceText(
@@ -767,7 +770,7 @@ void main() {
     expect(store.entries.single.blocks.single.fontFamily, JournalFonts.lora);
     expect(
       tester
-          .widget<QuillEditor>(find.byKey(ValueKey('block-quill-$blockId')))
+          .widget<QuillEditor>(blockQuillEditor(blockId))
           .config
           .customStyles
           ?.paragraph
@@ -831,6 +834,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(ValueKey('block-quill-$blockId')), findsOneWidget);
     expect(tester.testTextInput.isVisible, isTrue);
+    tester.testTextInput.updateEditingValue(
+      const TextEditingValue(
+        text: 'A first note!\n',
+        selection: TextSelection.collapsed(offset: 13),
+      ),
+    );
+    await tester.pump();
+    expect(store.entries.single.blocks.single.text, 'A first note!');
 
     await tester.tap(find.byTooltip('Edit text'));
     await tester.pump();
@@ -996,6 +1007,71 @@ void main() {
     await tester.pump();
     expect(find.byType(QuillEditor), findsOneWidget);
   });
+
+  testWidgets(
+    'double tapping a read-only text block accepts keyboard input immediately',
+    (tester) async {
+      var textEditing = false;
+      var text = 'Existing note';
+      List<dynamic> delta = <dynamic>[
+        {'insert': '$text\n'},
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StatefulBuilder(
+            builder: (context, setState) => SizedBox(
+              width: 240,
+              height: 160,
+              child: BlockWidget(
+                block: ContentBlock(
+                  id: 'focus-transition',
+                  type: BlockType.text,
+                  text: text,
+                  richTextDelta: delta,
+                  w: 160,
+                  h: 80,
+                ),
+                selected: true,
+                editing: true,
+                textEditing: textEditing,
+                onTap: () {},
+                onEditText: () => setState(() => textEditing = true),
+                onMoveStart: (_) {},
+                onMoveUpdate: (_) {},
+                onMoveEnd: () {},
+                onRotate: (_) {},
+                onTextChanged: (_) {},
+                onRichTextChanged: (nextText, nextDelta) {
+                  text = nextText;
+                  delta = nextDelta;
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final block = find.byKey(const ValueKey('block-quill-focus-transition'));
+      await tester.tap(block);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(block);
+      await tester.pumpAndSettle();
+
+      expect(textEditing, isTrue);
+      expect(tester.testTextInput.isVisible, isTrue);
+      tester.testTextInput.updateEditingValue(
+        const TextEditingValue(
+          text: 'Existing note!\n',
+          selection: TextSelection.collapsed(offset: 14),
+        ),
+      );
+      await tester.pump();
+
+      expect(text, 'Existing note!');
+    },
+  );
 
   testWidgets('draw mode commits one vector ink stroke', (tester) async {
     ContentBlock? drawn;
@@ -1201,7 +1277,7 @@ void main() {
       expect(store.entries.single.blocks.single.textColorValue, 0xFF873F4D);
       expect(
         tester
-            .widget<QuillEditor>(find.byKey(ValueKey('block-quill-$blockId')))
+            .widget<QuillEditor>(blockQuillEditor(blockId))
             .config
             .customStyles
             ?.paragraph

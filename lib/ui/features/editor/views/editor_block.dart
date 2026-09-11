@@ -87,6 +87,10 @@ class _BlockWidgetState extends State<BlockWidget> {
     super.didUpdateWidget(oldWidget);
     _quillController.readOnly = !widget.textEditing;
     if (!oldWidget.textEditing && widget.textEditing) {
+      // A read-only Quill editor does not install its focus/input listener.
+      // Drop any selection-only focus before mounting the editable state so
+      // the following request creates a fresh platform input connection.
+      _richFocusNode.unfocus();
       _scheduleTextFocus();
     } else if (oldWidget.textEditing && !widget.textEditing) {
       _richFocusNode.unfocus();
@@ -363,27 +367,35 @@ class _BlockWidgetState extends State<BlockWidget> {
 
   Widget _buildTextEditor() {
     _quillController.readOnly = !widget.textEditing;
-    return QuillEditor.basic(
+    return KeyedSubtree(
       key: ValueKey('block-quill-${widget.block.id}'),
-      controller: _quillController,
-      focusNode: _richFocusNode,
-      config: QuillEditorConfig(
-        scrollable: false,
-        expands: true,
-        padding: const EdgeInsets.all(8),
-        placeholder: 'Write here...',
-        showCursor: widget.textEditing,
-        enableInteractiveSelection: widget.textEditing,
-        enableSelectionToolbar: widget.textEditing,
-        textCapitalization: TextCapitalization.sentences,
-        textInputAction: TextInputAction.newline,
-        customStyles: DefaultStyles(
-          paragraph: DefaultTextBlockStyle(
-            _textStyle(context),
-            HorizontalSpacing.zero,
-            VerticalSpacing.zero,
-            VerticalSpacing.zero,
-            null,
+      child: QuillEditor.basic(
+        // Quill only installs its platform-input focus listener when it is
+        // first mounted as editable. Remount across this boundary so a
+        // double-tap can type immediately instead of requiring a third tap.
+        key: ValueKey(
+          'block-quill-input-${widget.block.id}-${widget.textEditing}',
+        ),
+        controller: _quillController,
+        focusNode: _richFocusNode,
+        config: QuillEditorConfig(
+          scrollable: false,
+          expands: true,
+          padding: const EdgeInsets.all(8),
+          placeholder: 'Write here...',
+          showCursor: widget.textEditing,
+          enableInteractiveSelection: widget.textEditing,
+          enableSelectionToolbar: widget.textEditing,
+          textCapitalization: TextCapitalization.sentences,
+          textInputAction: TextInputAction.newline,
+          customStyles: DefaultStyles(
+            paragraph: DefaultTextBlockStyle(
+              _textStyle(context),
+              HorizontalSpacing.zero,
+              VerticalSpacing.zero,
+              VerticalSpacing.zero,
+              null,
+            ),
           ),
         ),
       ),
