@@ -66,10 +66,8 @@ class BlockWidget extends StatefulWidget {
 }
 
 class _BlockWidgetState extends State<BlockWidget> {
-  late final TextEditingController _controller;
-  late final FocusNode _textFocusNode;
   late final FocusNode _richFocusNode;
-  QuillController? _quillController;
+  late final QuillController _quillController;
   String? _lastQuillDelta;
   bool _movingEdge = false;
   bool _movingBody = false;
@@ -79,8 +77,6 @@ class _BlockWidgetState extends State<BlockWidget> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.block.text);
-    _textFocusNode = FocusNode();
     _richFocusNode = FocusNode();
     _createQuillController();
     if (widget.textEditing) _scheduleTextFocus();
@@ -89,33 +85,18 @@ class _BlockWidgetState extends State<BlockWidget> {
   @override
   void didUpdateWidget(covariant BlockWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.block.text != widget.block.text &&
-        _controller.text != widget.block.text) {
-      _controller.value = TextEditingValue(
-        text: widget.block.text,
-        selection: TextSelection.collapsed(offset: widget.block.text.length),
-      );
-    }
-    if (_quillController == null &&
-        widget.block.richTextDelta != null &&
-        widget.textEditing &&
-        !oldWidget.textEditing) {
-      _createQuillController();
-    }
-    _quillController?.readOnly = !widget.textEditing;
+    _quillController.readOnly = !widget.textEditing;
     if (!oldWidget.textEditing && widget.textEditing) {
       _scheduleTextFocus();
     } else if (oldWidget.textEditing && !widget.textEditing) {
-      _textFocusNode.unfocus();
+      _richFocusNode.unfocus();
     }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
-    _textFocusNode.dispose();
-    _quillController?.removeListener(_handleQuillChanged);
-    _quillController?.dispose();
+    _quillController.removeListener(_handleQuillChanged);
+    _quillController.dispose();
     _richFocusNode.dispose();
     super.dispose();
   }
@@ -125,7 +106,12 @@ class _BlockWidgetState extends State<BlockWidget> {
     final controlSize = 48 / math.max(widget.controlScale, 0.01);
     final controlBorder = 2.5 / math.max(widget.controlScale, 0.01);
     final content = widget.block.isOpaque
-        ? const Center(child: Icon(Icons.help_outline, semanticLabel: 'Unsupported content'))
+        ? const Center(
+            child: Icon(
+              Icons.help_outline,
+              semanticLabel: 'Unsupported content',
+            ),
+          )
         : widget.block.type == BlockType.shape
         ? CustomPaint(
             painter: _ShapePainter(widget.block),
@@ -143,18 +129,7 @@ class _BlockWidgetState extends State<BlockWidget> {
               widget.selected &&
               widget.textEditing
         ? _buildTextEditor()
-        : _quillController != null
-        ? _buildTextEditor()
-        : Align(
-            alignment: Alignment.topLeft,
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Text(
-                widget.block.text.isEmpty ? 'Write here...' : widget.block.text,
-                style: _textStyle(context),
-              ),
-            ),
-          );
+        : _buildTextEditor();
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -387,74 +362,66 @@ class _BlockWidgetState extends State<BlockWidget> {
   }
 
   Widget _buildTextEditor() {
-    final controller = _quillController;
-    if (controller != null && _usesQuill) {
-      controller.readOnly = !widget.textEditing;
-      return QuillEditor.basic(
-        key: ValueKey('block-quill-${widget.block.id}'),
-        controller: controller,
-        focusNode: _richFocusNode,
-        config: QuillEditorConfig(
-          scrollable: false,
-          expands: true,
-          padding: const EdgeInsets.all(8),
-          showCursor: widget.textEditing,
-          enableInteractiveSelection: widget.textEditing,
+    _quillController.readOnly = !widget.textEditing;
+    return QuillEditor.basic(
+      key: ValueKey('block-quill-${widget.block.id}'),
+      controller: _quillController,
+      focusNode: _richFocusNode,
+      config: QuillEditorConfig(
+        scrollable: false,
+        expands: true,
+        padding: const EdgeInsets.all(8),
+        placeholder: 'Write here...',
+        showCursor: widget.textEditing,
+        enableInteractiveSelection: widget.textEditing,
+        enableSelectionToolbar: widget.textEditing,
+        textCapitalization: TextCapitalization.sentences,
+        textInputAction: TextInputAction.newline,
+        customStyles: DefaultStyles(
+          paragraph: DefaultTextBlockStyle(
+            _textStyle(context),
+            HorizontalSpacing.zero,
+            VerticalSpacing.zero,
+            VerticalSpacing.zero,
+            null,
+          ),
         ),
-      );
-    }
-    return TextField(
-      key: ValueKey('block-text-${widget.block.id}'),
-      controller: _controller,
-      focusNode: _textFocusNode,
-      maxLines: null,
-      expands: true,
-      keyboardType: TextInputType.multiline,
-      textInputAction: TextInputAction.newline,
-      onChanged: widget.onTextChanged,
-      style: _textStyle(context),
-      decoration: const InputDecoration(
-        border: InputBorder.none,
-        contentPadding: EdgeInsets.all(8),
       ),
     );
   }
 
   void _createQuillController() {
     final raw = widget.block.richTextDelta;
-    if (raw == null || !_richDeltaHasFormatting(raw)) return;
+    late Document document;
     try {
-      final document = Document.fromJson(List<dynamic>.from(raw));
-      _quillController =
-          QuillController(
-              document: document,
-              selection: TextSelection.collapsed(
-                offset: math.max(0, document.length - 1),
-              ),
-            )
-            ..readOnly = !widget.textEditing
-            ..addListener(_handleQuillChanged);
-      _lastQuillDelta = document.toDelta().toJson().toString();
+      document = raw == null
+          ? _plainTextDocument(widget.block.text)
+          : Document.fromJson(List<dynamic>.from(raw));
     } catch (_) {
-      // Keep the plain TextField fallback for malformed or incomplete Delta
-      // payloads rather than preventing the entry from opening.
-      _quillController = null;
+      // Preserve recoverability for malformed legacy Delta payloads while
+      // keeping every text block on the same rich-editor implementation.
+      document = _plainTextDocument(widget.block.text);
     }
+    _quillController =
+        QuillController(
+            document: document,
+            selection: TextSelection.collapsed(
+              offset: math.max(0, document.length - 1),
+            ),
+          )
+          ..readOnly = !widget.textEditing
+          ..addListener(_handleQuillChanged);
+    _lastQuillDelta = document.toDelta().toJson().toString();
   }
 
-  bool get _usesQuill => _richDeltaHasFormatting(widget.block.richTextDelta);
-
-  bool _richDeltaHasFormatting(List<dynamic>? delta) =>
-      delta?.any((operation) {
-        if (operation is! Map) return false;
-        final attributes = operation['attributes'];
-        return attributes is Map && attributes.isNotEmpty;
-      }) ??
-      false;
+  Document _plainTextDocument(String text) => Document.fromJson(<dynamic>[
+    if (text.isNotEmpty) {'insert': text},
+    {'insert': '\n'},
+  ]);
 
   void _handleQuillChanged() {
     final controller = _quillController;
-    if (controller == null || controller.readOnly) return;
+    if (controller.readOnly) return;
     final delta = controller.document.toDelta().toJson();
     final fingerprint = delta.toString();
     if (fingerprint == _lastQuillDelta) return;
@@ -502,8 +469,7 @@ class _BlockWidgetState extends State<BlockWidget> {
   void _scheduleTextFocus() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !widget.editing || !widget.textEditing) return;
-      (_quillController == null ? _textFocusNode : _richFocusNode)
-          .requestFocus();
+      _richFocusNode.requestFocus();
       SystemChannels.textInput.invokeMethod<void>('TextInput.show');
     });
   }
@@ -535,10 +501,7 @@ class _BlockWidgetState extends State<BlockWidget> {
     _panDownGlobalPosition = null;
   }
 
-  void _requestSelection(
-    PointerDeviceKind? kind, {
-    bool pointerDown = false,
-  }) {
+  void _requestSelection(PointerDeviceKind? kind, {bool pointerDown = false}) {
     final onSelectionRequested = widget.onSelectionRequested;
     if (kind != null && onSelectionRequested != null) {
       onSelectionRequested(kind, pointerDown: pointerDown);

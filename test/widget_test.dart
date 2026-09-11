@@ -59,6 +59,25 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> enterBlockText(
+    WidgetTester tester,
+    String blockId,
+    String text,
+  ) async {
+    final editor = tester.widget<QuillEditor>(
+      find.byKey(ValueKey('block-quill-$blockId')),
+    );
+    editor.focusNode.requestFocus();
+    await tester.pump();
+    editor.controller.replaceText(
+      0,
+      math.max(0, editor.controller.document.length - 1),
+      text,
+      TextSelection.collapsed(offset: text.length),
+    );
+    await tester.pump();
+  }
+
   testWidgets('layer order menu opens above the toolbar in every layout', (
     tester,
   ) async {
@@ -679,13 +698,20 @@ void main() {
     expect(find.byType(EntryCanvas), findsOneWidget);
     expect(find.byType(BlockWidget), findsOneWidget);
     expect(find.byKey(const ValueKey('entry-title')), findsOneWidget);
-    expect(find.byType(TextField), findsNWidgets(2));
+    expect(find.byType(TextField), findsOneWidget);
     final blockId = store.entries.single.blocks.single.id;
     expect(store.entries.single.blocks.single.w, 30);
     expect(store.entries.single.blocks.single.h, 11);
     expect(store.entries.single.blocks.single.fontSize, 26);
-    expect(find.byKey(ValueKey('block-text-$blockId')), findsOneWidget);
+    expect(find.byKey(ValueKey('block-quill-$blockId')), findsOneWidget);
+    expect(find.byType(QuillEditor), findsOneWidget);
     expect(tester.testTextInput.isVisible, isTrue);
+    expect(
+      tester.testTextInput.setClientArgs!['textCapitalization'],
+      'TextCapitalization.sentences',
+    );
+    expect(tester.testTextInput.setClientArgs!['autocorrect'], isTrue);
+    expect(tester.testTextInput.setClientArgs!['enableSuggestions'], isTrue);
     expect(
       tester
           .widget<InteractiveViewer>(find.byType(InteractiveViewer))
@@ -701,42 +727,38 @@ void main() {
 
     await tester.tap(find.byTooltip('Edit text'));
     await tester.pump();
-    expect(find.byKey(ValueKey('block-text-$blockId')), findsNothing);
+    expect(find.byKey(ValueKey('block-quill-$blockId')), findsOneWidget);
     expect(tester.testTextInput.isVisible, isFalse);
 
     await tester.tap(find.byTooltip('Edit text'));
     await tester.pump();
-    expect(find.byKey(ValueKey('block-text-$blockId')), findsOneWidget);
+    expect(find.byKey(ValueKey('block-quill-$blockId')), findsOneWidget);
     expect(tester.testTextInput.isVisible, isTrue);
 
-    await tester.enterText(
-      find.byKey(ValueKey('block-text-$blockId')),
-      'A first note',
-    );
-    await tester.pump();
+    await enterBlockText(tester, blockId, 'A first note');
     expect(store.entries.single.blocks.single.richTextDelta, isNotNull);
     expect(
       store.entries.single.blocks.single.richTextDelta!
           .whereType<Map<Object?, Object?>>()
-          .any((operation) => operation['insert'] == 'A first note'),
+          .any(
+            (operation) =>
+                (operation['insert'] as String?)?.contains('A first note') ??
+                false,
+          ),
       isTrue,
     );
     expect(store.entries.single.blocks.single.text, 'A first note');
-    await tester.enterText(
-      find.byKey(ValueKey('block-text-$blockId')),
+    await enterBlockText(
+      tester,
+      blockId,
       'A first note that wraps onto several lines in this compact block.\n'
-          'The block should grow while typing so every line remains visible.',
+      'The block should grow while typing so every line remains visible.',
     );
-    await tester.pump();
     final grownHeight = store.entries.single.blocks.single.h;
     expect(grownHeight, greaterThan(11));
     expect(store.entries.single.blocks.single.w, 30);
 
-    await tester.enterText(
-      find.byKey(ValueKey('block-text-$blockId')),
-      'A first note',
-    );
-    await tester.pump();
+    await enterBlockText(tester, blockId, 'A first note');
     expect(store.entries.single.blocks.single.h, grownHeight);
     await tester.tap(find.byTooltip('Choose font'));
     await tester.pumpAndSettle();
@@ -745,9 +767,12 @@ void main() {
     expect(store.entries.single.blocks.single.fontFamily, JournalFonts.lora);
     expect(
       tester
-          .widget<TextField>(find.byKey(ValueKey('block-text-$blockId')))
-          .style
-          ?.fontFamily,
+          .widget<QuillEditor>(find.byKey(ValueKey('block-quill-$blockId')))
+          .config
+          .customStyles
+          ?.paragraph
+          ?.style
+          .fontFamily,
       JournalFonts.lora,
     );
     await tester.tap(find.byTooltip('Choose font'));
@@ -795,20 +820,21 @@ void main() {
 
     await tester.tapAt(tester.getCenter(find.byType(EntryCanvas)));
     await tester.pump();
-    expect(find.byKey(ValueKey('block-text-$blockId')), findsNothing);
+    expect(find.byKey(ValueKey('block-quill-$blockId')), findsOneWidget);
     expect(find.byKey(const ValueKey('entry-title')), findsOneWidget);
     expect(find.byType(BlockWidget), findsOneWidget);
 
-    await tester.tap(find.text('A first note'));
+    final blockEditor = find.byKey(ValueKey('block-quill-$blockId'));
+    await tester.tap(blockEditor);
     await tester.pump(const Duration(milliseconds: 50));
-    await tester.tap(find.text('A first note'));
+    await tester.tap(blockEditor);
     await tester.pumpAndSettle();
-    expect(find.byKey(ValueKey('block-text-$blockId')), findsOneWidget);
+    expect(find.byKey(ValueKey('block-quill-$blockId')), findsOneWidget);
     expect(tester.testTextInput.isVisible, isTrue);
 
     await tester.tap(find.byTooltip('Edit text'));
     await tester.pump();
-    expect(find.byKey(ValueKey('block-text-$blockId')), findsNothing);
+    expect(find.byKey(ValueKey('block-quill-$blockId')), findsOneWidget);
 
     final panBeforeSelectedDrag = store.entries.single.view?.panX;
     final canvasCenter = tester.getCenter(find.byType(EntryCanvas));
@@ -841,9 +867,7 @@ void main() {
     final beforeWidth = store.entries.single.blocks.single.w;
     await tester.drag(
       find.byKey(
-        ValueKey(
-          'resize-${store.entries.single.blocks.single.id}-topRight',
-        ),
+        ValueKey('resize-${store.entries.single.blocks.single.id}-topRight'),
       ),
       const Offset(40, -20),
     );
@@ -861,9 +885,7 @@ void main() {
     );
   });
 
-  testWidgets('advanced grid and recovery tools stay hidden', (
-    tester,
-  ) async {
+  testWidgets('advanced grid and recovery tools stay hidden', (tester) async {
     store = TestHiveEnvironment();
     await store.init();
     for (final existing in store.entries.toList()) {
@@ -1159,10 +1181,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final blockId = store.entries.single.blocks.single.id;
-      await tester.enterText(
-        find.byKey(ValueKey('block-text-$blockId')),
-        'Colorful note',
-      );
+      await enterBlockText(tester, blockId, 'Colorful note');
       await tester.tap(find.byTooltip('Text color'));
       await tester.pumpAndSettle();
       expect(find.text('Text color'), findsOneWidget);
@@ -1182,9 +1201,12 @@ void main() {
       expect(store.entries.single.blocks.single.textColorValue, 0xFF873F4D);
       expect(
         tester
-            .widget<TextField>(find.byKey(ValueKey('block-text-$blockId')))
-            .style
-            ?.color
+            .widget<QuillEditor>(find.byKey(ValueKey('block-quill-$blockId')))
+            .config
+            .customStyles
+            ?.paragraph
+            ?.style
+            .color
             ?.toARGB32(),
         0xFF873F4D,
       );
